@@ -14,19 +14,18 @@
 
 import typing
 
-from _py2tmp.types import *
-from _py2tmp.utils import *
-from typing import List, TypeVar, Generic
+import _py2tmp.types as types
+from typing import List
 
 class Expr:
-    def __init__(self, type: ExprType):
+    def __init__(self, type: types.ExprType):
         self.type = type
 
     def to_cpp(self) -> str: ...
 
 class StaticAssert:
     def __init__(self, expr: Expr, message: str):
-        assert expr.type.kind == ExprKind.BOOL
+        assert expr.type.kind == types.ExprKind.BOOL
         self.expr = expr
         self.message = message
 
@@ -36,11 +35,11 @@ class StaticAssert:
             message=self.message)
 
 def _type_to_template_param_declaration(type):
-    if type.kind == ExprKind.BOOL:
+    if type.kind == types.ExprKind.BOOL:
         return 'bool'
-    elif type.kind == ExprKind.TYPE:
+    elif type.kind == types.ExprKind.TYPE:
         return 'typename'
-    elif type.kind == ExprKind.TEMPLATE:
+    elif type.kind == types.ExprKind.TEMPLATE:
         return ('template <'
                 + ', '.join(_type_to_template_param_declaration(arg_type)
                             for arg_type in type.argtypes)
@@ -49,22 +48,22 @@ def _type_to_template_param_declaration(type):
         raise Exception('Unsupported argument kind: ' + str(type.kind))
 
 class FunctionArgDecl:
-    def __init__(self, type: ExprType, name: str):
+    def __init__(self, type: types.ExprType, name: str):
         self.type = type
         self.name = name
 
 def _identifier_to_cpp(type, name):
-    if type.kind == ExprKind.BOOL:
+    if type.kind == types.ExprKind.BOOL:
         return name
-    elif type.kind in (ExprKind.TYPE, ExprKind.TEMPLATE):
+    elif type.kind in (types.ExprKind.TYPE, types.ExprKind.TEMPLATE):
         return name.title().replace("_", "")
     else:
         raise Exception('Unsupported kind: ' + str(type.kind))
 
 class FunctionDefn(Expr):
-    def __init__(self, asserts: List[StaticAssert], expression: Expr, type: ExprType, name: str, args: List[FunctionArgDecl]):
+    def __init__(self, asserts: List[StaticAssert], expression: Expr, type: types.ExprType, name: str, args: List[FunctionArgDecl]):
         super().__init__(type)
-        assert expression.type.kind in (ExprKind.BOOL, ExprKind.TYPE)
+        assert expression.type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE)
         self.asserts = asserts
         self.expression = expression
         self.name = name
@@ -73,22 +72,24 @@ class FunctionDefn(Expr):
     def to_cpp(self):
         metafunction_name = _identifier_to_cpp(type=self.type, name=self.name)
         cpp_meta_expr = self.expression.to_cpp()
-        asserts_str = ''.join('  ' + x.to_cpp() + '\n' for x in self.asserts)
+        asserts_str = ''.join(x.to_cpp() + '\n' for x in self.asserts)
         template_args = ', '.join(_type_to_template_param_declaration(arg.type) + ' ' + _identifier_to_cpp(type=arg.type, name=arg.name)
                                   for arg in self.args)
         cpp_str_template = {
-            ExprKind.BOOL: '''\
-template <{template_args}>
-struct {metafunction_name} {{
-{asserts_str}  static constexpr bool value = {cpp_meta_expr};
-}};
-''',
-            ExprKind.TYPE: '''\
-template <{template_args}>
-struct {metafunction_name} {{
-{asserts_str}  using type = {cpp_meta_expr};
-}};
-'''
+            types.ExprKind.BOOL: '''\
+                template <{template_args}>
+                struct {metafunction_name} {{
+                  {asserts_str}  
+                  static constexpr bool value = {cpp_meta_expr};
+                }};
+                ''',
+            types.ExprKind.TYPE: '''\
+                template <{template_args}>
+                struct {metafunction_name} {{
+                  {asserts_str}
+                  using type = {cpp_meta_expr};
+                }};
+                '''
         }[self.expression.type.kind]
         return cpp_str_template.format(**locals())
 
@@ -107,7 +108,7 @@ class Literal(Expr):
 
 class TypeLiteral(Expr):
     def __init__(self, cpp_type: str):
-        super().__init__(type=TypeType())
+        super().__init__(type=types.TypeType())
         self.cpp_type = cpp_type
 
     def to_cpp(self):
@@ -115,9 +116,9 @@ class TypeLiteral(Expr):
 
 class EqualityComparison(Expr):
     def __init__(self, lhs: Expr, rhs: Expr):
-        super().__init__(type=BoolType())
+        super().__init__(type=types.BoolType())
         assert lhs.type == rhs.type
-        assert lhs.type.kind in (ExprKind.BOOL, ExprKind.TYPE)
+        assert lhs.type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE)
         self.lhs = lhs
         self.rhs = rhs
 
@@ -125,17 +126,17 @@ class EqualityComparison(Expr):
         lhs_cpp_meta_expr = self.lhs.to_cpp()
         rhs_cpp_meta_expr = self.rhs.to_cpp()
         cpp_str_template = {
-            ExprKind.BOOL: '({lhs_cpp_meta_expr}) == ({rhs_cpp_meta_expr})',
-            ExprKind.TYPE: 'std::is_same<{lhs_cpp_meta_expr}, {rhs_cpp_meta_expr}>::value'
+            types.ExprKind.BOOL: '({lhs_cpp_meta_expr}) == ({rhs_cpp_meta_expr})',
+            types.ExprKind.TYPE: 'std::is_same<{lhs_cpp_meta_expr}, {rhs_cpp_meta_expr}>::value'
         }[self.lhs.type.kind]
         return cpp_str_template.format(**locals())
 
 class FunctionCall(Expr):
     def __init__(self, fun_expr: Expr, args: List[Expr]):
-        assert fun_expr.type.kind == ExprKind.TEMPLATE
+        assert fun_expr.type.kind == types.ExprKind.TEMPLATE
         super().__init__(type=fun_expr.type.returns)
         assert len(fun_expr.type.argtypes) == len(args)
-        assert self.type.kind in (ExprKind.BOOL, ExprKind.TYPE)
+        assert self.type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE)
         self.fun_expr = fun_expr
         self.args = args
 
@@ -143,13 +144,13 @@ class FunctionCall(Expr):
         cpp_fun = self.fun_expr.to_cpp()
         template_params = ', '.join(arg.to_cpp() for arg in self.args)
         cpp_str_template = {
-            ExprKind.BOOL: '{cpp_fun}<{template_params}>::value',
-            ExprKind.TYPE: 'typename {cpp_fun}<{template_params}>::type',
+            types.ExprKind.BOOL: '{cpp_fun}<{template_params}>::value',
+            types.ExprKind.TYPE: 'typename {cpp_fun}<{template_params}>::type',
         }[self.type.kind]
         return cpp_str_template.format(**locals())
 
 class VarReference(Expr):
-    def __init__(self, type: ExprType, name: str):
+    def __init__(self, type: types.ExprType, name: str):
         super().__init__(type=type)
         self.name = name
 
@@ -157,17 +158,17 @@ class VarReference(Expr):
         return _identifier_to_cpp(type=self.type, name=self.name)
 
 class ListExpr(Expr):
-    def __init__(self, type: ListType, elem_exprs: List[Expr]):
+    def __init__(self, type: types.ListType, elem_exprs: List[Expr]):
         super().__init__(type=type)
-        assert type.elem_type.kind in (ExprKind.BOOL, ExprKind.TYPE)
+        assert type.elem_type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE)
         self.elem_exprs = elem_exprs
 
     def to_cpp(self):
         template_params = ', '.join(elem_expr.to_cpp()
                                     for elem_expr in self.elem_exprs)
         cpp_str_template = {
-            ExprKind.BOOL: 'BoolList<{template_params}>',
-            ExprKind.TYPE: 'List<{template_params}>'
+            types.ExprKind.BOOL: 'BoolList<{template_params}>',
+            types.ExprKind.TYPE: 'List<{template_params}>'
         }[self.type.elem_type.kind]
         return cpp_str_template.format(**locals())
 
@@ -177,8 +178,8 @@ class Module:
 
     def to_cpp(self):
         includes = '''\
-#include <tmppy/tmppy.h>
-#include <type_traits>     
-'''
+            #include <tmppy/tmppy.h>
+            #include <type_traits>     
+            '''
         return includes + ''.join(function_defn.to_cpp()
                                   for function_defn in self.function_defns)

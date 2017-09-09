@@ -12,21 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import subprocess
 import typed_ast.ast3 as ast
 
-def pretty_dump(ast_node, line_indent=''):
+def ast_to_string(ast_node, line_indent=''):
     next_line_indent = line_indent + '  '
 
     if isinstance(ast_node, ast.AST):
         return (ast_node.__class__.__name__
                 + '('
-                + ','.join('\n' + next_line_indent + field_name + ' = ' + pretty_dump(child_node, next_line_indent)
+                + ','.join('\n' + next_line_indent + field_name + ' = ' + ast_to_string(child_node, next_line_indent)
                            for field_name, child_node in ast.iter_fields(ast_node))
                 + ')')
     elif isinstance(ast_node, list):
         return ('['
-                + ','.join('\n' + next_line_indent + pretty_dump(child_node, next_line_indent)
+                + ','.join('\n' + next_line_indent + ast_to_string(child_node, next_line_indent)
                            for child_node in ast_node)
                 + ']')
     else:
         return repr(ast_node)
+
+def clang_format(cxx_source: str, code_style = 'LLVM') -> str:
+    command = ['clang-format',
+               '-assume-filename=file.h',
+               "-style={BasedOnStyle: %s, MaxEmptyLinesToKeep: 0, KeepEmptyLinesAtTheStartOfBlocks: false}"
+                   % code_style
+               ]
+    try:
+        p = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True)
+        stdout, _ = p.communicate(cxx_source)
+    except Exception:
+        raise Exception("While executing: %s" % command)
+    return stdout

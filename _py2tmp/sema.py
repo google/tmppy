@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _py2tmp.ir import *
+import _py2tmp.ir as ir
+import _py2tmp.types as types
+from _py2tmp.utils import ast_to_string
+import typed_ast.ast3 as ast
 
 class Symbol:
-    def __init__(self, name: str, type: ExprType):
+    def __init__(self, name: str, type: types.ExprType):
         self.type = type
         self.name = name
 
@@ -30,7 +33,7 @@ class SymbolTable:
             result = self.parent.get_symbol(name)
         return result
 
-    def add_symbol(self, name: str, type: ExprType):
+    def add_symbol(self, name: str, type: types.ExprType):
         previous_symbol = self.get_symbol(name)
         if previous_symbol and previous_symbol.type != type:
             raise Exception('Type mismatch for symbol %s. It was defined both with type %s and with type %s' % (
@@ -50,16 +53,16 @@ def generate_ir_Module(ast_node: ast.Module, symbol_table: SymbolTable):
                     or not isinstance(child_node.names[0], ast.alias)
                     or child_node.names[0].name != 'Type'
                     or child_node.names[0].asname):
-                    raise Exception('The only supported import from mypl is "from tmppy import Type" but found: ' + pretty_dump(child_node))
+                    raise Exception('The only supported import from mypl is "from tmppy import Type" but found: ' + ast_to_string(child_node))
             elif child_node.module == 'typing':
                 if (len(child_node.names) != 1
                     or not isinstance(child_node.names[0], ast.alias)
                     or child_node.names[0].name not in ('List', 'Callable')
                     or child_node.names[0].asname):
-                    raise Exception('The only supported import from typing are "from typing import List" and "from typing import Callable" but found: ' + pretty_dump(child_node))
+                    raise Exception('The only supported import from typing are "from typing import List" and "from typing import Callable" but found: ' + ast_to_string(child_node))
         else:
-            raise Exception('Unsupported AST node in MypyFile: ' + pretty_dump(child_node))
-    return Module(function_defns=function_defns)
+            raise Exception('Unsupported AST node in MypyFile: ' + ast_to_string(child_node))
+    return ir.Module(function_defns=function_defns)
 
 def generate_ir_FunctionDef(ast_node: ast.FunctionDef, symbol_table: SymbolTable):
     function_body_symbol_table = SymbolTable(parent=symbol_table)
@@ -71,7 +74,7 @@ def generate_ir_FunctionDef(ast_node: ast.FunctionDef, symbol_table: SymbolTable
             raise Exception('All function arguments must have a type annotation')
         arg_type = type_declaration_to_type(arg.annotation)
         function_body_symbol_table.add_symbol(arg.arg, arg_type)
-        args.append(FunctionArgDecl(type=arg_type, name=arg.arg))
+        args.append(ir.FunctionArgDecl(type=arg_type, name=arg.arg))
     if not args:
         raise Exception('Functions with no arguments are not supported.')
 
@@ -91,19 +94,19 @@ def generate_ir_FunctionDef(ast_node: ast.FunctionDef, symbol_table: SymbolTable
     asserts = []
     for statement_node in ast_node.body[:-1]:
         if not isinstance(statement_node, ast.Assert):
-            raise Exception('All statements in a function (except the last) must be assertions, but got: ' + pretty_dump(statement_node))
+            raise Exception('All statements in a function (except the last) must be assertions, but got: ' + ast_to_string(statement_node))
         asserts.append(generate_ir_Assert(statement_node, function_body_symbol_table))
     if not isinstance(ast_node.body[-1], ast.Return):
         raise Exception(
-            'The last statement in a function must be a Return statement. Got: ' + pretty_dump(ast_node.body[-1]))
+            'The last statement in a function must be a Return statement. Got: ' + ast_to_string(ast_node.body[-1]))
     expression = ast_node.body[-1].value
     if not expression:
         raise Exception('Return statements with no returned expression are not supported.')
     expression = generate_ir_expression(expression, function_body_symbol_table)
-    type = FunctionType(argtypes=[arg.type for arg in args],
-                        returns=expression.type)
+    type = types.FunctionType(argtypes=[arg.type for arg in args],
+                              returns=expression.type)
 
-    return FunctionDefn(
+    return ir.FunctionDefn(
         asserts=asserts,
         expression=expression,
         name=ast_node.name,
@@ -112,7 +115,7 @@ def generate_ir_FunctionDef(ast_node: ast.FunctionDef, symbol_table: SymbolTable
 
 def generate_ir_Assert(ast_node: ast.Assert, symbol_table: SymbolTable):
     expr = generate_ir_expression(ast_node.test, symbol_table)
-    assert expr.type.kind == ExprKind.BOOL
+    assert expr.type.kind == types.ExprKind.BOOL
 
     if ast_node.msg:
         assert isinstance(ast_node.msg, ast.Str)
@@ -120,15 +123,15 @@ def generate_ir_Assert(ast_node: ast.Assert, symbol_table: SymbolTable):
     else:
         message = 'Assertion error'
 
-    return StaticAssert(expr=expr, message=message)
+    return ir.StaticAssert(expr=expr, message=message)
 
 def generate_ir_Compare(ast_node: ast.Compare, symbol_table: SymbolTable):
     if len(ast_node.ops) == 1 and isinstance(ast_node.ops[0], ast.Eq):
         if len(ast_node.comparators) != 1:
-            raise Exception('Expected exactly 1 comparator in expression, but got: ' + pretty_dump(ast_node))
+            raise Exception('Expected exactly 1 comparator in expression, but got: ' + ast_to_string(ast_node))
         return generate_ir_Eq(ast_node.left, ast_node.comparators[0], symbol_table)
     else:
-        raise Exception('Comparison not supported: ' + pretty_dump(ast_node))
+        raise Exception('Comparison not supported: ' + ast_to_string(ast_node))
 
 def generate_ir_expression(ast_node: ast.AST, symbol_table: SymbolTable):
     if isinstance(ast_node, ast.NameConstant):
@@ -144,26 +147,26 @@ def generate_ir_expression(ast_node: ast.AST, symbol_table: SymbolTable):
     elif isinstance(ast_node, ast.List) and isinstance(ast_node.ctx, ast.Load):
         return generate_ir_list_expression(ast_node, symbol_table)
     else:
-        raise Exception('Unsupported expression type: ' + pretty_dump(ast_node))
+        raise Exception('Unsupported expression type: ' + ast_to_string(ast_node))
 
 def generate_ir_NameConstant(ast_node: ast.NameConstant, symbol_table: SymbolTable):
     if ast_node.value in (True, False):
-        type = BoolType()
+        type = types.BoolType()
     else:
         raise Exception('NameConstant not supported: ' + str(ast_node.value))
 
-    return Literal(
+    return ir.Literal(
         value=ast_node.value,
         type=type)
 
 def generate_ir_type_literal(ast_node: ast.Call, symbol_table: SymbolTable):
     if len(ast_node.args) != 1:
-        raise Exception('Type() takes exactly 1 argument. Got: ' + pretty_dump(ast_node))
+        raise Exception('Type() takes exactly 1 argument. Got: ' + ast_to_string(ast_node))
     [arg] = ast_node.args
     if not isinstance(arg, ast.Str):
-        raise Exception('The first argument to Type should be a string constant, but was: ' + pretty_dump(arg))
+        raise Exception('The first argument to Type should be a string constant, but was: ' + ast_to_string(arg))
     assert isinstance(arg, ast.Str)
-    return TypeLiteral(cpp_type=arg.s)
+    return ir.TypeLiteral(cpp_type=arg.s)
 
 def generate_ir_Eq(lhs_node: ast.AST, rhs_node: ast.AST, symbol_table: SymbolTable):
     lhs = generate_ir_expression(lhs_node, symbol_table)
@@ -171,57 +174,57 @@ def generate_ir_Eq(lhs_node: ast.AST, rhs_node: ast.AST, symbol_table: SymbolTab
     if lhs.type != rhs.type:
         raise Exception('Type mismatch in ==: %s vs %s' % (
             str(lhs.type), str(rhs.type)))
-    if lhs.type.kind not in (ExprKind.BOOL, ExprKind.TYPE):
+    if lhs.type.kind not in (types.ExprKind.BOOL, types.ExprKind.TYPE):
         raise Exception('Type not supported in equality comparison: ' + str(lhs.type))
-    return EqualityComparison(lhs=lhs, rhs=rhs)
+    return ir.EqualityComparison(lhs=lhs, rhs=rhs)
 
 def generate_ir_function_call(ast_node: ast.Call, symbol_table: SymbolTable):
     fun_expr = generate_ir_expression(ast_node.func, symbol_table)
-    if not isinstance(fun_expr.type, FunctionType):
+    if not isinstance(fun_expr.type, types.FunctionType):
         raise Exception('Attempting to call: %s but it\'s not a function. It has type: %s' % (
-            pretty_dump(ast_node.func),
+            ast_to_string(ast_node.func),
             str(fun_expr.type)))
 
     args = [generate_ir_expression(arg_node, symbol_table) for arg_node in ast_node.args]
     if len(args) != len(fun_expr.type.argtypes):
         raise Exception('Argument number mismatch in function call to %s: got %s arguments, expected %s' % (
-            pretty_dump(ast_node.func), len(args), len(fun_expr.type.argtypes)))
+            ast_to_string(ast_node.func), len(args), len(fun_expr.type.argtypes)))
 
     for arg_index, (expr, arg_type) in enumerate(zip(args, fun_expr.type.argtypes)):
         if expr.type != arg_type:
             raise Exception('Type mismatch for argument %s in the call to %s: expected type %s but was: %s' % (
-                arg_index, pretty_dump(ast_node.func), str(arg_type), str(expr.type)))
+                arg_index, ast_to_string(ast_node.func), str(arg_type), str(expr.type)))
 
-    return FunctionCall(fun_expr=fun_expr, args=args)
+    return ir.FunctionCall(fun_expr=fun_expr, args=args)
 
 def generate_ir_var_reference(ast_node: ast.Name, symbol_table: SymbolTable):
     assert isinstance(ast_node.ctx, ast.Load)
     symbol = symbol_table.get_symbol(ast_node.id)
     if not symbol:
         raise Exception('Reference to undefined variable/function: ' + ast_node.id)
-    return VarReference(type=symbol.type, name=symbol.name)
+    return ir.VarReference(type=symbol.type, name=symbol.name)
 
 def generate_ir_list_expression(ast_node: ast.List, symbol_table: SymbolTable):
     elem_exprs = [generate_ir_expression(elem_expr_node, symbol_table) for elem_expr_node in ast_node.elts]
     if len(elem_exprs) == 0:
         raise Exception('Empty lists are not currently supported.')
     elem_type = elem_exprs[0].type
-    type = ListType(elem_type)
+    type = types.ListType(elem_type)
     for elem_expr in elem_exprs:
         if elem_expr.type != elem_type:
             raise Exception('Found different types in list elements, this is not supported. Types were: %s and %s' % (
                 str(elem_type), str(elem_expr.type)))
-    if isinstance(elem_type, FunctionType):
+    if isinstance(elem_type, types.FunctionType):
         raise Exception('Creating lists of functions is not supported')
 
-    return ListExpr(type=type, elem_exprs=elem_exprs)
+    return ir.ListExpr(type=type, elem_exprs=elem_exprs)
 
 def type_declaration_to_type(ast_node: ast.AST):
     if isinstance(ast_node, ast.Name) and isinstance(ast_node.ctx, ast.Load):
         if ast_node.id == 'bool':
-            return BoolType()
+            return types.BoolType()
         elif ast_node.id == 'Type':
-            return TypeType()
+            return types.TypeType()
         else:
             raise Exception('Unsupported type constant: ' + ast_node.id)
 
@@ -231,7 +234,7 @@ def type_declaration_to_type(ast_node: ast.AST):
           and isinstance(ast_node.ctx, ast.Load)
           and isinstance(ast_node.slice, ast.Index)):
         if ast_node.value.id == 'List':
-            return ListType(type_declaration_to_type(ast_node.slice.value))
+            return types.ListType(type_declaration_to_type(ast_node.slice.value))
         elif (ast_node.value.id == 'Callable'
               and isinstance(ast_node.slice.value, ast.Tuple)
               and len(ast_node.slice.value.elts) == 2
@@ -239,9 +242,9 @@ def type_declaration_to_type(ast_node: ast.AST):
               and isinstance(ast_node.slice.value.elts[0].ctx, ast.Load)
               and all(isinstance(elem, ast.Name) and isinstance(elem.ctx, ast.Load)
                       for elem in ast_node.slice.value.elts[0].elts)):
-            return FunctionType(
+            return types.FunctionType(
                 argtypes=[type_declaration_to_type(arg_type_decl)
                           for arg_type_decl in ast_node.slice.value.elts[0].elts],
                 returns=type_declaration_to_type(ast_node.slice.value.elts[1]))
 
-    raise Exception('Unsupported type declaration: ' + pretty_dump(ast_node))
+    raise Exception('Unsupported type declaration: ' + ast_to_string(ast_node))

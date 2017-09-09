@@ -28,7 +28,6 @@ class ExprType:
 
     def __eq__(self, other) -> bool: ...
 
-
 class BoolType(ExprType):
     def __init__(self):
         super().__init__(kind=ExprKind.BOOL)

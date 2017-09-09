@@ -27,10 +27,15 @@ from functools import wraps
 import pytest
 import py2tmp
 
-from py2tmp_test_config import *
+import py2tmp_test_config as config
 
 def pretty_print_command(command):
     return ' '.join('"' + x + '"' for x in command)
+
+def add_line_numbers(source_code):
+    lines = source_code.splitlines()
+    last_line_num_length = len(str(len(lines)))
+    return '\n'.join('%%%sd: %%s' % last_line_num_length % (n + 1, line) for n, line in enumerate(lines))
 
 class CommandFailedException(Exception):
     def __init__(self, command, stdout, stderr, error_code):
@@ -86,8 +91,8 @@ class CompilationFailedException(Exception):
 
 class PosixCompiler:
     def __init__(self):
-        self.executable = CXX
-        self.name = CXX_COMPILER_NAME
+        self.executable = config.CXX
+        self.name = config.CXX_COMPILER_NAME
 
     def compile_discarding_output(self, source, include_dirs, args=[]):
         try:
@@ -116,8 +121,8 @@ class PosixCompiler:
 
 class MsvcCompiler:
     def __init__(self):
-        self.executable = CXX
-        self.name = CXX_COMPILER_NAME
+        self.executable = config.CXX
+        self.name = config.CXX_COMPILER_NAME
 
     def compile_discarding_output(self, source, include_dirs, args=[]):
         try:
@@ -145,7 +150,7 @@ class MsvcCompiler:
         )
         run_command(self.executable, args)
 
-if CXX_COMPILER_NAME == 'MSVC':
+if config.CXX_COMPILER_NAME == 'MSVC':
     compiler = MsvcCompiler()
     py2tmp_error_message_extraction_regex = 'error C2338: (.*)'
 else:
@@ -168,17 +173,6 @@ def _cap_to_lines(s, n):
     else:
         return '\n'.join(lines[0:n] + ['...'])
 
-def _replace_using_test_params(s, test_params):
-    for var_name, value in test_params.items():
-        if isinstance(value, str):
-            s = re.sub(r'\b%s\b' % var_name, value, s)
-    return s
-
-def _construct_final_source_code(source_code, test_params):
-    source_code = textwrap.dedent(source_code)
-    source_code = _replace_using_test_params(source_code, test_params)
-    return source_code
-
 def try_remove_temporary_file(filename):
     try:
         os.remove(filename)
@@ -189,16 +183,13 @@ def try_remove_temporary_file(filename):
 
 def expect_cpp_code_compile_error_helper(
         check_error_fun,
-        source_code,
-        test_params={}):
-    source_code = _construct_final_source_code(source_code, test_params)
-
+        source_code):
     source_file_name = _create_temporary_file(source_code, file_name_suffix='.cpp')
 
     try:
         compiler.compile_discarding_output(
             source=source_file_name,
-            include_dirs=[MPYL_INCLUDE_DIR],
+            include_dirs=[config.MPYL_INCLUDE_DIR],
             args=[])
         raise Exception('The test should have failed to compile, but it compiled successfully')
     except CompilationFailedException as e1:
@@ -216,21 +207,15 @@ def expect_cpp_code_compile_error_helper(
 
     try_remove_temporary_file(source_file_name)
 
-def expect_cpp_code_generic_compile_error(expected_error_regex, source_code, test_params={}):
+def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, cxx_source):
     """
     Tests that the given source produces the expected error during compilation.
 
     :param expected_error_regex: A regex used to match the _py2tmp error type,
            e.g. 'NoBindingFoundForAbstractClassError<ScalerImpl>'.
-           Any identifiers contained in the regex will be replaced using test_params (where a replacement is defined).
-    :param source_code: The second part of the source code. Any identifiers will be replaced using test_params
-           (where a replacement is defined). This will be dedented.
-    :param test_params: A dict containing the definition of some identifiers. Each identifier in
-           expected_error_regex and source_code will be replaced (textually) with its definition (if a definition
-           was provided).
+    :param cxx_source: The second part of the source code. This will be dedented.
     """
 
-    expected_error_regex = _replace_using_test_params(expected_error_regex, test_params)
     expected_error_regex = expected_error_regex.replace(' ', '')
 
     def check_error(e, error_message_lines, error_message_head, normalized_error_message_lines):
@@ -240,31 +225,34 @@ def expect_cpp_code_generic_compile_error(expected_error_regex, source_code, tes
         raise Exception(textwrap.dedent('''\
             Expected error {expected_error} but the compiler output did not contain that.
             Compiler command line: {compiler_command}
+            TMPPy source:
+            {tmppy_source}
+            C++ source:
+            {cxx_source}
             Error message was:
             {error_message}
-            ''').format(expected_error = expected_error_regex, compiler_command=e.command, error_message = error_message_head))
+            ''').format(expected_error = expected_error_regex,
+                        compiler_command=e.command,
+                        tmppy_source = add_line_numbers(tmppy_source),
+                        cxx_source = add_line_numbers(cxx_source),
+                        error_message = error_message_head))
 
-    expect_cpp_code_compile_error_helper(check_error, source_code, test_params)
+    expect_cpp_code_compile_error_helper(check_error, cxx_source)
 
 
 def expect_cpp_code_compile_error(
         expected_py2tmp_error_regex,
         expected_py2tmp_error_desc_regex,
-        source_code,
-        test_params={}):
+        tmppy_source,
+        cxx_source):
     """
     Tests that the given source produces the expected error during compilation.
 
     :param expected_py2tmp_error_regex: A regex used to match the _py2tmp error type,
            e.g. 'NoBindingFoundForAbstractClassError<ScalerImpl>'.
-           Any identifiers contained in the regex will be replaced using test_params (where a replacement is defined).
     :param expected_py2tmp_error_desc_regex: A regex used to match the _py2tmp error description,
            e.g. 'No explicit binding was found for C, and C is an abstract class'.
-    :param source_code: The second part of the source code. Any identifiers will be replaced using test_params
-           (where a replacement is defined). This will be dedented.
-    :param test_params: A dict containing the definition of some identifiers. Each identifier in
-           expected_py2tmp_error_regex and source_code will be replaced (textually) with its definition (if a definition
-           was provided).
+    :param source_code: The C++ source code. This will be dedented.
     :param ignore_deprecation_warnings: A boolean. If True, deprecation warnings will be ignored.
     """
     if '\n' in expected_py2tmp_error_regex:
@@ -272,7 +260,6 @@ def expect_cpp_code_compile_error(
     if '\n' in expected_py2tmp_error_desc_regex:
         raise Exception('expected_py2tmp_error_desc_regex should not contain newlines')
 
-    expected_py2tmp_error_regex = _replace_using_test_params(expected_py2tmp_error_regex, test_params)
     expected_py2tmp_error_regex = expected_py2tmp_error_regex.replace(' ', '')
 
     def check_error(e, error_message_lines, error_message_head, normalized_error_message_lines):
@@ -281,7 +268,7 @@ def expect_cpp_code_compile_error(
             if match:
                 actual_py2tmp_error_line_number = line_number
                 actual_py2tmp_error = match.groups()[0]
-                if CXX_COMPILER_NAME == 'MSVC':
+                if config.CXX_COMPILER_NAME == 'MSVC':
                     # MSVC errors are of the form:
                     #
                     # C:\Path\To\header\foo.h(59): note: see reference to class template instantiation 'tmppy::impl::MyError<X, Y>' being compiled
@@ -315,9 +302,17 @@ def expect_cpp_code_compile_error(
             raise Exception(textwrap.dedent('''\
                 Expected error {expected_error} but the compiler output did not contain user-facing _py2tmp errors.
                 Compiler command line: {compiler_command}
+                TMPPy source:
+                {tmppy_source}
+                C++ source code:
+                {cxx_source}
                 Error message was:
                 {error_message}
-                ''').format(expected_error = expected_py2tmp_error_regex, compiler_command = e.command, error_message = error_message_head))
+                ''').format(expected_error = expected_py2tmp_error_regex,
+                            compiler_command = e.command,
+                            tmppy_source = add_line_numbers(tmppy_source),
+                            cxx_source = add_line_numbers(cxx_source),
+                            error_message = error_message_head))
 
         for line_number, line in enumerate(error_message_lines):
             match = re.search(py2tmp_error_message_extraction_regex, line)
@@ -329,9 +324,17 @@ def expect_cpp_code_compile_error(
             raise Exception(textwrap.dedent('''\
                 Expected error {expected_error} but the compiler output did not contain static_assert errors.
                 Compiler command line: {compiler_command}
+                TMPPy source:
+                {tmppy_source}
+                C++ source code:
+                {cxx_source}
                 Error message was:
                 {error_message}
-                ''').format(expected_error = expected_py2tmp_error_regex, compiler_command=e.command, error_message = error_message_head))
+                ''').format(expected_error = expected_py2tmp_error_regex,
+                            compiler_command=e.command,
+                            tmppy_source = add_line_numbers(tmppy_source),
+                            cxx_source = add_line_numbers(cxx_source),
+                            error_message = error_message_head))
 
         try:
             regex_search_result = re.search(expected_py2tmp_error_regex, actual_py2tmp_error)
@@ -344,6 +347,10 @@ def expect_cpp_code_compile_error(
                 Error type was:               {actual_py2tmp_error}
                 Expected static assert error: {expected_py2tmp_error_desc_regex}
                 Static assert was:            {actual_static_assert_error}
+                TMPPy source:
+                {tmppy_source}
+                C++ source code:
+                {cxx_source}
                 Error message was:
                 {error_message}
                 '''.format(
@@ -351,6 +358,8 @@ def expect_cpp_code_compile_error(
                 actual_py2tmp_error = actual_py2tmp_error,
                 expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
                 actual_static_assert_error = actual_static_assert_error,
+                tmppy_source = add_line_numbers(tmppy_source),
+                cxx_source = add_line_numbers(cxx_source),
                 error_message = error_message_head)))
         try:
             regex_search_result = re.search(expected_py2tmp_error_desc_regex, actual_static_assert_error)
@@ -363,6 +372,10 @@ def expect_cpp_code_compile_error(
                 Error type was:               {actual_py2tmp_error}
                 Expected static assert error: {expected_py2tmp_error_desc_regex}
                 Static assert was:            {actual_static_assert_error}
+                TMPPy source:
+                {tmppy_source}
+                C++ source code:
+                {cxx_source}
                 Error message:
                 {error_message}
                 '''.format(
@@ -370,6 +383,8 @@ def expect_cpp_code_compile_error(
                 actual_py2tmp_error = actual_py2tmp_error,
                 expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
                 actual_static_assert_error = actual_static_assert_error,
+                tmppy_source = add_line_numbers(tmppy_source),
+                cxx_source = add_line_numbers(cxx_source),
                 error_message = error_message_head)))
 
         # 6 is just a constant that works for both g++ (<=6.0.0 at least) and clang++ (<=4.0.0 at least).
@@ -379,11 +394,17 @@ def expect_cpp_code_compile_error(
                 The compilation failed with the expected message, but the error message contained too many lines before the relevant ones.
                 The error type was reported on line {actual_py2tmp_error_line_number} of the message (should be <=6).
                 The static assert was reported on line {actual_static_assert_error_line_number} of the message (should be <=6).
+                TMPPy source:
+                {tmppy_source}
+                C++ source code:
+                {cxx_source}
                 Error message:
                 {error_message}
                 '''.format(
                 actual_py2tmp_error_line_number = actual_py2tmp_error_line_number,
                 actual_static_assert_error_line_number = actual_static_assert_error_line_number,
+                tmppy_source = add_line_numbers(tmppy_source),
+                cxx_source = add_line_numbers(cxx_source),
                 error_message = error_message_head)))
 
         for line in error_message_lines[:max(actual_py2tmp_error_line_number, actual_static_assert_error_line_number)]:
@@ -391,36 +412,68 @@ def expect_cpp_code_compile_error(
                 raise Exception(
                     'The compilation failed with the expected message, but the error message contained some metaprogramming types in the output (besides Error). Error message:\n%s' + error_message_head)
 
-    expect_cpp_code_compile_error_helper(check_error, source_code, test_params)
+    expect_cpp_code_compile_error_helper(check_error, cxx_source)
 
-def expect_cpp_code_success(source_code, test_params={}):
+def expect_cpp_code_success(tmppy_source, cxx_source):
     """
     Tests that the given source compiles and runs successfully.
 
-    :param source_code: The second part of the source code. Any identifiers will be replaced using test_params
-           (where a replacement is defined). This will be dedented.
-    :param test_params: A dict containing the definition of some identifiers. Each identifier in
-           source_code will be replaced (textually) with its definition (if a definition was provided).
+    :param source_code: The C++ source code. This will be dedented.
     """
-    source_code = _construct_final_source_code(source_code, test_params)
 
-    if 'main(' not in source_code:
-        source_code += textwrap.dedent('''
+    if 'main(' not in cxx_source:
+        cxx_source += textwrap.dedent('''
             int main() {
             }
             ''')
 
-    source_file_name = _create_temporary_file(source_code, file_name_suffix='.cpp')
+    source_file_name = _create_temporary_file(cxx_source, file_name_suffix='.cpp')
     executable_suffix = {'posix': '', 'nt': '.exe'}[os.name]
     output_file_name = _create_temporary_file('', executable_suffix)
 
-    compiler.compile_and_link(
-        source=source_file_name,
-        include_dirs=[MPYL_INCLUDE_DIR],
-        output_file_name=output_file_name,
-        args=[])
+    e = None
 
-    run_compiled_executable(output_file_name)
+    try:
+        compiler.compile_and_link(
+            source=source_file_name,
+            include_dirs=[config.MPYL_INCLUDE_DIR],
+            output_file_name=output_file_name,
+            args=[])
+    except CommandFailedException as e1:
+        e = e1
+
+    if e:
+        raise Exception(textwrap.dedent('''\
+            The generated C++ source did not compile.
+            Compiler command line: {compiler_command}
+            TMPPy source:
+            {tmppy_source}
+            C++ source:
+            {cxx_source}
+            Error message was:
+            {error_message}
+            ''').format(compiler_command=e.command,
+                        tmppy_source = add_line_numbers(tmppy_source),
+                        cxx_source = add_line_numbers(cxx_source),
+                        error_message = _cap_to_lines(e.stderr, 40)))
+
+    try:
+        run_compiled_executable(output_file_name)
+    except CommandFailedException as e1:
+        e = e1
+
+    if e:
+        raise Exception(textwrap.dedent('''\
+            The generated C++ executable did not run successfully.
+            TMPPy source:
+            {tmppy_source}
+            C++ source:
+            {cxx_source}
+            stderr was:
+            {error_message}
+            ''').format(tmppy_source = add_line_numbers(tmppy_source),
+                        cxx_source = add_line_numbers(cxx_source),
+                        error_message = _cap_to_lines(e.stderr, 40)))
 
     # Note that we don't delete the temporary files if the test failed. This is intentional, keeping them around helps debugging the failure.
     try_remove_temporary_file(source_file_name)
@@ -435,20 +488,21 @@ def _get_function_body(f):
 def assert_compilation_succeeds(f):
     @wraps(f)
     def wrapper():
-        source_code = _get_function_body(f)
-        cpp_source = py2tmp.convert_to_cpp(source_code)
-        expect_cpp_code_success(cpp_source)
+        tmppy_source = _get_function_body(f)
+        cpp_source = py2tmp.convert_to_cpp(tmppy_source)
+        expect_cpp_code_success(tmppy_source, cpp_source)
     return wrapper
 
 def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_error_desc_regex: str):
     def eval(f):
         @wraps(f)
         def wrapper():
-            source_code = _get_function_body(f)
-            cpp_source = py2tmp.convert_to_cpp(source_code)
+            tmppy_source = _get_function_body(f)
+            cpp_source = py2tmp.convert_to_cpp(tmppy_source)
             expect_cpp_code_compile_error(
                 expected_py2tmp_error_regex,
                 expected_py2tmp_error_desc_regex,
+                tmppy_source,
                 cpp_source)
         return wrapper
     return eval
@@ -457,10 +511,11 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str):
     def eval(f):
         @wraps(f)
         def wrapper():
-            source_code = _get_function_body(f)
-            cpp_source = py2tmp.convert_to_cpp(source_code)
+            tmppy_source = _get_function_body(f)
+            cpp_source = py2tmp.convert_to_cpp(tmppy_source)
             expect_cpp_code_generic_compile_error(
                 expected_error_regex,
+                tmppy_source,
                 cpp_source)
         return wrapper
     return eval
@@ -468,11 +523,11 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str):
 def assert_conversion_fails(f):
     @wraps(f)
     def wrapper():
-        source_code = _get_function_body(f)
+        tmppy_source = _get_function_body(f)
         actual_source_lines = []
         expected_error_regex = None
         expected_error_line = None
-        for line_index, line in enumerate(source_code.splitlines()):
+        for line_index, line in enumerate(tmppy_source.splitlines()):
             error_regex_marker = ' # error: '
             if error_regex_marker in line:
                 if expected_error_regex:
@@ -482,7 +537,11 @@ def assert_conversion_fails(f):
             actual_source_lines.append(line)
 
         if not expected_error_regex:
-            raise Exception('assert_conversion_fails was used, but no expected error regex was found. ')
+            raise Exception(textwrap.dedent('''\
+                assert_conversion_fails was used, but no expected error regex was found.
+                TMPPy source:
+                {tmppy_source}
+                ''').format(tmppy_source = add_line_numbers(tmppy_source)))
 
         try:
             py2tmp.convert_to_cpp('\n'.join(actual_source_lines))
@@ -491,10 +550,22 @@ def assert_conversion_fails(f):
             e = e1
 
         if not e:
-            raise Exception('Expected an exception, but the _py2tmp conversion completed successfully')
+            raise Exception(textwrap.dedent('''\
+                Expected an exception, but the _py2tmp conversion completed successfully.
+                TMPPy source:
+                {tmppy_source}
+                ''').format(tmppy_source = add_line_numbers(tmppy_source)))
 
         if not re.match(expected_error_regex, e.args[0]):
-            raise Exception('An exception was thrown, but it didn\'t match the expected error regex. The error message was: ' + e.args[0])
+            raise Exception(textwrap.dedent('''\
+                An exception was thrown, but it didn\'t match the expected error regex.
+                Expected error regex: {expected_error_regex}
+                Actual error: {actual_error}
+                TMPPy source:
+                {tmppy_source}
+                ''').format(expected_error_regex = expected_error_regex,
+                            actual_error = e.args[0],
+                            tmppy_source = add_line_numbers(tmppy_source),))
     return wrapper
 
 # Note: this is not the main function of this file, it's meant to be used as main function from test_*.py files.

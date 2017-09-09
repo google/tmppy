@@ -73,13 +73,13 @@ def test_bool_function_passed_as_argument():
 @assert_compilation_succeeds
 def test_bool_equals_success():
     def f(x : bool):
-        assert True == True, 'Expected error'
+        assert True == True, 'The expected error'
         return x
 
-@assert_compilation_fails_with_generic_error('Expected error')
+@assert_compilation_fails_with_generic_error('The expected error')
 def test_bool_equals_error():
     def f(x : bool):
-        assert True == False, 'Expected error'
+        assert True == False, 'The expected error'
         return x
 
 @assert_compilation_succeeds
@@ -87,13 +87,13 @@ def test_type_equals_success():
     from tmppy import Type
 
     def f(x : bool):
-        assert Type('int') == Type('int'), 'Expected error'
+        assert Type('int') == Type('int'), 'The expected error'
         return x
 
-@assert_compilation_fails_with_generic_error('Expected error')
+@assert_compilation_fails_with_generic_error('The expected error')
 def test_type_equals_error():
     from tmppy import Type
 
     def f(x : bool):
-        assert Type('int') == Type('float'), 'Expected error'
+        assert Type('int') == Type('float'), 'The expected error'
         return x

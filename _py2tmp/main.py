@@ -24,9 +24,9 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
     symbol_table = sema.SymbolTable()
     if verbose:
         print('Python AST:')
-        print(utils.pretty_dump(source_ast))
+        print(utils.ast_to_string(source_ast))
         print()
-    result = sema.generate_ir_Module(source_ast, symbol_table).to_cpp()
+    result = utils.clang_format(sema.generate_ir_Module(source_ast, symbol_table).to_cpp())
     if verbose:
         print('Conversion result:')
         print(result)
