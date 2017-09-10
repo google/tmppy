@@ -141,9 +141,15 @@ def test_function_decorator_error():
     def f(x: bool):
         return x
 
+@assert_compilation_succeeds
+def test_function_return_type_declaration_success():
+    def f(x: bool) -> bool:
+        return x
+
 @assert_conversion_fails
-def test_function_return_type_declaration_error():
-    def f(x: bool) -> bool:  # error: Return type annotations for functions are not supported.
+def test_function_return_type_declaration_mismatch_error():
+    from tmppy import Type
+    def f(x: bool) -> Type:  # error: f declared Type as return type, but the actual return type was bool.
         return x
 
 @assert_conversion_fails

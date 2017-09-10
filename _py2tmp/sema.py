@@ -162,7 +162,9 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
     if ast_node.decorator_list:
         raise CompilationError(compilation_context, ast_node, 'Function decorators are not supported.')
     if ast_node.returns:
-        raise CompilationError(compilation_context, ast_node, 'Return type annotations for functions are not supported.')
+        declared_return_type = type_declaration_ast_to_ir_expression_type(ast_node.returns, compilation_context)
+    else:
+        declared_return_type = None
 
     asserts = []
     for statement_node in ast_node.body[:-1]:
@@ -177,6 +179,11 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
     expression = expression_ast_to_ir(expression, function_body_compilation_context)
     fun_type = types.FunctionType(argtypes=[arg.type for arg in args],
                                   returns=expression.type)
+
+    if declared_return_type and declared_return_type != expression.type:
+        raise CompilationError(compilation_context, ast_node.returns,
+                               '%s declared %s as return type, but the actual return type was %s.' % (
+                                   ast_node.name, str(declared_return_type), str(expression.type)))
 
     return ir.FunctionDefn(
         asserts=asserts,
