@@ -216,13 +216,14 @@ class ListExpr(Expr):
         return cpp_str_template.format(**locals())
 
 class Module:
-    def __init__(self, function_defns: List[FunctionDefn]):
+    def __init__(self, function_defns: List[FunctionDefn], assertions: List[StaticAssert]):
         self.function_defns = function_defns
+        self.assertions = assertions
 
     def to_cpp(self):
         includes = '''\
             #include <tmppy/tmppy.h>
             #include <type_traits>     
             '''
-        return includes + ''.join(function_defn.to_cpp()
-                                  for function_defn in self.function_defns)
+        return includes + ''.join(x.to_cpp()
+                                  for x in self.function_defns + self.assertions)

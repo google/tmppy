@@ -95,6 +95,7 @@ class CompilationError(Exception):
 
 def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: CompilationContext):
     function_defns = []
+    toplevel_assertions = []
     for ast_node in module_ast_node.body:
         if isinstance(ast_node, ast.FunctionDef):
             function_defn = function_def_ast_to_ir(ast_node, compilation_context)
@@ -125,9 +126,11 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
         elif isinstance(ast_node, ast.Import):
             raise CompilationError(compilation_context, ast_node,
                                    'TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".')
+        elif isinstance(ast_node, ast.Assert):
+            toplevel_assertions.append(assert_ast_to_ir(ast_node, compilation_context))
         else:
             raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy')
-    return ir.Module(function_defns=function_defns)
+    return ir.Module(function_defns=function_defns, assertions=toplevel_assertions)
 
 def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
     function_body_compilation_context = CompilationContext(SymbolTable(parent=compilation_context.symbol_table),
