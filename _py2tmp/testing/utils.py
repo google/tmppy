@@ -32,6 +32,7 @@ import py2tmp
 
 import py2tmp_test_config as config
 
+
 def pretty_print_command(command):
     return ' '.join('"' + x + '"' for x in command)
 
@@ -51,6 +52,7 @@ class CommandFailedException(Exception):
         return textwrap.dedent('''\
         Ran command: {command}
         Exit code {error_code}
+        
         Stdout:
         {stdout}
 
@@ -231,12 +233,13 @@ def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, cx
             textwrap.dedent('''\
                 Expected error {expected_error} but the compiler output did not contain that.
                 Compiler command line: {compiler_command}
+                Error message was:
+                {error_message}
+
                 TMPPy source:
                 {tmppy_source}
                 C++ source:
                 {cxx_source}
-                Error message was:
-                {error_message}
                 ''').format(expected_error = expected_error_regex,
                             compiler_command=e.command,
                             tmppy_source = add_line_numbers(tmppy_source),
@@ -310,12 +313,13 @@ def expect_cpp_code_compile_error(
                 textwrap.dedent('''\
                     Expected error {expected_error} but the compiler output did not contain user-facing _py2tmp errors.
                     Compiler command line: {compiler_command}
+                    Error message was:
+                    {error_message}
+
                     TMPPy source:
                     {tmppy_source}
                     C++ source code:
                     {cxx_source}
-                    Error message was:
-                    {error_message}
                     ''').format(expected_error = expected_py2tmp_error_regex,
                                 compiler_command = e.command,
                                 tmppy_source = add_line_numbers(tmppy_source),
@@ -334,12 +338,13 @@ def expect_cpp_code_compile_error(
                 textwrap.dedent('''\
                     Expected error {expected_error} but the compiler output did not contain static_assert errors.
                     Compiler command line: {compiler_command}
+                    Error message was:
+                    {error_message}
+                    
                     TMPPy source:
                     {tmppy_source}
                     C++ source code:
                     {cxx_source}
-                    Error message was:
-                    {error_message}
                     ''').format(expected_error = expected_py2tmp_error_regex,
                                 compiler_command=e.command,
                                 tmppy_source = add_line_numbers(tmppy_source),
@@ -359,12 +364,14 @@ def expect_cpp_code_compile_error(
                     Error type was:               {actual_py2tmp_error}
                     Expected static assert error: {expected_py2tmp_error_desc_regex}
                     Static assert was:            {actual_static_assert_error}
+                    
+                    Error message was:
+                    {error_message}
+                    
                     TMPPy source:
                     {tmppy_source}
                     C++ source code:
                     {cxx_source}
-                    Error message was:
-                    {error_message}
                     '''.format(expected_py2tmp_error_regex = expected_py2tmp_error_regex,
                                actual_py2tmp_error = actual_py2tmp_error,
                                expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
@@ -385,12 +392,14 @@ def expect_cpp_code_compile_error(
                     Error type was:               {actual_py2tmp_error}
                     Expected static assert error: {expected_py2tmp_error_desc_regex}
                     Static assert was:            {actual_static_assert_error}
+                    
+                    Error message:
+                    {error_message}
+                    
                     TMPPy source:
                     {tmppy_source}
                     C++ source code:
                     {cxx_source}
-                    Error message:
-                    {error_message}
                     '''.format(expected_py2tmp_error_regex = expected_py2tmp_error_regex,
                                actual_py2tmp_error = actual_py2tmp_error,
                                expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
@@ -408,12 +417,13 @@ def expect_cpp_code_compile_error(
                     The compilation failed with the expected message, but the error message contained too many lines before the relevant ones.
                     The error type was reported on line {actual_py2tmp_error_line_number} of the message (should be <=6).
                     The static assert was reported on line {actual_static_assert_error_line_number} of the message (should be <=6).
+                    Error message:
+                    {error_message}
+
                     TMPPy source:
                     {tmppy_source}
                     C++ source code:
                     {cxx_source}
-                    Error message:
-                    {error_message}
                     '''.format(actual_py2tmp_error_line_number = actual_py2tmp_error_line_number,
                                actual_static_assert_error_line_number = actual_static_assert_error_line_number,
                                tmppy_source = add_line_numbers(tmppy_source),
@@ -462,12 +472,13 @@ def expect_cpp_code_success(tmppy_source, cxx_source):
             textwrap.dedent('''\
                 The generated C++ source did not compile.
                 Compiler command line: {compiler_command}
+                Error message was:
+                {error_message}
+                
                 TMPPy source:
                 {tmppy_source}
                 C++ source:
                 {cxx_source}
-                Error message was:
-                {error_message}
                 ''').format(compiler_command=e.command,
                             tmppy_source = add_line_numbers(tmppy_source),
                             cxx_source = add_line_numbers(cxx_source),
@@ -483,12 +494,13 @@ def expect_cpp_code_success(tmppy_source, cxx_source):
         pytest.fail(
             textwrap.dedent('''\
                 The generated C++ executable did not run successfully.
+                stderr was:
+                {error_message}
+
                 TMPPy source:
                 {tmppy_source}
                 C++ source:
                 {cxx_source}
-                stderr was:
-                {error_message}
                 ''').format(tmppy_source = add_line_numbers(tmppy_source),
                             cxx_source = add_line_numbers(cxx_source),
                             error_message = _cap_to_lines(e.stderr, 40)),
@@ -502,7 +514,12 @@ def _get_function_body(f):
     source_code, _ = inspect.getsourcelines(f)
     assert source_code[0].startswith('@'), source_code[0]
     assert source_code[1].endswith('():\n'), source_code[1]
-    return textwrap.dedent(''.join(source_code[2:]))
+    source_code = source_code[2:]
+    # The body of some tests is a multiline string because they would otherwise cause the pytest test file to fail
+    # parsing.
+    if source_code[0].strip() == '\'\'\'' and source_code[-1].strip() == '\'\'\'':
+        source_code = source_code[1:-1]
+    return textwrap.dedent(''.join(source_code))
 
 def _convert_to_cpp_expecting_success(tmppy_source):
     try:
@@ -512,10 +529,11 @@ def _convert_to_cpp_expecting_success(tmppy_source):
     pytest.fail(
         textwrap.dedent('''\
             The conversion from TMPPy to C++ failed.
-            TMPPy source:
-            {tmppy_source}
             stderr was:
             {error_message}
+            
+            TMPPy source:
+            {tmppy_source}
             ''').format(tmppy_source = add_line_numbers(tmppy_source),
                         error_message = e.args[0]),
         pytrace=False)
@@ -558,7 +576,7 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str):
 
 def _split_list(l, num_elems_in_chunk):
     args = [iter(l)] * num_elems_in_chunk
-    return itertools.zip_longest(*args)
+    return list(itertools.zip_longest(*args))
 
 def _get_line_from_diagnostic(diagnostic):
     matches = re.match('<unknown>:([0-9]*):', diagnostic)
@@ -589,6 +607,7 @@ def assert_conversion_fails(f):
             pytest.fail(
                 textwrap.dedent('''\
                     assert_conversion_fails was used, but no expected error regex was found.
+                    
                     TMPPy source:
                     {tmppy_source}
                     ''').format(tmppy_source = add_line_numbers(tmppy_source)),
@@ -597,7 +616,7 @@ def assert_conversion_fails(f):
         try:
             py2tmp.convert_to_cpp('\n'.join(actual_source_lines))
             e = None
-        except Exception as e1:
+        except _py2tmp.sema.CompilationError as e1:
             e = e1
 
         if not e:
@@ -613,41 +632,45 @@ def assert_conversion_fails(f):
         # <unknown>:2:11: error: Empty lists are not currently supported.
         #   return []
         #          ^
-        py2tmp_diagnostics = [chunk[0] for chunk in _split_list(e.args[0].splitlines(), num_elems_in_chunk=3)]
+        py2tmp_diagnostics = _split_list(e.args[0].splitlines(), num_elems_in_chunk=3)
         error_diagnostic = py2tmp_diagnostics[0]
 
         expected_error_regex = '<unknown>:[0-9]*:[0-9]*: error: ' + expected_error_regex
-        if not re.match(expected_error_regex, error_diagnostic):
+        if not re.match(expected_error_regex, error_diagnostic[0]):
             pytest.fail(
                 textwrap.dedent('''\
                     An exception was thrown, but it didn\'t match the expected error regex.
                     Expected error regex: {expected_error_regex}
-                    Actual error: {actual_error}
+                    Actual error:
+                    {actual_error}
+                    
                     TMPPy source:
                     {tmppy_source}
                     ''').format(expected_error_regex = expected_error_regex,
-                                actual_error = error_diagnostic,
+                                actual_error = '\n'.join(error_diagnostic),
                                 tmppy_source = add_line_numbers(tmppy_source)),
                 pytrace=False)
 
-        matches = re.match('<unknown>:([0-9]*):', error_diagnostic)
+        matches = re.match('<unknown>:([0-9]*):', error_diagnostic[0])
         actual_error_line = int(matches.group(1))
         if expected_error_line != actual_error_line:
             pytest.fail(
                 textwrap.dedent('''\
                     An exception matching the expected regex was thrown, but the error mentioned the wrong line: {actual_error_line} was reported instead of {expected_error_line}
                     Expected error regex: {expected_error_regex}
-                    Actual error: {actual_error}
+                    Actual error:
+                    {actual_error}
+                    
                     TMPPy source:
                     {tmppy_source}
                     ''').format(actual_error_line=actual_error_line,
                                 expected_error_line=expected_error_line,
                                 expected_error_regex = expected_error_regex,
-                                actual_error = error_diagnostic,
+                                actual_error = '\n'.join(error_diagnostic),
                                 tmppy_source = add_line_numbers(tmppy_source)),
                 pytrace=False)
 
-        actual_note_by_line = {_get_line_from_diagnostic(note): note
+        actual_note_by_line = {_get_line_from_diagnostic(note[0]): note
                                for note in py2tmp_diagnostics[1:]}
         for expected_note_line, expected_note_regex in expected_note_by_line.items():
             actual_note = actual_note_by_line.get(expected_note_line)
@@ -655,16 +678,18 @@ def assert_conversion_fails(f):
                 raise Exception('Expected the note %s on line %s but no note was emitted mentioning this line. Emitted notes: %s' % (
                     expected_note_regex, expected_note_line, json.dumps(actual_note_by_line, indent=4)))
             expected_note_regex = '<unknown>:[0-9]*:[0-9]*: note: ' + expected_note_regex
-            if not re.match(expected_note_regex, actual_note):
+            if not re.match(expected_note_regex, actual_note[0]):
                 pytest.fail(
                     textwrap.dedent('''\
                         A note diagnostic was emitted, but it didn\'t match the expected note regex.
                         Expected note regex: {expected_note_regex}
-                        Actual note: {actual_note}
+                        Actual note:
+                        {actual_note}
+                        
                         TMPPy source:
                         {tmppy_source}
                         ''').format(expected_note_regex = expected_note_regex,
-                                    actual_note = actual_note,
+                                    actual_note = '\n'.join(actual_note),
                                     tmppy_source = add_line_numbers(tmppy_source)),
                     pytrace=False)
 
@@ -673,10 +698,12 @@ def assert_conversion_fails(f):
             if not expected_note:
                 pytest.fail(
                     textwrap.dedent('''\
-                        Unexpected note: {actual_note}
+                        Unexpected note:
+                        {actual_note}
+                        
                         TMPPy source:
                         {tmppy_source}
-                        ''').format(actual_note = actual_note,
+                        ''').format(actual_note = '\n'.join(actual_note),
                                     tmppy_source = add_line_numbers(tmppy_source)),
                     pytrace=False)
 

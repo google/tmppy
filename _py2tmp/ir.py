@@ -136,7 +136,7 @@ class FunctionCall(Expr):
         assert fun_expr.type.kind == types.ExprKind.TEMPLATE
         super().__init__(type=fun_expr.type.returns)
         assert len(fun_expr.type.argtypes) == len(args)
-        assert self.type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE)
+        assert self.type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE, types.ExprKind.TEMPLATE)
         self.fun_expr = fun_expr
         self.args = args
 
@@ -146,6 +146,7 @@ class FunctionCall(Expr):
         cpp_str_template = {
             types.ExprKind.BOOL: '{cpp_fun}<{template_params}>::value',
             types.ExprKind.TYPE: 'typename {cpp_fun}<{template_params}>::type',
+            types.ExprKind.TEMPLATE: 'typename {cpp_fun}<{template_params}>::type',
         }[self.type.kind]
         return cpp_str_template.format(**locals())
 

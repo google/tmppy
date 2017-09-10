@@ -50,13 +50,13 @@ class SymbolTable:
             if not allow_redefinition_with_same_type:
                 raise CompilationError(compilation_context,
                                        definition_ast_node,
-                                       '%s was already defined in this scope.' % definition_ast_node.name,
+                                       '%s was already defined in this scope.' % name,
                                        notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
             elif previous_symbol.type != type:
                 raise CompilationError(compilation_context,
                                        definition_ast_node,
                                        '%s was already defined in this scope, with type %s; we can\'t re-define it here with type %s.' % (
-                                           definition_ast_node.name, str(previous_symbol.type), str(type)),
+                                           name, str(previous_symbol.type), str(type)),
                                        notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
         self.symbols_by_name[name] = (Symbol(name, type), definition_ast_node)
 
@@ -70,28 +70,25 @@ class CompilationError(Exception):
     def __init__(self, compilation_context: CompilationContext, ast_node: ast.AST, error_message: str, notes: List[Tuple[ast.AST, str]] = []):
         error_message = CompilationError._diagnostic_to_string(compilation_context=compilation_context,
                                                                ast_node=ast_node,
-                                                               diagnostic_kind='error',
-                                                               message=error_message)
+                                                               message='error: ' + error_message)
         notes = [CompilationError._diagnostic_to_string(compilation_context=compilation_context,
                                                         ast_node=note_ast_node,
-                                                        diagnostic_kind='note',
-                                                        message=note_message)
+                                                        message='note: ' + note_message)
                  for note_ast_node, note_message in notes]
         super().__init__(''.join([error_message] + notes))
 
     @staticmethod
-    def _diagnostic_to_string(compilation_context: CompilationContext, ast_node: ast.AST, diagnostic_kind: str, message: str):
+    def _diagnostic_to_string(compilation_context: CompilationContext, ast_node: ast.AST, message: str):
         first_line_number = ast_node.lineno
         first_column_number = ast_node.col_offset
         error_marker = ' ' * first_column_number + '^'
         return textwrap.dedent('''\
-            {filename}:{first_line_number}:{first_column_number}: {diagnostic_kind}: {message}
+            {filename}:{first_line_number}:{first_column_number}: {message}
             {line}
             {error_marker}
             ''').format(filename=compilation_context.filename,
                         first_line_number=first_line_number,
                         first_column_number=first_column_number,
-                        diagnostic_kind=diagnostic_kind,
                         message=message,
                         line=compilation_context.source_lines[first_line_number - 1],
                         error_marker=error_marker)
@@ -109,20 +106,27 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
                 compilation_context=compilation_context,
                 allow_redefinition_with_same_type=False)
         elif isinstance(ast_node, ast.ImportFrom):
-            if ast_node.module == 'tmppy':
-                if (len(ast_node.names) != 1
-                    or not isinstance(ast_node.names[0], ast.alias)
-                    or ast_node.names[0].name != 'Type'
-                    or ast_node.names[0].asname):
-                    raise CompilationError(compilation_context, ast_node, 'The only supported import from mypl is Type.')
-            elif ast_node.module == 'typing':
-                if (len(ast_node.names) != 1
-                    or not isinstance(ast_node.names[0], ast.alias)
-                    or ast_node.names[0].name not in ('List', 'Callable')
-                    or ast_node.names[0].asname):
-                    raise CompilationError(compilation_context, ast_node, 'The only supported imports from typing are List and Callable.')
+            supported_imports_by_module = {
+                'tmppy': ('Type',),
+                'typing': ('List', 'Callable')
+            }
+            supported_imports = supported_imports_by_module.get(ast_node.module)
+            if not supported_imports:
+                raise CompilationError(compilation_context, ast_node,
+                                       'The only modules that can be imported in TMPPy are: ' + ', '.join(sorted(supported_imports_by_module.keys())))
+            if len(ast_node.names) == 0:
+                raise CompilationError(compilation_context, ast_node, 'Imports must import at least 1 symbol.') # pragma: no cover
+            for imported_name in ast_node.names:
+                if (not isinstance(imported_name, ast.alias)
+                    or imported_name.asname):
+                    raise CompilationError(compilation_context, ast_node, 'TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".')
+                if not imported_name.name in supported_imports:
+                    raise CompilationError(compilation_context, ast_node, 'The only supported imports from %s are: %s.' % (ast_node.module, ', '.join(sorted(supported_imports))))
+        elif isinstance(ast_node, ast.Import):
+            raise CompilationError(compilation_context, ast_node,
+                                   'TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".')
         else:
-            raise CompilationError(compilation_context, ast_node, 'Unsupported AST node in MypyFile: ' + str(type(ast_node)))
+            raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy')
     return ir.Module(function_defns=function_defns)
 
 def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
@@ -131,10 +135,11 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
                                                            compilation_context.source_lines)
     args = []
     for arg in ast_node.args.args:
-        if arg.type_comment:
-            raise CompilationError(compilation_context, arg, 'Type comments (as opposed to annotations) for function arguments are not supported.')
         if not arg.annotation:
-            raise CompilationError(compilation_context, arg, 'All function arguments must have a type annotation.')
+            if arg.type_comment:
+                raise CompilationError(compilation_context, arg, 'All function arguments must have a type annotation. Note that type comments are not supported.')
+            else:
+                raise CompilationError(compilation_context, arg, 'All function arguments must have a type annotation.')
         arg_type = type_declaration_ast_to_ir_expression_type(arg.annotation, compilation_context)
         function_body_compilation_context.symbol_table.add_symbol(
             name=arg.arg,
@@ -165,8 +170,7 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
             raise CompilationError(compilation_context, statement_node, 'All statements in a function (except the last) must be assertions.')
         asserts.append(assert_ast_to_ir(statement_node, function_body_compilation_context))
     if not isinstance(ast_node.body[-1], ast.Return):
-        raise CompilationError(compilation_context, ast_node.body[-1],
-            'The last statement in a function must be a Return statement. Got: ' + str(type(ast_node.body[-1])))
+        raise CompilationError(compilation_context, ast_node.body[-1], 'The last statement in a function must be a return statement.')
     expression = ast_node.body[-1].value
     if not expression:
         raise CompilationError(compilation_context, ast_node.body[-1], 'Return statements with no returned expression are not supported.')
@@ -189,7 +193,15 @@ def assert_ast_to_ir(ast_node: ast.Assert, compilation_context: CompilationConte
         assert isinstance(ast_node.msg, ast.Str)
         message = ast_node.msg.s
     else:
-        message = 'Assertion error'
+        message = ''
+
+    first_line_number = ast_node.lineno
+    message = 'TMPPy assertion failed: {message}\n{filename}:{first_line_number}: {line}'.format(
+        filename=compilation_context.filename,
+        first_line_number=first_line_number,
+        message=message,
+        line=compilation_context.source_lines[first_line_number - 1])
+    message = message.replace('\\', '\\\\').replace('"', '\"').replace('\n', '\\n')
 
     return ir.StaticAssert(expr=expr, message=message)
 
@@ -204,7 +216,7 @@ def compare_ast_to_ir(ast_node: ast.Compare, compilation_context: CompilationCon
 def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.NameConstant):
         return name_constant_ast_to_ir(ast_node, compilation_context)
-    elif isinstance(ast_node, ast.Call) and ast_node.func.id == 'Type':
+    elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'Type':
         return type_literal_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call):
         return function_call_ast_to_ir(ast_node, compilation_context)
@@ -232,7 +244,7 @@ def type_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationC
         raise CompilationError(compilation_context, ast_node, 'Type() takes exactly 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
     if not isinstance(arg, ast.Str):
-        raise CompilationError(compilation_context, arg, 'The first argument to Type should be a string constant, but was: ' + ast_to_string(arg))
+        raise CompilationError(compilation_context, arg, 'The first argument to Type should be a string constant.')
     return ir.TypeLiteral(cpp_type=arg.s)
 
 def eq_ast_to_ir(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: CompilationContext):
@@ -267,26 +279,19 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
 
     for arg_index, (expr, expr_ast_node, arg_type) in enumerate(zip(args, ast_node.args, fun_expr.type.argtypes)):
         if expr.type != arg_type:
+            notes = []
             if isinstance(ast_node.func, ast.Name):
                 _, function_definition_ast_node = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
-                if isinstance(expr_ast_node, ast.Name):
-                    _, var_ref_ast_node = compilation_context.symbol_table.get_symbol_definition(expr_ast_node.id)
-                    raise CompilationError(compilation_context, expr_ast_node,
-                                           'Type mismatch for argument %s: expected type %s but was: %s' % (
-                                               arg_index, str(arg_type), str(expr.type)),
-                                           notes=[
-                                               (function_definition_ast_node, 'The definition of %s was here' % ast_node.func.id),
-                                               (var_ref_ast_node, 'The definition of %s was here' % expr_ast_node.id),
-                                           ])
-                else:
-                    raise CompilationError(compilation_context, expr_ast_node,
-                                           'Type mismatch for argument %s: expected type %s but was: %s' % (
-                                               arg_index, str(arg_type), str(expr.type)),
-                                           notes=[(function_definition_ast_node, 'The definition of %s was here' % ast_node.func.id)])
-            else:
-                raise CompilationError(compilation_context, expr_ast_node,
-                                       'Type mismatch for argument %s: expected type %s but was: %s' % (
-                                           arg_index, str(arg_type), str(expr.type)))
+                notes.append((function_definition_ast_node, 'The definition of %s was here' % ast_node.func.id))
+
+            if isinstance(expr_ast_node, ast.Name):
+                _, var_ref_ast_node = compilation_context.symbol_table.get_symbol_definition(expr_ast_node.id)
+                notes.append((var_ref_ast_node, 'The definition of %s was here' % expr_ast_node.id))
+
+            raise CompilationError(compilation_context, expr_ast_node,
+                                   'Type mismatch for argument %s: expected type %s but was: %s' % (
+                                       arg_index, str(arg_type), str(expr.type)),
+                                   notes=notes)
 
     return ir.FunctionCall(fun_expr=fun_expr, args=args)
 
@@ -303,17 +308,17 @@ def list_expression_ast_to_ir(ast_node: ast.List, compilation_context: Compilati
         # TODO: add support for empty lists.
         raise CompilationError(compilation_context, ast_node, 'Empty lists are not currently supported.')
     elem_type = elem_exprs[0].type
-    list_type = types.ListType(elem_type)
     for elem_expr, elem_expr_ast_node in zip(elem_exprs, ast_node.elts):
         if elem_expr.type != elem_type:
             raise CompilationError(compilation_context, elem_expr_ast_node,
                                    'Found different types in list elements, this is not supported. The type of this element was %s instead of %s' % (
-                                       str(elem_type), str(elem_expr.type)),
+                                       str(elem_expr.type), str(elem_type)),
                                    notes=[(ast_node.elts[0], 'A previous list element with type %s was here.' % str(elem_type))])
     if isinstance(elem_type, types.FunctionType):
         raise CompilationError(compilation_context, ast_node,
-                               'Creating lists of functions is not supported. The elements of this list have type: %s' % str(type(elem_type)))
+                               'Creating lists of functions is not supported. The elements of this list have type: %s' % str(elem_type))
 
+    list_type = types.ListType(elem_type)
     return ir.ListExpr(type=list_type, elem_exprs=elem_exprs)
 
 def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_context: CompilationContext):
@@ -323,7 +328,7 @@ def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_co
         elif ast_node.id == 'Type':
             return types.TypeType()
         else:
-            raise CompilationError(compilation_context, ast_node, 'Unsupported type constant: ' + ast_node.id)
+            raise CompilationError(compilation_context, ast_node, 'Unsupported type: ' + ast_node.id)
 
     if (isinstance(ast_node, ast.Subscript)
           and isinstance(ast_node.value, ast.Name)
