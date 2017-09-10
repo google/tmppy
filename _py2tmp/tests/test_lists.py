@@ -15,9 +15,33 @@
 from py2tmp.testing import *
 
 @assert_conversion_fails
-def test_empty_list_error():
+def test_empty_list_expression_error():
     def f(x: bool):
-        return []  # error: Empty lists are not currently supported.
+        return []  # error: Untyped empty lists are not supported. Please import empty_list from pytmp and then write e.g. empty_list\(int\) to create an empty list of ints.
+
+@assert_conversion_fails
+def test_empty_list_no_arguments_error():
+    from tmppy import empty_list
+    def f(x: bool):
+        return empty_list() # error: empty_list\(\) takes 1 argument. Got: 0
+
+@assert_conversion_fails
+def test_empty_list_too_many_arguments_error():
+    from tmppy import empty_list
+    def f(x: bool):
+        return empty_list(bool, bool) # error: empty_list\(\) takes 1 argument. Got: 2
+
+@assert_compilation_succeeds
+def test_empty_list_success():
+    from tmppy import empty_list
+    def f(x: bool):
+        return empty_list(bool)
+
+@assert_conversion_fails
+def test_empty_list_with_value_argument_error():
+    from tmppy import empty_list
+    def f(x: bool):
+        return empty_list(1) # error: Unsupported type declaration.
 
 @assert_conversion_fails
 def test_list_expression_different_types_error():

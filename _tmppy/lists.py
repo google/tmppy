@@ -12,5 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _tmppy.type import Type
-from _tmppy.lists import empty_list
+from typing import Type, List, TypeVar
+
+T = TypeVar('T')
+
+def empty_list(t: Type[T]) -> List[T]:
+    return []

@@ -107,7 +107,7 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
                 allow_redefinition_with_same_type=False)
         elif isinstance(ast_node, ast.ImportFrom):
             supported_imports_by_module = {
-                'tmppy': ('Type',),
+                'tmppy': ('Type', 'empty_list'),
                 'typing': ('List', 'Callable')
             }
             supported_imports = supported_imports_by_module.get(ast_node.module)
@@ -218,6 +218,8 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
         return name_constant_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'Type':
         return type_literal_ast_to_ir(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'empty_list':
+        return empty_list_literal_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call):
         return function_call_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Compare):
@@ -241,11 +243,19 @@ def name_constant_ast_to_ir(ast_node: ast.NameConstant, compilation_context: Com
 
 def type_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     if len(ast_node.args) != 1:
-        raise CompilationError(compilation_context, ast_node, 'Type() takes exactly 1 argument. Got: %s' % len(ast_node.args))
+        raise CompilationError(compilation_context, ast_node, 'Type() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
     if not isinstance(arg, ast.Str):
         raise CompilationError(compilation_context, arg, 'The first argument to Type should be a string constant.')
     return ir.TypeLiteral(cpp_type=arg.s)
+
+def empty_list_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
+    if len(ast_node.args) != 1:
+        raise CompilationError(compilation_context, ast_node, 'empty_list() takes 1 argument. Got: %s' % len(ast_node.args))
+    [arg] = ast_node.args
+    elem_type = type_declaration_ast_to_ir_expression_type(arg, compilation_context)
+    return ir.ListExpr(type=types.ListType(elem_type),
+                       elem_exprs=[])
 
 def eq_ast_to_ir(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: CompilationContext):
     lhs = expression_ast_to_ir(lhs_node, compilation_context)
@@ -305,8 +315,7 @@ def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: Compilation
 def list_expression_ast_to_ir(ast_node: ast.List, compilation_context: CompilationContext):
     elem_exprs = [expression_ast_to_ir(elem_expr_node, compilation_context) for elem_expr_node in ast_node.elts]
     if len(elem_exprs) == 0:
-        # TODO: add support for empty lists.
-        raise CompilationError(compilation_context, ast_node, 'Empty lists are not currently supported.')
+        raise CompilationError(compilation_context, ast_node, 'Untyped empty lists are not supported. Please import empty_list from pytmp and then write e.g. empty_list(int) to create an empty list of ints.')
     elem_type = elem_exprs[0].type
     for elem_expr, elem_expr_ast_node in zip(elem_exprs, ast_node.elts):
         if elem_expr.type != elem_type:

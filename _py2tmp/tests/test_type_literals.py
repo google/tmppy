@@ -18,7 +18,7 @@ from py2tmp.testing import *
 def test_type_literal_no_arguments_error():
     from tmppy import Type
     def f(x: bool):
-        return Type()  # error: Type\(\) takes exactly 1 argument. Got: 0
+        return Type()  # error: Type\(\) takes 1 argument. Got: 0
 
 @assert_compilation_succeeds
 def test_type_literal_success():
@@ -31,7 +31,7 @@ def test_type_literal_success():
 def test_type_literal_too_many_arguments_error():
     from tmppy import Type
     def f(x: bool):
-        return Type('', '')  # error: Type\(\) takes exactly 1 argument. Got: 2
+        return Type('', '')  # error: Type\(\) takes 1 argument. Got: 2
 
 @assert_conversion_fails
 def test_type_literal_argument_with_wrong_type_error():
