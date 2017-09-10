@@ -14,18 +14,16 @@
 
 from py2tmp.testing import *
 
+@assert_compilation_succeeds
+def test_type_literal_success():
+    from tmppy import Type
+    assert Type('int') == Type('int')
+
 @assert_conversion_fails
 def test_type_literal_no_arguments_error():
     from tmppy import Type
     def f(x: bool):
         return Type()  # error: Type\(\) takes 1 argument. Got: 0
-
-@assert_compilation_succeeds
-def test_type_literal_success():
-    from tmppy import Type
-    def f(x: bool):
-        assert Type('int') == Type('int')
-        return x
 
 @assert_conversion_fails
 def test_type_literal_too_many_arguments_error():

@@ -18,6 +18,7 @@ from py2tmp.testing import *
 def test_identity():
     def f(x: bool):
         return x
+    assert f(True) == True
 
 @assert_compilation_succeeds
 def test_function_call_returning_bool():
@@ -25,25 +26,26 @@ def test_function_call_returning_bool():
         return x
     def g(the_argument: bool):
         return f(f(the_argument))
+    assert g(True) == True
 
 @assert_compilation_succeeds
 def test_function_call_returning_type():
     from tmppy import Type
-
     def f(x: Type):
         return x
     def g(x: Type):
         return f(f(x))
+    assert g(Type('int')) == Type('int')
 
 @assert_compilation_succeeds
 def test_function_call_returning_list():
     from tmppy import Type
     from typing import List
-
     def f(x: List[Type]):
         return x
     def g(x: List[Type]):
         return f(f(x))
+    assert g([Type('int'), Type('float')]) == [Type('int'), Type('float')]
 
 @assert_compilation_succeeds
 def test_type_function_passed_as_argument():
@@ -57,6 +59,7 @@ def test_type_function_passed_as_argument():
         return x(y, y)
     def h(x: Type):
         return g(f, x)
+    assert h(Type('int')) == [Type('int'), Type('int')]
 
 @assert_compilation_succeeds
 def test_bool_function_passed_as_argument():
@@ -69,6 +72,7 @@ def test_bool_function_passed_as_argument():
         return x(y, y)
     def h(x: bool):
         return g(f, x)
+    assert h(True) == [True, True]
 
 @assert_conversion_fails
 def test_function_redefined_with_same_type_error():
@@ -90,6 +94,7 @@ def test_function_param_shadows_function_ok():
         return x
     def g(f: bool):
         return f
+    assert g(True) == True
 
 @assert_conversion_fails
 def test_multiple_parameters_with_same_name_error():
@@ -145,6 +150,7 @@ def test_function_decorator_error():
 def test_function_return_type_declaration_success():
     def f(x: bool) -> bool:
         return x
+    assert f(True) == True
 
 @assert_conversion_fails
 def test_function_return_type_declaration_mismatch_error():
@@ -296,6 +302,7 @@ def test_function_call_keyword_argument_success():
         return foo
     def g(x: bool):
         return f(bar=Type('int'), foo=True, baz=[x])
+    assert g(True) == True
 
 @assert_conversion_fails
 def test_function_call_keyword_and_non_keyword_arguments_error():
@@ -315,9 +322,7 @@ def test_function_returning_function_returning_type_success():
         return f
     def h(x: Type):
         return g(True)(x)
-    def main(x: bool):
-        assert h(Type('int')) == Type('int')
-        return x
+    assert h(Type('int')) == Type('int')
 
 @assert_compilation_succeeds
 def test_function_returning_function_returning_type_with_forward_success():
@@ -330,9 +335,7 @@ def test_function_returning_function_returning_type_with_forward_success():
         return g(b)
     def h(x: Type):
         return g2(True)(x)
-    def main(x: bool):
-        assert h(Type('int')) == Type('int')
-        return x
+    assert h(Type('int')) == Type('int')
 
 @assert_compilation_succeeds
 def test_function_returning_function_returning_list_success():
@@ -343,9 +346,7 @@ def test_function_returning_function_returning_list_success():
         return f
     def h(x: Type):
         return g(x)(True)
-    def main(x: bool):
-        assert h(Type('int')) == [True]
-        return x
+    assert h(Type('int')) == [True]
 
 @assert_conversion_fails
 def test_function_returning_function_returning_bool_error():

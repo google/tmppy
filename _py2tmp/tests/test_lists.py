@@ -34,8 +34,7 @@ def test_empty_list_too_many_arguments_error():
 @assert_compilation_succeeds
 def test_empty_list_success():
     from tmppy import empty_list
-    def f(x: bool):
-        return empty_list(bool)
+    assert empty_list(bool) == empty_list(bool)
 
 @assert_conversion_fails
 def test_empty_list_with_value_argument_error():

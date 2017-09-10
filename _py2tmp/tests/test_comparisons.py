@@ -16,15 +16,11 @@ from py2tmp.testing import *
 
 @assert_compilation_succeeds
 def test_bool_equals_success():
-    def f(x: bool):
-        assert True == True, 'Assertion error'
-        return x
+    assert True == True, 'Assertion error'
 
 @assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
 def test_bool_equals_error():
-    def f(x: bool):
-        assert True == False
-        return x
+    assert True == False
 
 @assert_conversion_fails
 def test_comparison_different_types():
@@ -39,24 +35,7 @@ def test_comparing_functions_error():
     def g(x: bool):
         return f == f  # error: Type not supported in equality comparison: \(bool\) -> bool
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed: The expected error')
-def test_bool_equals_with_assertion_message_error():
-    def f(x: bool):
-        assert True == False, 'The expected error'
-        return x
-
 @assert_compilation_succeeds
 def test_type_equals_success():
     from tmppy import Type
-
-    def f(x: bool):
-        assert Type('int') == Type('int'), 'The expected error'
-        return x
-
-@assert_compilation_fails_with_generic_error('The expected error')
-def test_type_equals_error():
-    from tmppy import Type
-
-    def f(x: bool):
-        assert Type('int') == Type('float'), 'The expected error'
-        return x
+    assert Type('int') == Type('int')

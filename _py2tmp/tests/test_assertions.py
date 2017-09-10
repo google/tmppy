@@ -17,13 +17,14 @@ from py2tmp.testing import *
 @assert_compilation_succeeds
 def test_simple_assertion():
     from tmppy import Type
-    def f(x: Type):
-        return x
-    assert f(Type('int')) == Type('int')
+    assert Type('int') == Type('int')
 
 @assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
 def test_simple_assertion_error():
     from tmppy import Type
-    def f(x: Type):
-        return x
-    assert f(Type('int')) == Type('float')
+    assert Type('int') == Type('float')
+
+@assert_compilation_fails_with_generic_error('The expected error')
+def test_simple_assertion_error_custom_message():
+    from tmppy import Type
+    assert Type('int') == Type('float'), 'The expected error'
