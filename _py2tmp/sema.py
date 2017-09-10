@@ -185,6 +185,13 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
                                '%s declared %s as return type, but the actual return type was %s.' % (
                                    ast_node.name, str(declared_return_type), str(expression.type)))
 
+    if expression.type.kind == types.ExprKind.TEMPLATE:
+        assert isinstance(expression.type, types.FunctionType)
+        if expression.type.returns.kind != types.ExprKind.TYPE:
+            raise CompilationError(compilation_context, ast_node,
+                                   'Returning a function is only supported if that function returns a Type or a List, but the returned function returns a %s' % (
+                                       str(expression.type.returns)))
+
     return ir.FunctionDefn(
         asserts=asserts,
         expression=expression,

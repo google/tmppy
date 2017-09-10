@@ -305,3 +305,62 @@ def test_function_call_keyword_and_non_keyword_arguments_error():
         return foo
     def g(x: bool):
         return f(True, bar=Type('int'), baz=[x]) # error: Function calls with a mix of keyword and non-keyword arguments are not supported. Please choose either style.
+
+@assert_compilation_succeeds
+def test_function_returning_function_returning_type_success():
+    from tmppy import Type
+    def f(x: Type):
+        return x
+    def g(b: bool):
+        return f
+    def h(x: Type):
+        return g(True)(x)
+    def main(x: bool):
+        assert h(Type('int')) == Type('int')
+        return x
+
+@assert_compilation_succeeds
+def test_function_returning_function_returning_type_with_forward_success():
+    from tmppy import Type
+    def f(x: Type):
+        return x
+    def g(b: bool):
+        return f
+    def g2(b: bool):
+        return g(b)
+    def h(x: Type):
+        return g2(True)(x)
+    def main(x: bool):
+        assert h(Type('int')) == Type('int')
+        return x
+
+@assert_compilation_succeeds
+def test_function_returning_function_returning_list_success():
+    from tmppy import Type
+    def f(x: bool):
+        return [x]
+    def g(b: Type):
+        return f
+    def h(x: Type):
+        return g(x)(True)
+    def main(x: bool):
+        assert h(Type('int')) == [True]
+        return x
+
+@assert_conversion_fails
+def test_function_returning_function_returning_bool_error():
+    from tmppy import Type
+    def f(x: bool):
+        return x
+    def g(b: Type):  # error: Returning a function is only supported if that function returns a Type or a List, but the returned function returns a bool
+        return f
+
+@assert_conversion_fails
+def test_function_returning_function_returning_function_error():
+    from tmppy import Type
+    def f(x: Type):
+        return x
+    def g(b: Type):
+        return f
+    def h(b: Type):  # error: Returning a function is only supported if that function returns a Type or a List, but the returned function returns a \(Type\) -> Type
+        return g

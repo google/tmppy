@@ -15,7 +15,7 @@
 import typing
 
 import _py2tmp.types as types
-from typing import List
+from typing import List, Optional
 
 class Expr:
     def __init__(self, type: types.ExprType):
@@ -63,7 +63,10 @@ def _identifier_to_cpp(type, name):
 class FunctionDefn(Expr):
     def __init__(self, asserts: List[StaticAssert], expression: Expr, type: types.ExprType, name: str, args: List[FunctionArgDecl]):
         super().__init__(type)
-        assert expression.type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE)
+        assert expression.type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE, types.ExprKind.TEMPLATE)
+        if expression.type.kind == types.ExprKind.TEMPLATE:
+            assert isinstance(expression.type, types.FunctionType)
+            assert expression.type.returns.kind == types.ExprKind.TYPE
         self.asserts = asserts
         self.expression = expression
         self.name = name
@@ -71,28 +74,49 @@ class FunctionDefn(Expr):
 
     def to_cpp(self):
         metafunction_name = _identifier_to_cpp(type=self.type, name=self.name)
-        cpp_meta_expr = self.expression.to_cpp()
         asserts_str = ''.join(x.to_cpp() + '\n' for x in self.asserts)
         template_args = ', '.join(_type_to_template_param_declaration(arg.type) + ' ' + _identifier_to_cpp(type=arg.type, name=arg.name)
                                   for arg in self.args)
-        cpp_str_template = {
-            types.ExprKind.BOOL: '''\
+        if self.expression.type.kind == types.ExprKind.BOOL:
+            cpp_meta_expr = self.expression.to_cpp()
+            return '''\
                 template <{template_args}>
                 struct {metafunction_name} {{
                   {asserts_str}  
                   static constexpr bool value = {cpp_meta_expr};
                 }};
-                ''',
-            types.ExprKind.TYPE: '''\
+                '''.format(**locals())
+        elif self.expression.type.kind == types.ExprKind.TYPE:
+            cpp_meta_expr = self.expression.to_cpp()
+            return '''\
                 template <{template_args}>
                 struct {metafunction_name} {{
                   {asserts_str}
                   using type = {cpp_meta_expr};
                 }};
-                '''
-        }[self.expression.type.kind]
-        return cpp_str_template.format(**locals())
-
+                '''.format(**locals())
+        elif self.expression.type.kind == types.ExprKind.TEMPLATE:
+            assert isinstance(self.expression.type, types.FunctionType)
+            return_type = self.expression.type.returns
+            assert return_type.kind == types.ExprKind.TYPE
+            inner_template_args = [('Param_%s' % i, arg_type)
+                                   for i, arg_type in enumerate(self.expression.type.argtypes)]
+            inner_template_args_decl = ', '.join(_type_to_template_param_declaration(arg_type) + ' ' + template_arg_name
+                                                 for template_arg_name, arg_type in inner_template_args)
+            cpp_meta_expr = FunctionCall(self.expression,
+                                         args=[VarReference(type=arg_type, cxx_name=template_arg_name)
+                                               for template_arg_name, arg_type in inner_template_args]
+                                         ).to_cpp()
+            return '''\
+                template <{template_args}>
+                struct {metafunction_name} {{
+                  {asserts_str}
+                  template <{inner_template_args_decl}>
+                  using type = {cpp_meta_expr};
+                }};
+                '''.format(**locals())
+        else:
+            raise NotImplementedError('Unexpected expression type kind: %s' % self.expression.type.kind)
 
 class Literal(Expr):
     def __init__(self, value, type):
@@ -140,23 +164,41 @@ class FunctionCall(Expr):
         self.fun_expr = fun_expr
         self.args = args
 
-    def to_cpp(self):
-        cpp_fun = self.fun_expr.to_cpp()
+    def to_cpp(self, is_nested_call=False):
         template_params = ', '.join(arg.to_cpp() for arg in self.args)
-        cpp_str_template = {
-            types.ExprKind.BOOL: '{cpp_fun}<{template_params}>::value',
-            types.ExprKind.TYPE: 'typename {cpp_fun}<{template_params}>::type',
-            types.ExprKind.TEMPLATE: 'typename {cpp_fun}<{template_params}>::type',
-        }[self.type.kind]
+        if self.type.kind == types.ExprKind.BOOL:
+            assert not is_nested_call
+            cpp_fun = self.fun_expr.to_cpp()
+            cpp_str_template = '{cpp_fun}<{template_params}>::value'
+        elif self.type.kind in (types.ExprKind.TYPE, types.ExprKind.TEMPLATE):
+            if isinstance(self.fun_expr, FunctionCall):
+                cpp_fun = self.fun_expr.to_cpp(is_nested_call=True)
+                assert not is_nested_call
+                cpp_str_template = 'typename {cpp_fun}<{template_params}>'
+            else:
+                cpp_fun = self.fun_expr.to_cpp()
+                if is_nested_call:
+                    cpp_str_template = '{cpp_fun}<{template_params}>::template type'
+                else:
+                    cpp_str_template = 'typename {cpp_fun}<{template_params}>::type'
+        else:
+            raise NotImplementedError('Type kind: %s' % self.type.kind)
         return cpp_str_template.format(**locals())
 
 class VarReference(Expr):
-    def __init__(self, type: types.ExprType, name: str):
+    def __init__(self, type: types.ExprType, name: Optional[str] = None, cxx_name: Optional[str] = None):
         super().__init__(type=type)
+        assert name or cxx_name
+        assert not (name and cxx_name)
         self.name = name
+        self.cxx_name = cxx_name
 
     def to_cpp(self):
-        return _identifier_to_cpp(type=self.type, name=self.name)
+        if self.name:
+            return _identifier_to_cpp(type=self.type, name=self.name)
+        else:
+            assert self.cxx_name
+            return self.cxx_name
 
 class ListExpr(Expr):
     def __init__(self, type: types.ListType, elem_exprs: List[Expr]):
