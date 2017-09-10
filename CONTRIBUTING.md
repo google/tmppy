@@ -1,3 +1,6 @@
+
+This file is aimed at TMPPy contributors. If you just want to use TMPPy, more documentation is coming soon, stay tuned.
+
 # How to Contribute
 
 We'd love to accept your patches and contributions to this project. There are
@@ -19,5 +22,21 @@ again.
 
 All submissions, including submissions by project members, require review. We
 use GitHub pull requests for this purpose. Consult
-[GitHub Help](https://help.github.com/articles/about-pull-requests/) for more
-information on using pull requests.
+
+## Useful commands
+
+Run tests:
+
+    cd $PATH_TO_TMPPY
+    mkdir build
+    cd build
+    cmake .. -DCMAKE_BUILD_TYPE=Debug
+    cd _tmppy/tests
+    py.test-3 -n auto
+
+To also collect coverage, add the following flags to the last command:
+
+    --cov-config=$PATH_TO_TMPPY/_py2tmp/.coveragerc --cov=_py2tmp --cov-report html
+
+Note: if your `$PATH_TO_TMPPY` contains a `~` you need to replace it with `$HOME` in this command, or it won't be
+expanded.
