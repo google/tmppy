@@ -236,3 +236,10 @@ def test_function_expression_call_wrong_argument_type():
     def g(f: Callable[[bool], Callable[[bool], bool]],
           x: Type):  # note: The definition of x was here
         return f(True)(x) # error: Type mismatch for argument 0: expected type bool but was: Type
+
+@assert_conversion_fails
+def test_function_call_keyword_argument_error():
+    def f(x: bool):
+        return x
+    def g(x: bool):
+        return f(x, x=x) # error: Keyword arguments are not supported.

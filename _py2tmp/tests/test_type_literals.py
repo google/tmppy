@@ -38,3 +38,9 @@ def test_type_literal_argument_with_wrong_type_error():
     from tmppy import Type
     def f(x: bool):
         return Type(x)  # error: The first argument to Type should be a string constant.
+
+@assert_conversion_fails
+def test_type_literal_keyword_argument_error():
+    from tmppy import Type
+    def f(x: bool):
+        return Type('int', x=x) # error: Keyword arguments are not supported.

@@ -44,6 +44,12 @@ def test_empty_list_with_value_argument_error():
         return empty_list(1) # error: Unsupported type declaration.
 
 @assert_conversion_fails
+def test_empty_list_keyword_argument_error():
+    from tmppy import empty_list
+    def f(x: bool):
+        return empty_list(bool, x=x) # error: Keyword arguments are not supported.
+
+@assert_conversion_fails
 def test_list_expression_different_types_error():
     from tmppy import Type
     def f(x: bool):

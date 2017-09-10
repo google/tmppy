@@ -249,6 +249,8 @@ def name_constant_ast_to_ir(ast_node: ast.NameConstant, compilation_context: Com
         type=type)
 
 def type_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
+    if ast_node.keywords:
+        raise CompilationError(compilation_context, ast_node, 'Keyword arguments are not supported.')
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'Type() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
@@ -257,6 +259,8 @@ def type_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationC
     return ir.TypeLiteral(cpp_type=arg.s)
 
 def empty_list_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
+    if ast_node.keywords:
+        raise CompilationError(compilation_context, ast_node, 'Keyword arguments are not supported.')
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'empty_list() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
@@ -279,6 +283,9 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
     if not isinstance(fun_expr.type, types.FunctionType):
         raise CompilationError(compilation_context, ast_node,
                                'Attempting to call an object that is not a function. It has type: %s' % str(fun_expr.type))
+
+    if ast_node.keywords:
+        raise CompilationError(compilation_context, ast_node, 'Keyword arguments are not supported.')
 
     args = [expression_ast_to_ir(arg_node, compilation_context) for arg_node in ast_node.args]
     if len(args) != len(fun_expr.type.argtypes):
