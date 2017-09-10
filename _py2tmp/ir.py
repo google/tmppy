@@ -21,7 +21,7 @@ class Expr:
     def __init__(self, type: types.ExprType):
         self.type = type
 
-    def to_cpp(self) -> str: ...
+    def to_cpp(self) -> str: ... # pragma: no cover
 
 class StaticAssert:
     def __init__(self, expr: Expr, message: str):
@@ -45,7 +45,7 @@ def _type_to_template_param_declaration(type):
                             for arg_type in type.argtypes)
                 + '> class')
     else:
-        raise Exception('Unsupported argument kind: ' + str(type.kind))
+        raise NotImplementedError('Unsupported argument kind: ' + str(type.kind))
 
 class FunctionArgDecl:
     def __init__(self, type: types.ExprType, name: str):
@@ -58,7 +58,7 @@ def _identifier_to_cpp(type, name):
     elif type.kind in (types.ExprKind.TYPE, types.ExprKind.TEMPLATE):
         return name.title().replace("_", "")
     else:
-        raise Exception('Unsupported kind: ' + str(type.kind))
+        raise NotImplementedError('Unsupported kind: ' + str(type.kind))
 
 class FunctionDefn(Expr):
     def __init__(self, asserts: List[StaticAssert], expression: Expr, type: types.ExprType, name: str, args: List[FunctionArgDecl]):

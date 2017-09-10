@@ -24,9 +24,9 @@ class ExprType:
     def __init__(self, kind: ExprKind):
         self.kind = kind
 
-    def __str__(self) -> str: ...
+    def __str__(self) -> str: ... # pragma: no cover
 
-    def __eq__(self, other) -> bool: ...
+    def __eq__(self, other) -> bool: ... # pragma: no cover
 
 class BoolType(ExprType):
     def __init__(self):

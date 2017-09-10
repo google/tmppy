@@ -21,12 +21,12 @@ import argparse
 
 def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
     source_ast = ast.parse(python_source, filename=filename)
-    symbol_table = sema.SymbolTable()
+    compilation_context = sema.CompilationContext(sema.SymbolTable(), filename, python_source.splitlines())
     if verbose:
         print('Python AST:')
         print(utils.ast_to_string(source_ast))
         print()
-    result = utils.clang_format(sema.generate_ir_Module(source_ast, symbol_table).to_cpp())
+    result = utils.clang_format(sema.module_ast_to_ir(source_ast, compilation_context).to_cpp())
     if verbose:
         print('Conversion result:')
         print(result)
