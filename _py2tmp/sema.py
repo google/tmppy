@@ -284,38 +284,88 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
         raise CompilationError(compilation_context, ast_node,
                                'Attempting to call an object that is not a function. It has type: %s' % str(fun_expr.type))
 
+    if ast_node.keywords and ast_node.args:
+        raise CompilationError(compilation_context, ast_node, 'Function calls with a mix of keyword and non-keyword arguments are not supported. Please choose either style.')
+
     if ast_node.keywords:
-        raise CompilationError(compilation_context, ast_node, 'Keyword arguments are not supported.')
-
-    args = [expression_ast_to_ir(arg_node, compilation_context) for arg_node in ast_node.args]
-    if len(args) != len(fun_expr.type.argtypes):
-        if isinstance(ast_node.func, ast.Name):
-            _, function_definition_ast_node = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
-            assert function_definition_ast_node
+        if not isinstance(fun_expr, ir.VarReference):
             raise CompilationError(compilation_context, ast_node,
-                                   'Argument number mismatch in function call to %s: got %s arguments, expected %s' % (
-                                       ast_node.func.id, len(args), len(fun_expr.type.argtypes)),
-                                   notes=[(function_definition_ast_node, 'The definition of %s was here' % ast_node.func.id)])
-        else:
+                                   'Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.')
+        fun_symbol, fun_definition_ast_node = compilation_context.symbol_table.get_symbol_definition(fun_expr.name)
+        function_definition_note = (fun_definition_ast_node, 'The definition of %s was here' % ast_node.func.id)
+        assert fun_symbol
+        assert fun_definition_ast_node
+        if not isinstance(fun_definition_ast_node, ast.FunctionDef):
             raise CompilationError(compilation_context, ast_node,
-                                   'Argument number mismatch in function call: got %s arguments, expected %s' % (
-                                       len(args), len(fun_expr.type.argtypes)))
+                                   'Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.',
+                                   notes=[function_definition_note])
 
-    for arg_index, (expr, expr_ast_node, arg_type) in enumerate(zip(args, ast_node.args, fun_expr.type.argtypes)):
-        if expr.type != arg_type:
-            notes = []
+        arg_expr_by_name = {keyword_arg.arg: expression_ast_to_ir(keyword_arg.value, compilation_context)
+                            for keyword_arg in ast_node.keywords}
+        formal_arg_names = {arg.arg for arg in fun_definition_ast_node.args.args}
+        specified_nonexisting_args = arg_expr_by_name.keys() - formal_arg_names
+        missing_args = formal_arg_names - arg_expr_by_name.keys()
+        if specified_nonexisting_args and missing_args:
+            raise CompilationError(compilation_context, ast_node,
+                                   'Incorrect arguments in call to %s. Missing arguments: {%s}. Specified arguments that don\'t exist: {%s}' % (
+                                       fun_expr.name, ', '.join(sorted(missing_args)), ', '.join(sorted(specified_nonexisting_args))),
+                                   notes=[function_definition_note])
+        elif specified_nonexisting_args:
+            raise CompilationError(compilation_context, ast_node,
+                                   'Incorrect arguments in call to %s. Specified arguments that don\'t exist: {%s}' % (
+                                       fun_expr.name, ', '.join(sorted(specified_nonexisting_args))),
+                                   notes=[function_definition_note])
+        elif missing_args:
+            raise CompilationError(compilation_context, ast_node,
+                                   'Incorrect arguments in call to %s. Missing arguments: {%s}' % (
+                                       fun_expr.name, ', '.join(sorted(missing_args))),
+                                   notes=[function_definition_note])
+
+        args = [arg_expr_by_name[arg.arg] for arg in fun_definition_ast_node.args.args]
+
+        for expr, keyword_arg, arg_type in zip(args, ast_node.keywords, fun_expr.type.argtypes):
+            if expr.type != arg_type:
+                notes = [function_definition_note]
+
+                if isinstance(keyword_arg.value, ast.Name):
+                    _, var_ref_ast_node = compilation_context.symbol_table.get_symbol_definition(keyword_arg.value.id)
+                    notes.append((var_ref_ast_node, 'The definition of %s was here' % keyword_arg.value.id))
+
+                raise CompilationError(compilation_context, keyword_arg.value,
+                                       'Type mismatch for argument %s: expected type %s but was: %s' % (
+                                           keyword_arg.arg, str(arg_type), str(expr.type)),
+                                       notes=notes)
+    else:
+        ast_node_args = ast_node.args or []
+        args = [expression_ast_to_ir(arg_node, compilation_context) for arg_node in ast_node_args]
+        if len(args) != len(fun_expr.type.argtypes):
             if isinstance(ast_node.func, ast.Name):
                 _, function_definition_ast_node = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
-                notes.append((function_definition_ast_node, 'The definition of %s was here' % ast_node.func.id))
+                assert function_definition_ast_node
+                raise CompilationError(compilation_context, ast_node,
+                                       'Argument number mismatch in function call to %s: got %s arguments, expected %s' % (
+                                           ast_node.func.id, len(args), len(fun_expr.type.argtypes)),
+                                       notes=[(function_definition_ast_node, 'The definition of %s was here' % ast_node.func.id)])
+            else:
+                raise CompilationError(compilation_context, ast_node,
+                                       'Argument number mismatch in function call: got %s arguments, expected %s' % (
+                                           len(args), len(fun_expr.type.argtypes)))
 
-            if isinstance(expr_ast_node, ast.Name):
-                _, var_ref_ast_node = compilation_context.symbol_table.get_symbol_definition(expr_ast_node.id)
-                notes.append((var_ref_ast_node, 'The definition of %s was here' % expr_ast_node.id))
+        for arg_index, (expr, expr_ast_node, arg_type) in enumerate(zip(args, ast_node_args, fun_expr.type.argtypes)):
+            if expr.type != arg_type:
+                notes = []
+                if isinstance(ast_node.func, ast.Name):
+                    _, function_definition_ast_node = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
+                    notes.append((function_definition_ast_node, 'The definition of %s was here' % ast_node.func.id))
 
-            raise CompilationError(compilation_context, expr_ast_node,
-                                   'Type mismatch for argument %s: expected type %s but was: %s' % (
-                                       arg_index, str(arg_type), str(expr.type)),
-                                   notes=notes)
+                if isinstance(expr_ast_node, ast.Name):
+                    _, var_ref_ast_node = compilation_context.symbol_table.get_symbol_definition(expr_ast_node.id)
+                    notes.append((var_ref_ast_node, 'The definition of %s was here' % expr_ast_node.id))
+
+                raise CompilationError(compilation_context, expr_ast_node,
+                                       'Type mismatch for argument %s: expected type %s but was: %s' % (
+                                           arg_index, str(arg_type), str(expr.type)),
+                                       notes=notes)
 
     return ir.FunctionCall(fun_expr=fun_expr, args=args)
 

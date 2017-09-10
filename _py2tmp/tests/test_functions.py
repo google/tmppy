@@ -238,8 +238,70 @@ def test_function_expression_call_wrong_argument_type():
         return f(True)(x) # error: Type mismatch for argument 0: expected type bool but was: Type
 
 @assert_conversion_fails
-def test_function_call_keyword_argument_error():
-    def f(x: bool):
-        return x
+def test_function_call_additional_and_missing_keyword_arguments():
+    def f(foo: bool, bar: bool):  # note: The definition of f was here
+        return foo
     def g(x: bool):
-        return f(x, x=x) # error: Keyword arguments are not supported.
+        return f(fooz=x, barz=x) # error: Incorrect arguments in call to f. Missing arguments: {bar, foo}. Specified arguments that don't exist: {barz, fooz}
+
+@assert_conversion_fails
+def test_function_call_additional_keyword_arguments():
+    def f(foo: bool):  # note: The definition of f was here
+        return foo
+    def g(x: bool):
+        return f(foo=x, bar=x, baz=x) # error: Incorrect arguments in call to f. Specified arguments that don't exist: {bar, baz}
+
+@assert_conversion_fails
+def test_function_call_missing_keyword_arguments():
+    def f(foo: bool, bar: bool, baz: bool):  # note: The definition of f was here
+        return foo
+    def g(x: bool):
+        return f(bar=x) # error: Incorrect arguments in call to f. Missing arguments: {baz, foo}
+
+@assert_conversion_fails
+def test_function_call_wrong_keyword_argument_type():
+    from tmppy import Type
+    def f(x: bool): # note: The definition of f was here
+        return x
+    def g(x: Type):  # note: The definition of x was here
+        return f(x=x) # error: Type mismatch for argument x: expected type bool but was: Type
+
+@assert_conversion_fails
+def test_function_call_wrong_keyword_argument_type_expression():
+    from tmppy import Type
+    def f(x: bool): # note: The definition of f was here
+        return x
+    def g(x: Type):
+        return f(x=[x]) # error: Type mismatch for argument x: expected type bool but was: List\[Type\]
+
+@assert_conversion_fails
+def test_function_argument_call_keyword_argument_error():
+    from typing import Callable
+    def g(f: Callable[[bool], bool], # note: The definition of f was here
+          x: bool):
+        return f(foo=x)  # error: Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.
+
+@assert_conversion_fails
+def test_function_expression_call_keyword_argument_error():
+    from typing import Callable
+    def g(f: Callable[[bool], Callable[[bool], bool]],
+          x: bool):
+        return f(True)(x=x) # error: Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.
+
+@assert_compilation_succeeds
+def test_function_call_keyword_argument_success():
+    from tmppy import Type
+    from typing import List
+    def f(foo: bool, bar: Type, baz: List[bool]):
+        return foo
+    def g(x: bool):
+        return f(bar=Type('int'), foo=True, baz=[x])
+
+@assert_conversion_fails
+def test_function_call_keyword_and_non_keyword_arguments_error():
+    from tmppy import Type
+    from typing import List
+    def f(foo: bool, bar: Type, baz: List[bool]):
+        return foo
+    def g(x: bool):
+        return f(True, bar=Type('int'), baz=[x]) # error: Function calls with a mix of keyword and non-keyword arguments are not supported. Please choose either style.
