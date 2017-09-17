@@ -53,10 +53,17 @@ class SymbolTable:
         self.symbols_by_name[name] = (Symbol(name, type), definition_ast_node)
 
 class CompilationContext:
-    def __init__(self, symbol_table: SymbolTable, filename: str, source_lines: List[str]):
+    def __init__(self, symbol_table: SymbolTable, filename: str, source_lines: List[str], function_name: Optional[str] = None):
         self.symbol_table = symbol_table
         self.filename = filename
         self.source_lines = source_lines
+        self.current_function_name = function_name
+
+    def create_child_context(self, function_name=None):
+        return CompilationContext(SymbolTable(parent=self.symbol_table),
+                                  self.filename,
+                                  self.source_lines,
+                                  function_name=function_name or self.current_function_name)
 
 class CompilationError(Exception):
     def __init__(self, compilation_context: CompilationContext, ast_node: ast.AST, error_message: str, notes: List[Tuple[ast.AST, str]] = []):
@@ -90,16 +97,16 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
     toplevel_assertions = []
     for ast_node in module_ast_node.body:
         if isinstance(ast_node, ast.FunctionDef):
-            function_defn = function_def_ast_to_ir(ast_node, compilation_context)
-            function_defns.append(function_defn)
+            new_function_defns, fun_type = function_def_ast_to_ir(ast_node, compilation_context)
+            function_defns += new_function_defns
             compilation_context.symbol_table.add_symbol(
                 name=ast_node.name,
-                type=function_defn.type,
+                type=fun_type,
                 definition_ast_node=ast_node,
                 compilation_context=compilation_context)
         elif isinstance(ast_node, ast.ImportFrom):
             supported_imports_by_module = {
-                'tmppy': ('Type', 'empty_list'),
+                'tmppy': ('Type', 'empty_list', 'TypePattern', 'match'),
                 'typing': ('List', 'Callable')
             }
             supported_imports = supported_imports_by_module.get(ast_node.module)
@@ -123,10 +130,115 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
             raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy')
     return ir.Module(function_defns=function_defns, assertions=toplevel_assertions)
 
+def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
+    assert isinstance(ast_node.func, ast.Call)
+    if ast_node.keywords or ast_node.func.keywords:
+        raise CompilationError(compilation_context, ast_node, 'Keyword arguments are not allowed in match(...)({...})')
+    if not ast_node.func.args:
+        raise CompilationError(compilation_context, ast_node.func, 'Found match() with no arguments; it must have at least 1 argument.')
+    matched_exprs = []
+    for expr_ast in ast_node.func.args:
+        expr = expression_ast_to_ir(expr_ast, compilation_context)
+        if expr.type != types.TypeType():
+            raise CompilationError(compilation_context, expr_ast,
+                                   'All arguments passed to match must have type Type, but an argument with type %s was specified.' % str(expr.type))
+        matched_exprs.append(expr)
+    if len(ast_node.args) != 1 or not isinstance(ast_node.args[0], ast.Dict):
+        raise CompilationError(compilation_context, ast_node, 'Malformed match(...)({...})')
+    [dict_expr_ast] = ast_node.args
+
+    # Note that we only forward "local" symbols (excluding e.g. the symbols of global functions).
+    local_variables_args = [ir.FunctionArgDecl(type=symbol.type, name=symbol.name)
+                            for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()]
+    # TODO: avoid referencing this private function from ir.
+    forwarded_args_patterns = [ir.identifier_to_cpp(name=symbol.name, type=symbol.type)
+                               for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()]
+
+    main_definition = None
+    main_definition_key_expr_ast = None
+    function_specializations = []
+    last_lambda_body_type = None
+    last_lambda_body_ast_node = None
+    for key_expr_ast, value_expr_ast in zip(dict_expr_ast.keys, dict_expr_ast.values):
+        if not isinstance(key_expr_ast, ast.Call) or not isinstance(key_expr_ast.func, ast.Name) or key_expr_ast.func.id != 'TypePattern':
+            raise CompilationError(compilation_context, key_expr_ast, 'All keys in the dict used in match(...)({...}) must be of the form TypePattern(...).')
+        if not key_expr_ast.args:
+            raise CompilationError(compilation_context, key_expr_ast, 'Found TypePattern with no arguments, but the first argument is required.')
+        for arg in key_expr_ast.args:
+            if not isinstance(arg, ast.Str):
+                raise CompilationError(compilation_context, arg, 'The non-keyword arguments of TypePattern must be string literals.')
+        type_patterns = [arg.s for arg in key_expr_ast.args]
+        if key_expr_ast.keywords:
+            raise CompilationError(compilation_context, key_expr_ast, 'Keyword arguments in TypePattern are not supported yet.')
+        if not isinstance(value_expr_ast, ast.Lambda):
+            raise CompilationError(compilation_context, value_expr_ast, 'All values in the dict used in match(...)({...}) must be lambdas.')
+        assert not value_expr_ast.args.kwonlyargs
+        assert not value_expr_ast.args.vararg
+        assert not value_expr_ast.args.kwarg
+        assert not value_expr_ast.args.defaults
+        assert not value_expr_ast.args.kw_defaults
+        lambda_body_compilation_context = compilation_context.create_child_context()
+        lambda_arguments = []
+        for arg in value_expr_ast.args.args:
+            lambda_arguments.append(arg.arg)
+            lambda_body_compilation_context.symbol_table.add_symbol(name=arg.arg,
+                                                                    type=types.TypeType(),
+                                                                    definition_ast_node=arg,
+                                                                    compilation_context=lambda_body_compilation_context)
+        lambda_body = expression_ast_to_ir(value_expr_ast.body, lambda_body_compilation_context)
+        if last_lambda_body_type and lambda_body.type != last_lambda_body_type:
+            raise CompilationError(compilation_context, value_expr_ast.body,
+                                   'All lambdas in a match(...)({...}) expression should return the same type, but '
+                                   'this lambda returns a %s while a previous lambda in this match expression '
+                                   'returns a %s' % (
+                                       str(lambda_body.type), str(last_lambda_body_type)),
+                                   notes=[(last_lambda_body_ast_node,
+                                           'A previous lambda returning a %s was here.' % str(last_lambda_body_type))])
+        last_lambda_body_type = lambda_body.type
+        last_lambda_body_ast_node = value_expr_ast.body
+
+        function_specialization_args = local_variables_args + [ir.FunctionArgDecl(type=types.TypeType(), name=arg_name)
+                                                               for arg_name in lambda_arguments]
+
+        specialization_patterns = [ir.TypePatternLiteral(pattern)
+                                   for pattern in forwarded_args_patterns + type_patterns]
+        patterns_set = set(forwarded_args_patterns + type_patterns)
+        args_set = {ir.identifier_to_cpp(type=arg.type, name=arg.name)
+                    for arg in function_specialization_args}
+        if args_set == patterns_set:
+            if main_definition:
+                assert main_definition_key_expr_ast
+                raise CompilationError(compilation_context, key_expr_ast,
+                                       'Found multiple specializations that specialize nothing',
+                                       notes=[(main_definition_key_expr_ast, 'A previous specialization that specializes nothing was here')])
+            main_definition = lambda_body
+            main_definition_key_expr_ast = key_expr_ast
+        else:
+            function_specializations.append(ir.FunctionSpecialization(args=function_specialization_args,
+                                                                      patterns=specialization_patterns,
+                                                                      expression=lambda_body))
+
+    expression_args = [ir.VarReference(symbol.type, symbol.name)
+                       for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()] + matched_exprs
+    parent_function_name = compilation_context.current_function_name
+    assert parent_function_name
+
+    # TODO: the names of these helpers might conflict once we allow multiple match() expressions (e.g. in an if-else).
+    helper_function = ir.SpecializedFunctionDefn(args=local_variables_args + [ir.FunctionArgDecl(type=types.TypeType()) for _ in matched_exprs],
+                                                 main_definition=main_definition,
+                                                 specializations=function_specializations,
+                                                 cxx_name=parent_function_name + '_MatchHelper',
+                                                 return_type=last_lambda_body_type)
+
+    helper_function_reference = ir.VarReference(type=helper_function.type,
+                                                cxx_name=helper_function.cxx_name)
+    expression = ir.FunctionCall(fun_expr=helper_function_reference,
+                                 args=expression_args)
+
+    return helper_function, expression
+
 def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
-    function_body_compilation_context = CompilationContext(SymbolTable(parent=compilation_context.symbol_table),
-                                                           compilation_context.filename,
-                                                           compilation_context.source_lines)
+    function_body_compilation_context = compilation_context.create_child_context(function_name=ast_node.name)
     args = []
     for arg in ast_node.args.args:
         if not arg.annotation:
@@ -177,7 +289,12 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
     expression = ast_node.body[-1].value
     if not expression:
         raise CompilationError(compilation_context, ast_node.body[-1], 'Return statements with no returned expression are not supported.')
-    expression = expression_ast_to_ir(expression, function_body_compilation_context)
+    if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Call) and isinstance(expression.func.func, ast.Name) and expression.func.func.id == 'match':
+        helper_function, expression = match_expression_ast_to_ir(expression, function_body_compilation_context)
+        helper_functions = [helper_function]
+    else:
+        expression = expression_ast_to_ir(expression, function_body_compilation_context)
+        helper_functions = []
     fun_type = types.FunctionType(argtypes=[arg.type for arg in args],
                                   returns=expression.type)
 
@@ -186,12 +303,12 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
                                '%s declared %s as return type, but the actual return type was %s.' % (
                                    ast_node.name, str(declared_return_type), str(expression.type)))
 
-    return ir.FunctionDefn(
-        asserts_and_assignments=asserts_and_assignments,
-        expression=expression,
-        name=ast_node.name,
-        type=fun_type,
-        args=args)
+    function_defn = ir.FunctionDefn(asserts_and_assignments=asserts_and_assignments,
+                                    expression=expression,
+                                    name=ast_node.name,
+                                    type=fun_type,
+                                    args=args)
+    return helper_functions + [function_defn], fun_type
 
 def assert_ast_to_ir(ast_node: ast.Assert, compilation_context: CompilationContext):
     expr = expression_ast_to_ir(ast_node.test, compilation_context)
@@ -250,6 +367,8 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
         return type_literal_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'empty_list':
         return empty_list_literal_ast_to_ir(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Call) and isinstance(ast_node.func.func, ast.Name) and ast_node.func.func.id == 'match':
+        raise CompilationError(compilation_context, ast_node, 'match expressions are only allowed at the top-level of a return statement')
     elif isinstance(ast_node, ast.Call):
         return function_call_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Compare):
@@ -396,7 +515,9 @@ def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: Compilation
     assert isinstance(ast_node.ctx, ast.Load)
     symbol, _ = compilation_context.symbol_table.get_symbol_definition(ast_node.id)
     if not symbol:
-        raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function: ' + ast_node.id)
+        # TODO: remove debugging detail
+        if compilation_context.symbol_table.parent:
+            raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function: ' + ast_node.id)
     return ir.VarReference(type=symbol.type, name=symbol.name)
 
 def list_expression_ast_to_ir(ast_node: ast.List, compilation_context: CompilationContext):

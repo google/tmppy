@@ -12,9 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import typing
+from typing import TypeVar, Callable, Dict, Any, List
+
 class Type:
     def __init__(self, s):
         self.s = s
 
     def __str__(self):
         return "Type(%s)" % self.s
+
+    def matches(self, str) -> 'typing.List[Type]': ...
+
+class TypePattern():
+    def __init__(self, *p: str, **kwargs):
+        pass
+
+T = TypeVar('T')
+
+def match(arg: Type, *args: Type) -> Callable[[Dict[TypePattern, Callable[Any, T]]], T]: ...

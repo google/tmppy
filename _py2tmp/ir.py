@@ -38,7 +38,7 @@ class StaticAssert:
 
     def to_cpp(self, enclosing_function_defn):
         if enclosing_function_defn:
-            bound_variables = {_identifier_to_cpp(type=arg_decl.type, name=arg_decl.name)
+            bound_variables = {identifier_to_cpp(type=arg_decl.type, name=arg_decl.name)
                                for arg_decl in enclosing_function_defn.args}
             assert bound_variables
         if not enclosing_function_defn or self.expr.references_any_of(bound_variables):
@@ -51,12 +51,12 @@ class StaticAssert:
             for arg_decl in enclosing_function_defn.args:
                 if arg_decl.type.kind == types.ExprKind.BOOL:
                     return 'static_assert(AlwaysTrueFromBool<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(
-                        bound_var=_identifier_to_cpp(type=arg_decl.type, name=arg_decl.name),
+                        bound_var=identifier_to_cpp(type=arg_decl.type, name=arg_decl.name),
                         cpp_meta_expr=self.expr.to_cpp(),
                         message=self.message)
                 elif arg_decl.type.kind == types.ExprKind.TYPE:
                     return 'static_assert(AlwaysTrueFromType<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(
-                        bound_var=_identifier_to_cpp(type=arg_decl.type, name=arg_decl.name),
+                        bound_var=identifier_to_cpp(type=arg_decl.type, name=arg_decl.name),
                         cpp_meta_expr=self.expr.to_cpp(),
                         message=self.message)
             raise CodegenError('Unable to convert to C++ an assertion in the function {function_name} because it\'s '
@@ -156,11 +156,11 @@ def _type_to_template_param_declaration(type):
         raise NotImplementedError('Unsupported argument kind: ' + str(type.kind))
 
 class FunctionArgDecl:
-    def __init__(self, type: types.ExprType, name: str):
+    def __init__(self, type: types.ExprType, name: str = ''):
         self.type = type
         self.name = name
 
-def _identifier_to_cpp(type, name):
+def identifier_to_cpp(type, name):
     if type.kind == types.ExprKind.BOOL:
         return name
     elif type.kind in (types.ExprKind.TYPE, types.ExprKind.TEMPLATE):
@@ -173,8 +173,11 @@ class FunctionDefn:
                  asserts_and_assignments: List[typing.Union[StaticAssert, Assignment]],
                  expression: Expr,
                  type: types.ExprType,
-                 name: str,
-                 args: List[FunctionArgDecl]):
+                 args: List[FunctionArgDecl],
+                 name: Optional[str] = None,
+                 cxx_name: Optional[str] = None):
+        assert name or cxx_name
+        assert not (name and cxx_name)
         self.type = type
         return_assignment_cxx_name = {
             types.ExprKind.BOOL: 'value',
@@ -185,13 +188,17 @@ class FunctionDefn:
                                        rhs=expression)
         self.asserts_and_assignments = asserts_and_assignments + [return_assignment]
         self.name = name
+        self.cxx_name = cxx_name
         self.args = args
 
     def to_cpp(self, enclosing_function_defn):
         enclosing_function_defn = self
-        metafunction_name = _identifier_to_cpp(type=self.type, name=self.name)
+        if self.name:
+            metafunction_name = identifier_to_cpp(type=self.type, name=self.name)
+        else:
+            metafunction_name = self.cxx_name
         asserts_and_assignments_str = ''.join(x.to_cpp(enclosing_function_defn) + '\n' for x in self.asserts_and_assignments)
-        template_args = ', '.join(_type_to_template_param_declaration(arg.type) + ' ' + _identifier_to_cpp(type=arg.type, name=arg.name)
+        template_args = ', '.join(_type_to_template_param_declaration(arg.type) + ' ' + identifier_to_cpp(type=arg.type, name=arg.name)
                                   for arg in self.args)
         return '''\
             template <{template_args}>
@@ -199,6 +206,66 @@ class FunctionDefn:
               {asserts_and_assignments_str}  
             }};
             '''.format(**locals())
+
+class FunctionSpecialization:
+    def __init__(self, args: List[FunctionArgDecl], patterns: 'List[TypePatternLiteral]', expression: Expr):
+        self.args = args
+        self.patterns = patterns
+        self.expr = expression
+
+    def to_cpp(self, cxx_name):
+        enclosing_function_defn = self
+
+        # TODO: This is very similar to the code in FunctionDefn, we should share code.
+        return_assignment_cxx_name = {
+            types.ExprKind.BOOL: 'value',
+            types.ExprKind.TYPE: 'type',
+            types.ExprKind.TEMPLATE: 'type',
+        }[self.expr.type.kind]
+        return_assignment = Assignment(lhs=VarReference(type=self.expr.type, cxx_name=return_assignment_cxx_name),
+                                       rhs=self.expr)
+
+        asserts_and_assignments_str = return_assignment.to_cpp(enclosing_function_defn)
+        template_args = ', '.join(_type_to_template_param_declaration(arg.type) + ' ' + identifier_to_cpp(type=arg.type, name=arg.name)
+                                  for arg in self.args)
+        patterns_str = ', '.join(pattern.to_cpp()
+                                 for pattern in self.patterns)
+        return '''\
+            template <{template_args}>
+            struct {cxx_name}<{patterns_str}> {{
+              {asserts_and_assignments_str}  
+            }};
+            '''.format(**locals())
+
+class SpecializedFunctionDefn:
+    def __init__(self, cxx_name: str, return_type: types.ExprType, args: List[FunctionArgDecl], main_definition: Optional[Expr], specializations: List[FunctionSpecialization]):
+        self.type = types.FunctionType(argtypes=[arg.type for arg in args], returns=return_type)
+        self.cxx_name = cxx_name
+        self.args = args
+        self.specializations = specializations
+        if main_definition:
+            self.main_definition = FunctionDefn(asserts_and_assignments=[],
+                                                expression=main_definition,
+                                                type=self.type,
+                                                cxx_name=cxx_name,
+                                                args=args)
+        else:
+            self.main_definition = None
+
+    def to_cpp(self, enclosing_function_defn):
+        metafunction_name = self.cxx_name
+        template_args = ', '.join(_type_to_template_param_declaration(arg.type) + ' ' + identifier_to_cpp(type=arg.type, name=arg.name)
+                                  for arg in self.args)
+        specializations_str = ''.join(specialization.to_cpp(cxx_name=self.cxx_name)
+                                      for specialization in self.specializations)
+        if self.main_definition:
+            main_definition_str = self.main_definition.to_cpp(enclosing_function_defn)
+        else:
+            main_definition_str = '''\
+                template <{template_args}>
+                struct {metafunction_name};
+                '''.format(**locals())
+        return main_definition_str + specializations_str
 
 class Literal(Expr):
     def __init__(self, value, type):
@@ -225,6 +292,13 @@ class TypeLiteral(Expr):
 
     def to_cpp(self):
         return self.cpp_type
+
+class TypePatternLiteral:
+    def __init__(self, cpp_str: str):
+        self.cpp_str = cpp_str
+
+    def to_cpp(self):
+        return self.cpp_str
 
 class EqualityComparison(Expr):
     def __init__(self, lhs: Expr, rhs: Expr):
@@ -287,14 +361,14 @@ class VarReference(Expr):
 
     def references_any_of(self, variables: Set[str]):
         if self.name:
-            return _identifier_to_cpp(type=self.type, name=self.name) in variables
+            return identifier_to_cpp(type=self.type, name=self.name) in variables
         else:
             assert self.cxx_name
             return self.cxx_name in variables
 
     def to_cpp(self):
         if self.name:
-            return _identifier_to_cpp(type=self.type, name=self.name)
+            return identifier_to_cpp(type=self.type, name=self.name)
         else:
             assert self.cxx_name
             return self.cxx_name
