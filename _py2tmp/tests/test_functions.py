@@ -348,20 +348,32 @@ def test_function_returning_function_returning_list_success():
         return g(x)(True)
     assert h(Type('int')) == [True]
 
-@assert_conversion_fails
-def test_function_returning_function_returning_bool_error():
+@assert_compilation_succeeds
+def test_function_returning_function_returning_bool_ok():
     from tmppy import Type
     def f(x: bool):
         return x
-    def g(b: Type):  # error: Returning a function is only supported if that function returns a Type or a List, but the returned function returns a bool
+    def g(b: Type):
         return f
+    assert g(Type('int'))(True) == True
 
-@assert_conversion_fails
-def test_function_returning_function_returning_function_error():
+@assert_compilation_succeeds
+def test_function_returning_function_returning_function_ok():
     from tmppy import Type
     def f(x: Type):
         return x
     def g(b: Type):
         return f
-    def h(b: Type):  # error: Returning a function is only supported if that function returns a Type or a List, but the returned function returns a \(Type\) -> Type
+    def h(b: Type):
         return g
+    assert h(Type('int'))(Type('int'))(Type('bool')) == Type('bool')
+
+@assert_compilation_succeeds
+def test_function_returning_function_returning_function__bool_args_ok():
+    def f(b: bool):
+        return b
+    def g(b: bool):
+        return f
+    def h(b: bool):
+        return g
+    assert h(True)(True)(False) == False

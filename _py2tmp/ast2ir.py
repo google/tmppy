@@ -16,7 +16,7 @@ import textwrap
 import _py2tmp.ir as ir
 import _py2tmp.types as types
 import typed_ast.ast3 as ast
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Union
 
 class Symbol:
     def __init__(self, name: str, type: types.ExprType):
@@ -36,7 +36,7 @@ class SymbolTable:
             return self.parent.get_symbol_definition(name)
         return None, None
 
-    def add_symbol(self, name: str, type: types.ExprType, definition_ast_node: ast.AST, compilation_context, allow_redefinition_with_same_type):
+    def add_symbol(self, name: str, type: types.ExprType, definition_ast_node: ast.AST, compilation_context):
         '''
         Adds a symbol to the symbol table.
 
@@ -46,17 +46,10 @@ class SymbolTable:
         previous_symbol, previous_definition_ast_node = self.symbols_by_name.get(name, (None, None))
         if previous_symbol:
             assert isinstance(previous_definition_ast_node, ast.AST)
-            if not allow_redefinition_with_same_type:
-                raise CompilationError(compilation_context,
-                                       definition_ast_node,
-                                       '%s was already defined in this scope.' % name,
-                                       notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
-            elif previous_symbol.type != type:
-                raise CompilationError(compilation_context,
-                                       definition_ast_node,
-                                       '%s was already defined in this scope, with type %s; we can\'t re-define it here with type %s.' % (
-                                           name, str(previous_symbol.type), str(type)),
-                                       notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
+            raise CompilationError(compilation_context,
+                                   definition_ast_node,
+                                   '%s was already defined in this scope.' % name,
+                                   notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
         self.symbols_by_name[name] = (Symbol(name, type), definition_ast_node)
 
 class CompilationContext:
@@ -103,8 +96,7 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
                 name=ast_node.name,
                 type=function_defn.type,
                 definition_ast_node=ast_node,
-                compilation_context=compilation_context,
-                allow_redefinition_with_same_type=False)
+                compilation_context=compilation_context)
         elif isinstance(ast_node, ast.ImportFrom):
             supported_imports_by_module = {
                 'tmppy': ('Type', 'empty_list'),
@@ -147,8 +139,7 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
             name=arg.arg,
             type=arg_type,
             definition_ast_node=arg,
-            compilation_context=compilation_context,
-            allow_redefinition_with_same_type=False)
+            compilation_context=compilation_context)
         args.append(ir.FunctionArgDecl(type=arg_type, name=arg.arg))
     if not args:
         raise CompilationError(compilation_context, ast_node, 'Functions with no arguments are not supported.')
@@ -168,11 +159,19 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
     else:
         declared_return_type = None
 
-    asserts = []
+    asserts_and_assignments = []
     for statement_node in ast_node.body[:-1]:
-        if not isinstance(statement_node, ast.Assert):
-            raise CompilationError(compilation_context, statement_node, 'All statements in a function (except the last) must be assertions.')
-        asserts.append(assert_ast_to_ir(statement_node, function_body_compilation_context))
+        if isinstance(statement_node, ast.Assert):
+            asserts_and_assignments.append(assert_ast_to_ir(statement_node, function_body_compilation_context))
+        elif isinstance(statement_node, ast.Assign) or isinstance(statement_node, ast.AnnAssign) or isinstance(statement_node, ast.AugAssign):
+            assignment_ir = assignment_ast_to_ir(statement_node, function_body_compilation_context)
+            compilation_context.symbol_table.add_symbol(name=assignment_ir.lhs.name,
+                                                        type=assignment_ir.lhs.type,
+                                                        definition_ast_node=statement_node,
+                                                        compilation_context=compilation_context)
+            asserts_and_assignments.append(assignment_ir)
+        else:
+            raise CompilationError(compilation_context, statement_node, 'All statements in a function (except the last) must be assertions or assignments.')
     if not isinstance(ast_node.body[-1], ast.Return):
         raise CompilationError(compilation_context, ast_node.body[-1], 'The last statement in a function must be a return statement.')
     expression = ast_node.body[-1].value
@@ -187,15 +186,8 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
                                '%s declared %s as return type, but the actual return type was %s.' % (
                                    ast_node.name, str(declared_return_type), str(expression.type)))
 
-    if expression.type.kind == types.ExprKind.TEMPLATE:
-        assert isinstance(expression.type, types.FunctionType)
-        if expression.type.returns.kind != types.ExprKind.TYPE:
-            raise CompilationError(compilation_context, ast_node,
-                                   'Returning a function is only supported if that function returns a Type or a List, but the returned function returns a %s' % (
-                                       str(expression.type.returns)))
-
     return ir.FunctionDefn(
-        asserts=asserts,
+        asserts_and_assignments=asserts_and_assignments,
         expression=expression,
         name=ast_node.name,
         type=fun_type,
@@ -220,6 +212,28 @@ def assert_ast_to_ir(ast_node: ast.Assert, compilation_context: CompilationConte
     message = message.replace('\\', '\\\\').replace('"', '\"').replace('\n', '\\n')
 
     return ir.StaticAssert(expr=expr, message=message)
+
+def assignment_ast_to_ir(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssign],
+                         compilation_context: CompilationContext):
+    if isinstance(ast_node, ast.AugAssign):
+        raise CompilationError(compilation_context, ast_node, 'Augmented assignments are not supported.')
+    if isinstance(ast_node, ast.AnnAssign):
+        raise CompilationError(compilation_context, ast_node, 'Assignments with type annotations are not supported.')
+    assert isinstance(ast_node, ast.Assign)
+    if ast_node.type_comment:
+        raise CompilationError(compilation_context, ast_node, 'Type comments in assignments are not supported.')
+    if len(ast_node.targets) > 1:
+        raise CompilationError(compilation_context, ast_node, 'Multi-assignment is not supported.')
+    [target] = ast_node.targets
+    if isinstance(target, ast.List) or isinstance(target, ast.Tuple):
+        raise CompilationError(compilation_context, ast_node, 'Unpacking in assignments is not currently supported.')
+    if not isinstance(target, ast.Name):
+        raise CompilationError(compilation_context, ast_node, 'Assignment not supported.')
+
+    expr = expression_ast_to_ir(ast_node.value, compilation_context)
+
+    return ir.Assignment(lhs=ir.VarReference(type=expr.type, name=target.id),
+                         rhs=expr)
 
 def compare_ast_to_ir(ast_node: ast.Compare, compilation_context: CompilationContext):
     if len(ast_node.ops) == 1 and isinstance(ast_node.ops[0], ast.Eq):
