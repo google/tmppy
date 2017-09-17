@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _py2tmp.testing.utils import assert_compilation_succeeds, assert_compilation_fails, assert_compilation_fails_with_generic_error, assert_conversion_fails
+from _py2tmp.testing.utils import assert_compilation_succeeds, assert_compilation_fails, assert_compilation_fails_with_generic_error, assert_conversion_fails, assert_conversion_fails_with_codegen_error

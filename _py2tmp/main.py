@@ -26,7 +26,7 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
         print('Python AST:')
         print(utils.ast_to_string(source_ast))
         print()
-    result = utils.clang_format(sema.module_ast_to_ir(source_ast, compilation_context).to_cpp())
+    result = utils.clang_format(sema.module_ast_to_ir(source_ast, compilation_context).to_cpp(enclosing_function_defn=None))
     if verbose:
         print('Conversion result:')
         print(result)

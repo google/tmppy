@@ -23,4 +23,14 @@ struct List;
 template <bool... Ts>
 struct BoolList;
 
+template <bool>
+struct AlwaysTrueFromBool {
+  static constexpr bool value = true;
+};
+
+template <typename>
+struct AlwaysTrueFromType {
+  static constexpr bool value = true;
+};
+
 #endif // TMPPY_H

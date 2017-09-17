@@ -15,13 +15,18 @@
 import typing
 
 import _py2tmp.types as types
-from typing import List, Optional
+from typing import List, Set, Optional
+
+class CodegenError(Exception):
+    pass
 
 class Expr:
     def __init__(self, type: types.ExprType):
         self.type = type
 
-    def to_cpp(self) -> str: ... # pragma: no cover
+    def to_cpp(self, enclosing_function_defn) -> str: ... # pragma: no cover
+
+    def references_any_of(self, variables: Set[str]) -> bool: ... # pragma: no cover
 
 class StaticAssert:
     def __init__(self, expr: Expr, message: str):
@@ -29,10 +34,32 @@ class StaticAssert:
         self.expr = expr
         self.message = message
 
-    def to_cpp(self):
-        return 'static_assert({cpp_meta_expr}, "{message}");'.format(
-            cpp_meta_expr=self.expr.to_cpp(),
-            message=self.message)
+    def to_cpp(self, enclosing_function_defn):
+        if enclosing_function_defn:
+            bound_variables = {_identifier_to_cpp(type=arg_decl.type, name=arg_decl.name)
+                               for arg_decl in enclosing_function_defn.args}
+            assert bound_variables
+        if not enclosing_function_defn or self.expr.references_any_of(bound_variables):
+            return 'static_assert({cpp_meta_expr}, "{message}");'.format(
+                cpp_meta_expr=self.expr.to_cpp(enclosing_function_defn),
+                message=self.message)
+        else:
+            # The expression is constant, we need to add a reference to a variable bound in this function to prevent the
+            # static_assert from being evaluated before the template is instantiated.
+            for arg_decl in enclosing_function_defn.args:
+                if arg_decl.type.kind == types.ExprKind.BOOL:
+                    return 'static_assert(AlwaysTrueFromBool<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(
+                        bound_var=_identifier_to_cpp(type=arg_decl.type, name=arg_decl.name),
+                        cpp_meta_expr=self.expr.to_cpp(enclosing_function_defn),
+                        message=self.message)
+                elif arg_decl.type.kind == types.ExprKind.TYPE:
+                    return 'static_assert(AlwaysTrueFromType<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(
+                        bound_var=_identifier_to_cpp(type=arg_decl.type, name=arg_decl.name),
+                        cpp_meta_expr=self.expr.to_cpp(enclosing_function_defn),
+                        message=self.message)
+            raise CodegenError('Unable to convert to C++ an assertion in the function {function_name} because it\'s '
+                               'a constant expression and {function_name} only has functions as params. '
+                               'You should move the assertion outside the function or reference one of {function_name}\'s params in the assertion.'.format(function_name=enclosing_function_defn.name))
 
 def _type_to_template_param_declaration(type):
     if type.kind == types.ExprKind.BOOL:
@@ -60,9 +87,9 @@ def _identifier_to_cpp(type, name):
     else:
         raise NotImplementedError('Unsupported kind: ' + str(type.kind))
 
-class FunctionDefn(Expr):
+class FunctionDefn:
     def __init__(self, asserts: List[StaticAssert], expression: Expr, type: types.ExprType, name: str, args: List[FunctionArgDecl]):
-        super().__init__(type)
+        self.type = type
         assert expression.type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE, types.ExprKind.TEMPLATE)
         if expression.type.kind == types.ExprKind.TEMPLATE:
             assert isinstance(expression.type, types.FunctionType)
@@ -72,13 +99,14 @@ class FunctionDefn(Expr):
         self.name = name
         self.args = args
 
-    def to_cpp(self):
+    def to_cpp(self, enclosing_function_defn):
+        enclosing_function_defn = self
         metafunction_name = _identifier_to_cpp(type=self.type, name=self.name)
-        asserts_str = ''.join(x.to_cpp() + '\n' for x in self.asserts)
+        asserts_str = ''.join(x.to_cpp(enclosing_function_defn) + '\n' for x in self.asserts)
         template_args = ', '.join(_type_to_template_param_declaration(arg.type) + ' ' + _identifier_to_cpp(type=arg.type, name=arg.name)
                                   for arg in self.args)
         if self.expression.type.kind == types.ExprKind.BOOL:
-            cpp_meta_expr = self.expression.to_cpp()
+            cpp_meta_expr = self.expression.to_cpp(enclosing_function_defn)
             return '''\
                 template <{template_args}>
                 struct {metafunction_name} {{
@@ -87,7 +115,7 @@ class FunctionDefn(Expr):
                 }};
                 '''.format(**locals())
         elif self.expression.type.kind == types.ExprKind.TYPE:
-            cpp_meta_expr = self.expression.to_cpp()
+            cpp_meta_expr = self.expression.to_cpp(enclosing_function_defn)
             return '''\
                 template <{template_args}>
                 struct {metafunction_name} {{
@@ -106,7 +134,7 @@ class FunctionDefn(Expr):
             cpp_meta_expr = FunctionCall(self.expression,
                                          args=[VarReference(type=arg_type, cxx_name=template_arg_name)
                                                for template_arg_name, arg_type in inner_template_args]
-                                         ).to_cpp()
+                                         ).to_cpp(enclosing_function_defn)
             return '''\
                 template <{template_args}>
                 struct {metafunction_name} {{
@@ -124,7 +152,10 @@ class Literal(Expr):
         assert value in (True, False)
         self.value = value
 
-    def to_cpp(self):
+    def references_any_of(self, variables: Set[str]):
+        return False
+
+    def to_cpp(self, enclosing_function_defn):
         return {
             True: 'true',
             False: 'false',
@@ -135,7 +166,10 @@ class TypeLiteral(Expr):
         super().__init__(type=types.TypeType())
         self.cpp_type = cpp_type
 
-    def to_cpp(self):
+    def references_any_of(self, variables: Set[str]):
+        return False
+
+    def to_cpp(self, enclosing_function_defn):
         return self.cpp_type
 
 class EqualityComparison(Expr):
@@ -146,9 +180,12 @@ class EqualityComparison(Expr):
         self.lhs = lhs
         self.rhs = rhs
 
-    def to_cpp(self):
-        lhs_cpp_meta_expr = self.lhs.to_cpp()
-        rhs_cpp_meta_expr = self.rhs.to_cpp()
+    def references_any_of(self, variables: Set[str]):
+        return self.lhs.references_any_of(variables) or self.rhs.references_any_of(variables)
+
+    def to_cpp(self, enclosing_function_defn):
+        lhs_cpp_meta_expr = self.lhs.to_cpp(enclosing_function_defn)
+        rhs_cpp_meta_expr = self.rhs.to_cpp(enclosing_function_defn)
         cpp_str_template = {
             types.ExprKind.BOOL: '({lhs_cpp_meta_expr}) == ({rhs_cpp_meta_expr})',
             types.ExprKind.TYPE: 'std::is_same<{lhs_cpp_meta_expr}, {rhs_cpp_meta_expr}>::value'
@@ -164,19 +201,23 @@ class FunctionCall(Expr):
         self.fun_expr = fun_expr
         self.args = args
 
-    def to_cpp(self, is_nested_call=False):
-        template_params = ', '.join(arg.to_cpp() for arg in self.args)
+    def references_any_of(self, variables: Set[str]):
+        return self.fun_expr.references_any_of(variables) or any(expr.references_any_of(variables)
+                                                                 for expr in self.args)
+
+    def to_cpp(self, enclosing_function_defn, is_nested_call=False):
+        template_params = ', '.join(arg.to_cpp(enclosing_function_defn) for arg in self.args)
         if self.type.kind == types.ExprKind.BOOL:
             assert not is_nested_call
-            cpp_fun = self.fun_expr.to_cpp()
+            cpp_fun = self.fun_expr.to_cpp(enclosing_function_defn)
             cpp_str_template = '{cpp_fun}<{template_params}>::value'
         elif self.type.kind in (types.ExprKind.TYPE, types.ExprKind.TEMPLATE):
             if isinstance(self.fun_expr, FunctionCall):
-                cpp_fun = self.fun_expr.to_cpp(is_nested_call=True)
+                cpp_fun = self.fun_expr.to_cpp(enclosing_function_defn, is_nested_call=True)
                 assert not is_nested_call
                 cpp_str_template = 'typename {cpp_fun}<{template_params}>'
             else:
-                cpp_fun = self.fun_expr.to_cpp()
+                cpp_fun = self.fun_expr.to_cpp(enclosing_function_defn)
                 if is_nested_call:
                     cpp_str_template = '{cpp_fun}<{template_params}>::template type'
                 else:
@@ -193,7 +234,14 @@ class VarReference(Expr):
         self.name = name
         self.cxx_name = cxx_name
 
-    def to_cpp(self):
+    def references_any_of(self, variables: Set[str]):
+        if self.name:
+            return _identifier_to_cpp(type=self.type, name=self.name) in variables
+        else:
+            assert self.cxx_name
+            return self.cxx_name in variables
+
+    def to_cpp(self, enclosing_function_defn):
         if self.name:
             return _identifier_to_cpp(type=self.type, name=self.name)
         else:
@@ -206,8 +254,11 @@ class ListExpr(Expr):
         assert type.elem_type.kind in (types.ExprKind.BOOL, types.ExprKind.TYPE)
         self.elem_exprs = elem_exprs
 
-    def to_cpp(self):
-        template_params = ', '.join(elem_expr.to_cpp()
+    def references_any_of(self, variables: Set[str]):
+        return any(expr.references_any_of(variables) for expr in self.elem_exprs)
+
+    def to_cpp(self, enclosing_function_defn):
+        template_params = ', '.join(elem_expr.to_cpp(enclosing_function_defn)
                                     for elem_expr in self.elem_exprs)
         cpp_str_template = {
             types.ExprKind.BOOL: 'BoolList<{template_params}>',
@@ -220,10 +271,10 @@ class Module:
         self.function_defns = function_defns
         self.assertions = assertions
 
-    def to_cpp(self):
+    def to_cpp(self, enclosing_function_defn):
         includes = '''\
             #include <tmppy/tmppy.h>
             #include <type_traits>     
             '''
-        return includes + ''.join(x.to_cpp()
+        return includes + ''.join(x.to_cpp(enclosing_function_defn)
                                   for x in self.function_defns + self.assertions)

@@ -15,9 +15,8 @@
 import textwrap
 import _py2tmp.ir as ir
 import _py2tmp.types as types
-from _py2tmp.utils import ast_to_string
 import typed_ast.ast3 as ast
-from typing import List, Tuple, Callable, Dict, Optional
+from typing import List, Tuple, Dict, Optional
 
 class Symbol:
     def __init__(self, name: str, type: types.ExprType):
