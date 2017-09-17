@@ -150,9 +150,14 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
     # Note that we only forward "local" symbols (excluding e.g. the symbols of global functions).
     local_variables_args = [ir.FunctionArgDecl(type=symbol.type, name=symbol.name)
                             for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()]
-    # TODO: avoid referencing this private function from ir.
-    forwarded_args_patterns = [ir.identifier_to_cpp(name=symbol.name, type=symbol.type)
-                               for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()]
+
+    parent_function_name = compilation_context.current_function_name
+    assert parent_function_name
+    # TODO: the names of these helpers might conflict once we allow multiple match() expressions (e.g. in an if-else).
+    helper_function_name = parent_function_name + '_MatchHelper'
+
+    forwarded_args_patterns = [ir.TypePatternLiteral(cxx_pattern=function_arg.to_cpp())
+                               for function_arg in local_variables_args]
 
     main_definition = None
     main_definition_key_expr_ast = None
@@ -200,35 +205,33 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
         function_specialization_args = local_variables_args + [ir.FunctionArgDecl(type=types.TypeType(), name=arg_name)
                                                                for arg_name in lambda_arguments]
 
-        specialization_patterns = [ir.TypePatternLiteral(pattern)
-                                   for pattern in forwarded_args_patterns + type_patterns]
-        patterns_set = set(forwarded_args_patterns + type_patterns)
-        args_set = {ir.identifier_to_cpp(type=arg.type, name=arg.name)
-                    for arg in function_specialization_args}
-        if args_set == patterns_set:
+        specialization_patterns = forwarded_args_patterns + [ir.TypePatternLiteral(cxx_pattern=pattern)
+                                                             for pattern in type_patterns]
+        function_specialization = ir.FunctionSpecialization(args=function_specialization_args,
+                                                            patterns=specialization_patterns,
+                                                            asserts_and_assignments=[],
+                                                            expression=lambda_body)
+
+        if function_specialization.is_main_definition():
             if main_definition:
                 assert main_definition_key_expr_ast
                 raise CompilationError(compilation_context, key_expr_ast,
                                        'Found multiple specializations that specialize nothing',
                                        notes=[(main_definition_key_expr_ast, 'A previous specialization that specializes nothing was here')])
-            main_definition = lambda_body
+            main_definition = function_specialization
             main_definition_key_expr_ast = key_expr_ast
         else:
-            function_specializations.append(ir.FunctionSpecialization(args=function_specialization_args,
-                                                                      patterns=specialization_patterns,
-                                                                      expression=lambda_body))
+            function_specializations.append(function_specialization)
 
     expression_args = [ir.VarReference(symbol.type, symbol.name)
                        for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()] + matched_exprs
-    parent_function_name = compilation_context.current_function_name
-    assert parent_function_name
 
-    # TODO: the names of these helpers might conflict once we allow multiple match() expressions (e.g. in an if-else).
-    helper_function = ir.SpecializedFunctionDefn(args=local_variables_args + [ir.FunctionArgDecl(type=types.TypeType()) for _ in matched_exprs],
-                                                 main_definition=main_definition,
-                                                 specializations=function_specializations,
-                                                 cxx_name=parent_function_name + '_MatchHelper',
-                                                 return_type=last_lambda_body_type)
+    helper_function = ir.FunctionDefn(args=local_variables_args + [ir.FunctionArgDecl(type=types.TypeType()) for _ in matched_exprs],
+                                      main_definition=main_definition,
+                                      specializations=function_specializations,
+                                      cxx_name=helper_function_name,
+                                      original_name=compilation_context.current_function_name,
+                                      return_type=last_lambda_body_type)
 
     helper_function_reference = ir.VarReference(type=helper_function.type,
                                                 cxx_name=helper_function.cxx_name)
@@ -303,11 +306,16 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
                                '%s declared %s as return type, but the actual return type was %s.' % (
                                    ast_node.name, str(declared_return_type), str(expression.type)))
 
-    function_defn = ir.FunctionDefn(asserts_and_assignments=asserts_and_assignments,
-                                    expression=expression,
+    main_definition = ir.FunctionSpecialization(args=args,
+                                                patterns=None,
+                                                asserts_and_assignments=asserts_and_assignments,
+                                                expression=expression)
+
+    function_defn = ir.FunctionDefn(main_definition=main_definition,
                                     name=ast_node.name,
-                                    type=fun_type,
-                                    args=args)
+                                    return_type=expression.type,
+                                    args=args,
+                                    specializations=[])
     return helper_functions + [function_defn], fun_type
 
 def assert_ast_to_ir(ast_node: ast.Assert, compilation_context: CompilationContext):
