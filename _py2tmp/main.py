@@ -14,7 +14,7 @@
 
 import typed_ast.ast3 as ast
 
-import _py2tmp.sema as sema
+import _py2tmp.ast2ir as sema
 import _py2tmp.utils as utils
 
 import argparse
