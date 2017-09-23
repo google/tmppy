@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import textwrap
-import _py2tmp.ir as ir
+import _py2tmp.lowir as lowir
 import _py2tmp.types as types
 import typed_ast.ast3 as ast
 from typing import List, Tuple, Dict, Optional, Union
@@ -128,7 +128,7 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
             toplevel_assertions.append(assert_ast_to_ir(ast_node, compilation_context))
         else:
             raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy')
-    return ir.Module(function_defns=function_defns, assertions=toplevel_assertions)
+    return lowir.Module(function_defns=function_defns, assertions=toplevel_assertions)
 
 def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     assert isinstance(ast_node.func, ast.Call)
@@ -148,7 +148,7 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
     [dict_expr_ast] = ast_node.args
 
     # Note that we only forward "local" symbols (excluding e.g. the symbols of global functions).
-    local_variables_args = [ir.FunctionArgDecl(type=symbol.type, name=symbol.name)
+    local_variables_args = [lowir.FunctionArgDecl(type=symbol.type, name=symbol.name)
                             for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()]
 
     parent_function_name = compilation_context.current_function_name
@@ -156,7 +156,7 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
     # TODO: the names of these helpers might conflict once we allow multiple match() expressions (e.g. in an if-else).
     helper_function_name = parent_function_name + '_MatchHelper'
 
-    forwarded_args_patterns = [ir.TypePatternLiteral(cxx_pattern=function_arg.to_cpp())
+    forwarded_args_patterns = [lowir.TypePatternLiteral(cxx_pattern=function_arg.to_cpp())
                                for function_arg in local_variables_args]
 
     main_definition = None
@@ -202,15 +202,15 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
         last_lambda_body_type = lambda_body.type
         last_lambda_body_ast_node = value_expr_ast.body
 
-        function_specialization_args = local_variables_args + [ir.FunctionArgDecl(type=types.TypeType(), name=arg_name)
+        function_specialization_args = local_variables_args + [lowir.FunctionArgDecl(type=types.TypeType(), name=arg_name)
                                                                for arg_name in lambda_arguments]
 
-        specialization_patterns = forwarded_args_patterns + [ir.TypePatternLiteral(cxx_pattern=pattern)
+        specialization_patterns = forwarded_args_patterns + [lowir.TypePatternLiteral(cxx_pattern=pattern)
                                                              for pattern in type_patterns]
-        function_specialization = ir.FunctionSpecialization(args=function_specialization_args,
-                                                            patterns=specialization_patterns,
-                                                            asserts_and_assignments=[],
-                                                            expression=lambda_body)
+        function_specialization = lowir.FunctionSpecialization(args=function_specialization_args,
+                                                               patterns=specialization_patterns,
+                                                               asserts_and_assignments=[],
+                                                               expression=lambda_body)
 
         if function_specialization.is_main_definition():
             if main_definition:
@@ -223,20 +223,20 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
         else:
             function_specializations.append(function_specialization)
 
-    expression_args = [ir.VarReference(symbol.type, symbol.name)
+    expression_args = [lowir.VarReference(symbol.type, symbol.name)
                        for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()] + matched_exprs
 
-    helper_function = ir.FunctionDefn(args=local_variables_args + [ir.FunctionArgDecl(type=types.TypeType()) for _ in matched_exprs],
-                                      main_definition=main_definition,
-                                      specializations=function_specializations,
-                                      cxx_name=helper_function_name,
-                                      original_name=compilation_context.current_function_name,
-                                      return_type=last_lambda_body_type)
+    helper_function = lowir.FunctionDefn(args=local_variables_args + [lowir.FunctionArgDecl(type=types.TypeType()) for _ in matched_exprs],
+                                         main_definition=main_definition,
+                                         specializations=function_specializations,
+                                         cxx_name=helper_function_name,
+                                         original_name=compilation_context.current_function_name,
+                                         return_type=last_lambda_body_type)
 
-    helper_function_reference = ir.VarReference(type=helper_function.type,
-                                                cxx_name=helper_function.cxx_name)
-    expression = ir.FunctionCall(fun_expr=helper_function_reference,
-                                 args=expression_args)
+    helper_function_reference = lowir.VarReference(type=helper_function.type,
+                                                   cxx_name=helper_function.cxx_name)
+    expression = lowir.FunctionCall(fun_expr=helper_function_reference,
+                                    args=expression_args)
 
     return helper_function, expression
 
@@ -255,7 +255,7 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
             type=arg_type,
             definition_ast_node=arg,
             compilation_context=compilation_context)
-        args.append(ir.FunctionArgDecl(type=arg_type, name=arg.arg))
+        args.append(lowir.FunctionArgDecl(type=arg_type, name=arg.arg))
     if not args:
         raise CompilationError(compilation_context, ast_node, 'Functions with no arguments are not supported.')
 
@@ -306,16 +306,16 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
                                '%s declared %s as return type, but the actual return type was %s.' % (
                                    ast_node.name, str(declared_return_type), str(expression.type)))
 
-    main_definition = ir.FunctionSpecialization(args=args,
-                                                patterns=None,
-                                                asserts_and_assignments=asserts_and_assignments,
-                                                expression=expression)
+    main_definition = lowir.FunctionSpecialization(args=args,
+                                                   patterns=None,
+                                                   asserts_and_assignments=asserts_and_assignments,
+                                                   expression=expression)
 
-    function_defn = ir.FunctionDefn(main_definition=main_definition,
-                                    name=ast_node.name,
-                                    return_type=expression.type,
-                                    args=args,
-                                    specializations=[])
+    function_defn = lowir.FunctionDefn(main_definition=main_definition,
+                                       name=ast_node.name,
+                                       return_type=expression.type,
+                                       args=args,
+                                       specializations=[])
     return helper_functions + [function_defn], fun_type
 
 def assert_ast_to_ir(ast_node: ast.Assert, compilation_context: CompilationContext):
@@ -336,7 +336,7 @@ def assert_ast_to_ir(ast_node: ast.Assert, compilation_context: CompilationConte
         line=compilation_context.source_lines[first_line_number - 1])
     message = message.replace('\\', '\\\\').replace('"', '\"').replace('\n', '\\n')
 
-    return ir.StaticAssert(expr=expr, message=message)
+    return lowir.StaticAssert(expr=expr, message=message)
 
 def assignment_ast_to_ir(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssign],
                          compilation_context: CompilationContext):
@@ -357,8 +357,8 @@ def assignment_ast_to_ir(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssig
 
     expr = expression_ast_to_ir(ast_node.value, compilation_context)
 
-    return ir.Assignment(lhs=ir.VarReference(type=expr.type, name=target.id),
-                         rhs=expr)
+    return lowir.Assignment(lhs=lowir.VarReference(type=expr.type, name=target.id),
+                            rhs=expr)
 
 def compare_ast_to_ir(ast_node: ast.Compare, compilation_context: CompilationContext):
     if len(ast_node.ops) == 1 and isinstance(ast_node.ops[0], ast.Eq):
@@ -394,7 +394,7 @@ def name_constant_ast_to_ir(ast_node: ast.NameConstant, compilation_context: Com
     else:
         raise CompilationError(compilation_context, ast_node, 'NameConstant not supported: ' + str(ast_node.value))  # pragma: no cover
 
-    return ir.Literal(
+    return lowir.Literal(
         value=ast_node.value,
         type=type)
 
@@ -406,7 +406,7 @@ def type_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationC
     [arg] = ast_node.args
     if not isinstance(arg, ast.Str):
         raise CompilationError(compilation_context, arg, 'The first argument to Type should be a string constant.')
-    return ir.TypeLiteral(cpp_type=arg.s)
+    return lowir.TypeLiteral(cpp_type=arg.s)
 
 def empty_list_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     if ast_node.keywords:
@@ -415,8 +415,8 @@ def empty_list_literal_ast_to_ir(ast_node: ast.Call, compilation_context: Compil
         raise CompilationError(compilation_context, ast_node, 'empty_list() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
     elem_type = type_declaration_ast_to_ir_expression_type(arg, compilation_context)
-    return ir.ListExpr(type=types.ListType(elem_type),
-                       elem_exprs=[])
+    return lowir.ListExpr(type=types.ListType(elem_type),
+                          elem_exprs=[])
 
 def eq_ast_to_ir(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: CompilationContext):
     lhs = expression_ast_to_ir(lhs_node, compilation_context)
@@ -426,7 +426,7 @@ def eq_ast_to_ir(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: Comp
             str(lhs.type), str(rhs.type)))
     if lhs.type.kind not in (types.ExprKind.BOOL, types.ExprKind.TYPE):
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.type))
-    return ir.EqualityComparison(lhs=lhs, rhs=rhs)
+    return lowir.EqualityComparison(lhs=lhs, rhs=rhs)
 
 def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     fun_expr = expression_ast_to_ir(ast_node.func, compilation_context)
@@ -438,7 +438,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
         raise CompilationError(compilation_context, ast_node, 'Function calls with a mix of keyword and non-keyword arguments are not supported. Please choose either style.')
 
     if ast_node.keywords:
-        if not isinstance(fun_expr, ir.VarReference):
+        if not isinstance(fun_expr, lowir.VarReference):
             raise CompilationError(compilation_context, ast_node,
                                    'Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.')
         fun_symbol, fun_definition_ast_node = compilation_context.symbol_table.get_symbol_definition(fun_expr.name)
@@ -517,7 +517,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
                                            arg_index, str(arg_type), str(expr.type)),
                                        notes=notes)
 
-    return ir.FunctionCall(fun_expr=fun_expr, args=args)
+    return lowir.FunctionCall(fun_expr=fun_expr, args=args)
 
 def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: CompilationContext):
     assert isinstance(ast_node.ctx, ast.Load)
@@ -526,7 +526,7 @@ def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: Compilation
         # TODO: remove debugging detail
         if compilation_context.symbol_table.parent:
             raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function: ' + ast_node.id)
-    return ir.VarReference(type=symbol.type, name=symbol.name)
+    return lowir.VarReference(type=symbol.type, name=symbol.name)
 
 def list_expression_ast_to_ir(ast_node: ast.List, compilation_context: CompilationContext):
     elem_exprs = [expression_ast_to_ir(elem_expr_node, compilation_context) for elem_expr_node in ast_node.elts]
@@ -544,7 +544,7 @@ def list_expression_ast_to_ir(ast_node: ast.List, compilation_context: Compilati
                                'Creating lists of functions is not supported. The elements of this list have type: %s' % str(elem_type))
 
     list_type = types.ListType(elem_type)
-    return ir.ListExpr(type=list_type, elem_exprs=elem_exprs)
+    return lowir.ListExpr(type=list_type, elem_exprs=elem_exprs)
 
 def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.Name) and isinstance(ast_node.ctx, ast.Load):

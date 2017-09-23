@@ -28,7 +28,7 @@ from functools import wraps
 import pytest
 
 import _py2tmp.ast2ir
-import _py2tmp.ir
+import _py2tmp.lowir
 import py2tmp
 
 import py2tmp_test_config as config
@@ -542,7 +542,7 @@ def _convert_to_cpp_expecting_ir_generation_success(tmppy_source):
 def _convert_to_cpp_expecting_success(tmppy_source):
     try:
         return _convert_to_cpp_expecting_ir_generation_success(tmppy_source)
-    except _py2tmp.ir.CodegenError as e1:
+    except _py2tmp.lowir.CodegenError as e1:
         e = e1
     pytest.fail(
         textwrap.dedent('''\
@@ -736,7 +736,7 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
             try:
                 cpp_source = _convert_to_cpp_expecting_ir_generation_success(tmppy_source)
                 e = None
-            except _py2tmp.ir.CodegenError as e1:
+            except _py2tmp.lowir.CodegenError as e1:
                 e = e1
 
             if not e:
