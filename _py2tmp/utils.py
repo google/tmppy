@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import subprocess
+from enum import Enum
+
 import typed_ast.ast3 as ast
 
 def ast_to_string(ast_node, line_indent=''):
@@ -31,6 +33,25 @@ def ast_to_string(ast_node, line_indent=''):
                 + ']')
     else:
         return repr(ast_node)
+
+def ir_to_string(ir_elem, line_indent=''):
+    next_line_indent = line_indent + '  '
+
+    if ir_elem is None:
+        return 'None'
+    elif isinstance(ir_elem, (str, bool, Enum)):
+        return repr(ir_elem)
+    elif isinstance(ir_elem, list):
+        return ('['
+                + ','.join('\n' + next_line_indent + ir_to_string(child_node, next_line_indent)
+                           for child_node in ir_elem)
+                + ']')
+    else:
+        return (ir_elem.__class__.__name__
+                + '('
+                + ','.join('\n' + next_line_indent + field_name + ' = ' + ir_to_string(child_node, next_line_indent)
+                           for field_name, child_node in ir_elem.__dict__.items())
+                + ')')
 
 def clang_format(cxx_source: str, code_style = 'LLVM') -> str:
     command = ['clang-format',

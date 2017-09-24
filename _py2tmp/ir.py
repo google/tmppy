@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Union
+from typing import List, Iterable, Union, Tuple, Optional
 
 class ExprType:
     def __str__(self) -> str: ... # pragma: no cover
@@ -174,24 +174,76 @@ class EqualityComparison(Expr):
             for var in expr.get_free_variables():
                 yield var
 
-class Assert:
+class ReturnTypeInfo:
+    def __init__(self, type: Optional[ExprType], always_returns: bool):
+        # When expr_type is None, the statement never returns.
+        # expr_type can't be None if always_returns is True.
+        self.type = type
+        self.always_returns = always_returns
+
+class Stmt:
+    def get_return_type(self) -> ReturnTypeInfo: ... # pragma: no cover
+
+class Assert(Stmt):
     def __init__(self, expr: Expr, message: str):
         assert isinstance(expr.type, BoolType)
         self.expr = expr
         self.message = message
 
-class Assignment:
+    def get_return_type(self):
+        return ReturnTypeInfo(type=None, always_returns=False)
+
+class Assignment(Stmt):
     def __init__(self, lhs: VarReference, rhs: Expr):
         assert lhs.type == rhs.type
         self.lhs = lhs
         self.rhs = rhs
 
+    def get_return_type(self):
+        return ReturnTypeInfo(type=None, always_returns=False)
+
+class ReturnStmt(Stmt):
+    def __init__(self, expr: Expr):
+        self.expr = expr
+
+    def get_return_type(self):
+        return ReturnTypeInfo(type=self.expr.type, always_returns=True)
+
+class IfStmt(Stmt):
+    def __init__(self, cond_expr: Expr, if_stmts: List[Stmt], else_stmts: List[Stmt]):
+        assert cond_expr.type == BoolType()
+        assert if_stmts
+        self.cond_expr = cond_expr
+        self.if_stmts = if_stmts
+        self.else_stmts = else_stmts
+
+    def get_return_type(self):
+        if_return_type_info = self.if_stmts[-1].get_return_type()
+        if self.else_stmts:
+            else_return_type_info = self.else_stmts[-1].get_return_type()
+        else:
+            else_return_type_info = ReturnTypeInfo(type=None, always_returns=False)
+
+        if if_return_type_info.type:
+            assert not else_return_type_info.type or if_return_type_info.type == else_return_type_info.type
+            type = if_return_type_info.type
+        elif else_return_type_info.type:
+            type = else_return_type_info.type
+        else:
+            type = None
+        return ReturnTypeInfo(type=type,
+                              always_returns=if_return_type_info.always_returns and else_return_type_info.always_returns)
+
 class FunctionDefn:
-    def __init__(self, name: str, args: List[FunctionArgDecl], asserts_and_assignments: List[Union[Assert, Assignment]], expr: Expr):
+    def __init__(self,
+                 name: str,
+                 args: List[FunctionArgDecl],
+                 body: List[Stmt],
+                 return_type: ExprType):
         self.name = name
         self.args = args
-        self.asserts_and_assignments = asserts_and_assignments
-        self.expr = expr
+        self.body = body
+        self.return_type = return_type
 
 class Module:
     def __init__(self, function_defns: List[FunctionDefn], assertions: List[Assert]):

@@ -25,10 +25,6 @@ import argparse
 def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
     source_ast = ast.parse(python_source, filename=filename)
     compilation_context = ast2ir.CompilationContext(ast2ir.SymbolTable(), filename, python_source.splitlines())
-    if verbose:
-        print('Python AST:')
-        print(utils.ast_to_string(source_ast))
-        print()
 
     def cxx_identifier_generator_fun():
         for i in itertools.count():
@@ -36,7 +32,17 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
     cxx_identifier_generator = iter(cxx_identifier_generator_fun())
 
     module_ir = ast2ir.module_ast_to_ir(source_ast, compilation_context)
+    if verbose:
+        print('TMPPy IR:')
+        print(utils.ir_to_string(module_ir))
+        print()
+
     header = ir2lowir.module_to_low_ir(module_ir, cxx_identifier_generator)
+    if verbose:
+        print('TMPPy low IR:')
+        print(utils.ir_to_string(header))
+        print()
+
     result = lowir2cpp.header_to_cpp(header, cxx_identifier_generator)
     result = utils.clang_format(result)
 

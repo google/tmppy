@@ -156,18 +156,18 @@ def test_function_return_type_declaration_success():
 def test_function_return_type_declaration_mismatch_error():
     from tmppy import Type
     def f(x: bool) -> Type:  # error: f declared Type as return type, but the actual return type was bool.
-        return x
+        return x  # note: A bool was returned here
 
 @assert_conversion_fails
-def test_function_multiple_statements_error():
+def test_function_unreachable_statement_error():
     def f(x: bool):
-        return x  # error: All statements in a function \(except the last\) must be assertions.
         return x
+        return x  # error: Unreachable statement.
 
 @assert_conversion_fails
 def test_function_unsupported_statement_error():
     def f(x: bool):
-        x = True  # error: The last statement in a function must be a return statement.
+        y = True  # error: Missing return statement.
 
 @assert_conversion_fails
 def test_function_return_statement_with_no_value_error():

@@ -27,7 +27,7 @@ def expr_to_cpp(expr: lowir.Expr) -> str:
     elif isinstance(expr, lowir.ClassMemberAccess):
         return class_member_access_to_cpp(expr)
     else:
-        raise NotImplementedError('Unexpected expr: %s' % expr.__class__)
+        raise NotImplementedError('Unexpected expr: %s' % str(expr.__class__))
 
 def static_assert_to_cpp(assert_stmt: lowir.StaticAssert,
                          enclosing_function_defn_args: List[lowir.TemplateArgDecl],
@@ -97,8 +97,8 @@ def typedef_to_cpp(typedef: lowir.Typedef, cxx_identifier_generator: Iterator[st
                                        for arg in template_args)
 
         template_instantiation_expr = lowir.TemplateInstantiation(template_expr=typedef.expr,
-                                                                  args=[lowir.TypeLiteral(kind=arg.type.kind,
-                                                                                          cpp_type=arg.name)
+                                                                  args=[lowir.TypeLiteral.for_local(type=arg.type,
+                                                                                                    cpp_type=arg.name)
                                                                   for arg in template_args])
 
         cpp_meta_expr = template_instantiation_to_cpp(template_instantiation_expr)
@@ -140,7 +140,7 @@ def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
         elif isinstance(x, lowir.Typedef):
             return typedef_to_cpp(x, cxx_identifier_generator)
         else:
-            raise NotImplementedError('Unsupported element: ' + x.__class__)
+            raise NotImplementedError('Unsupported element: ' + str(x.__class__))
 
 
     asserts_and_assignments_str = ''.join(_template_body_element_to_cpp(x) + '\n'
@@ -192,7 +192,7 @@ def literal_to_cpp(literal: lowir.Literal):
 def type_literal_to_cpp(literal: lowir.TypeLiteral):
     return literal.cpp_type
 
-def type_pattern_literal_to_cpp(pattern: lowir.TypePatternLiteral):
+def type_pattern_literal_to_cpp(pattern: lowir.TemplateArgPatternLiteral):
     return pattern.cxx_pattern
 
 def equality_comparison_to_cpp(comparison: lowir.EqualityComparison):

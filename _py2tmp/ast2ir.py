@@ -110,7 +110,7 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
                 name=ast_node.name,
                 type=ir.FunctionType(argtypes=[arg.type
                                                for arg in new_function_defn.args],
-                                     returns=new_function_defn.expr.type),
+                                     returns=new_function_defn.return_type),
                 definition_ast_node=ast_node,
                 compilation_context=compilation_context)
         elif isinstance(ast_node, ast.ImportFrom):
@@ -223,6 +223,121 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
 
     return ir.MatchExpr(matched_exprs=matched_exprs, match_cases=match_cases)
 
+def return_stmt_ast_to_ir(ast_node: ast.Return,
+                          compilation_context: CompilationContext):
+    expression = ast_node.value
+    if not expression:
+        raise CompilationError(compilation_context, ast_node,
+                               'Return statements with no returned expression are not supported.')
+
+    expression = expression_ast_to_ir(expression, compilation_context)
+
+    return ir.ReturnStmt(expr=expression)
+
+def if_stmt_ast_to_ir(ast_node: ast.If,
+                      compilation_context: CompilationContext,
+                      previous_return_stmt: Optional[Tuple[ir.ExprType, ast.Return]],
+                      check_always_returns: bool):
+    cond_expr = expression_ast_to_ir(ast_node.test, compilation_context)
+    if cond_expr.type != ir.BoolType():
+        raise CompilationError(compilation_context, ast_node,
+                               'The condition in an if statement must have type bool, but was: %s' % str(cond_expr.type))
+
+    if_branch_compilation_context = compilation_context.create_child_context()
+    if_stmts, first_return_stmt = statements_ast_to_ir(ast_node.body, if_branch_compilation_context, previous_return_stmt, check_always_returns)
+    if_branch_return_info = if_stmts[-1].get_return_type()
+
+    if not previous_return_stmt and first_return_stmt:
+        previous_return_stmt = first_return_stmt
+
+    if ast_node.orelse:
+        else_branch_compilation_context = compilation_context.create_child_context()
+        else_stmts, first_return_stmt = statements_ast_to_ir(ast_node.orelse, else_branch_compilation_context, previous_return_stmt, check_always_returns)
+        else_branch_return_info = else_stmts[-1].get_return_type()
+
+        if not previous_return_stmt and first_return_stmt:
+            previous_return_stmt = first_return_stmt
+
+        for symbol, definition_ast_node in if_branch_compilation_context.symbol_table.symbols_by_name.values():
+            if symbol.name in else_branch_compilation_context.symbol_table.symbols_by_name:
+                other_symbol, other_definition_ast_node = else_branch_compilation_context.symbol_table.symbols_by_name[symbol.name]
+                if symbol.type != other_symbol.type:
+                    raise CompilationError(compilation_context, other_definition_ast_node,
+                                           'The variable %s is defined with type %s here, but it was previously defined with type %s in another branch.' % (
+                                               symbol.name, str(other_symbol.type), str(symbol.type)),
+                                           notes=[(definition_ast_node, 'A previous definition with type %s was here.' % str(symbol.type))])
+                compilation_context.symbol_table.add_symbol(name=symbol.name,
+                                                            type=symbol.type,
+                                                            definition_ast_node=definition_ast_node,
+                                                            compilation_context=compilation_context)
+            elif else_branch_return_info.always_returns:
+                compilation_context.symbol_table.add_symbol(name=symbol.name,
+                                                            type=symbol.type,
+                                                            definition_ast_node=definition_ast_node,
+                                                            compilation_context=compilation_context)
+
+        if if_branch_return_info.always_returns and not else_branch_return_info.always_returns:
+            for symbol, definition_ast_node in else_branch_compilation_context.symbol_table.symbols_by_name.values():
+                compilation_context.symbol_table.add_symbol(name=symbol.name,
+                                                            type=symbol.type,
+                                                            definition_ast_node=definition_ast_node,
+                                                            compilation_context=compilation_context)
+    else:
+        else_stmts = []
+        if check_always_returns:
+            raise CompilationError(compilation_context, ast_node,
+                                   'Missing return statement. You should add an else branch that returns, or a return after the if.')
+
+    return ir.IfStmt(cond_expr=cond_expr, if_stmts=if_stmts, else_stmts=else_stmts), previous_return_stmt
+
+def statements_ast_to_ir(ast_nodes: List[ast.AST],
+                         compilation_context: CompilationContext,
+                         previous_return_stmt: Optional[Tuple[ir.ExprType, ast.Return]],
+                         check_always_returns: bool):
+    assert ast_nodes
+
+    statements = []
+    first_return_stmt = None
+    for statement_node in ast_nodes:
+        if statements and statements[-1].get_return_type().always_returns:
+            raise CompilationError(compilation_context, statement_node, 'Unreachable statement.')
+
+        if isinstance(statement_node, ast.Assert):
+            statements.append(assert_ast_to_ir(statement_node, compilation_context))
+        elif isinstance(statement_node, ast.Assign) or isinstance(statement_node, ast.AnnAssign) or isinstance(statement_node, ast.AugAssign):
+            assignment_ir = assignment_ast_to_ir(statement_node, compilation_context)
+            compilation_context.symbol_table.add_symbol(name=assignment_ir.lhs.name,
+                                                        type=assignment_ir.lhs.type,
+                                                        definition_ast_node=statement_node,
+                                                        compilation_context=compilation_context)
+            statements.append(assignment_ir)
+        elif isinstance(statement_node, ast.Return):
+            return_stmt = return_stmt_ast_to_ir(statement_node, compilation_context)
+            if previous_return_stmt:
+                previous_return_stmt_type, previous_return_stmt_ast_node = previous_return_stmt
+                if return_stmt.expr.type != previous_return_stmt_type:
+                    raise CompilationError(compilation_context, statement_node,
+                                           'Found return statement with different return type: %s instead of %s.' % (
+                                               str(return_stmt.expr.type), str(previous_return_stmt_type)),
+                                           notes=[(previous_return_stmt_ast_node, 'A previous return statement returning a %s was here.' % (
+                                               str(previous_return_stmt_type),))])
+            if not first_return_stmt:
+                first_return_stmt = (return_stmt.expr.type, statement_node)
+            statements.append(return_stmt)
+        elif isinstance(statement_node, ast.If):
+            if_stmt, first_return_stmt_in_if = if_stmt_ast_to_ir(statement_node, compilation_context, previous_return_stmt, check_always_returns and statement_node is ast_nodes[-1])
+            if not first_return_stmt:
+                first_return_stmt = first_return_stmt_in_if
+            statements.append(if_stmt)
+        else:
+            raise CompilationError(compilation_context, statement_node, 'Unsupported statement.')
+
+    if check_always_returns and not first_return_stmt:
+        raise CompilationError(compilation_context, ast_nodes[-1],
+                               'Missing return statement.')
+
+    return statements, first_return_stmt
+
 def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
     function_body_compilation_context = compilation_context.create_child_context(function_name=ast_node.name)
     args = []
@@ -252,41 +367,25 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
         raise CompilationError(compilation_context, ast_node, 'Keyword function arguments are not supported.')
     if ast_node.decorator_list:
         raise CompilationError(compilation_context, ast_node, 'Function decorators are not supported.')
+
+    statements, first_return_stmt = statements_ast_to_ir(ast_node.body, function_body_compilation_context,
+                                                         previous_return_stmt=None,
+                                                         check_always_returns=True)
+
+    return_type, first_return_stmt_ast_node = first_return_stmt
+
     if ast_node.returns:
         declared_return_type = type_declaration_ast_to_ir_expression_type(ast_node.returns, compilation_context)
-    else:
-        declared_return_type = None
-
-    asserts_and_assignments = []
-    for statement_node in ast_node.body[:-1]:
-        if isinstance(statement_node, ast.Assert):
-            asserts_and_assignments.append(assert_ast_to_ir(statement_node, function_body_compilation_context))
-        elif isinstance(statement_node, ast.Assign) or isinstance(statement_node, ast.AnnAssign) or isinstance(statement_node, ast.AugAssign):
-            assignment_ir = assignment_ast_to_ir(statement_node, function_body_compilation_context)
-            compilation_context.symbol_table.add_symbol(name=assignment_ir.lhs.name,
-                                                        type=assignment_ir.lhs.type,
-                                                        definition_ast_node=statement_node,
-                                                        compilation_context=compilation_context)
-            asserts_and_assignments.append(assignment_ir)
-        else:
-            raise CompilationError(compilation_context, statement_node, 'All statements in a function (except the last) must be assertions or assignments.')
-    if not isinstance(ast_node.body[-1], ast.Return):
-        raise CompilationError(compilation_context, ast_node.body[-1], 'The last statement in a function must be a return statement.')
-    expression = ast_node.body[-1].value
-    if not expression:
-        raise CompilationError(compilation_context, ast_node.body[-1], 'Return statements with no returned expression are not supported.')
-
-    expression = expression_ast_to_ir(expression, function_body_compilation_context)
-
-    if declared_return_type and declared_return_type != expression.type:
-        raise CompilationError(compilation_context, ast_node.returns,
-                               '%s declared %s as return type, but the actual return type was %s.' % (
-                                   ast_node.name, str(declared_return_type), str(expression.type)))
+        if declared_return_type != return_type:
+            raise CompilationError(compilation_context, ast_node.returns,
+                                   '%s declared %s as return type, but the actual return type was %s.' % (
+                                       ast_node.name, str(declared_return_type), str(return_type)),
+                                   notes=[(first_return_stmt_ast_node, 'A %s was returned here' % str(return_type))])
 
     return ir.FunctionDefn(name=ast_node.name,
                            args=args,
-                           asserts_and_assignments=asserts_and_assignments,
-                           expr=expression)
+                           body=statements,
+                           return_type=return_type)
 
 def assert_ast_to_ir(ast_node: ast.Assert, compilation_context: CompilationContext):
     expr = expression_ast_to_ir(ast_node.test, compilation_context)
@@ -489,8 +588,7 @@ def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: Compilation
     assert isinstance(ast_node.ctx, ast.Load)
     lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.id)
     if not lookup_result:
-        if compilation_context.symbol_table.parent:
-            raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function')
+        raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function')
     return ir.VarReference(type=lookup_result.symbol.type,
                            name=lookup_result.symbol.name,
                            is_global_function=lookup_result.symbol_table.parent is None)

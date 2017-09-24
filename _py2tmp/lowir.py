@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Set, Optional, Union
+from typing import List, Set, Optional, Union, Iterable
 from enum import Enum
 
 class ExprKind(Enum):
@@ -43,15 +43,20 @@ class Expr:
     def __init__(self, kind: ExprKind):
         self.kind = kind
 
-    def references_any_of(self, variables: Set[str]) -> bool: ... # pragma: no cover
+    def references_any_of(self, variables: Set[str]) -> bool: ...  # pragma: no cover
 
-class StaticAssert:
+    def get_free_vars(self) -> Iterable['TypeLiteral']: ...  # pragma: no cover
+
+class TemplateBodyElement:
+    pass
+
+class StaticAssert(TemplateBodyElement):
     def __init__(self, expr: Expr, message: str):
         assert expr.kind == ExprKind.BOOL
         self.expr = expr
         self.message = message
 
-class ConstantDef:
+class ConstantDef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr, type: ExprType):
         assert expr.kind == type.kind
         assert isinstance(type, BoolType)
@@ -59,7 +64,7 @@ class ConstantDef:
         self.expr = expr
         self.type = type
 
-class Typedef:
+class Typedef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr, type: ExprType):
         assert type.kind == expr.kind
         assert type.kind in (ExprKind.TYPE, ExprKind.TEMPLATE)
@@ -75,8 +80,8 @@ class TemplateArgDecl:
 class TemplateSpecialization:
     def __init__(self,
                  args: List[TemplateArgDecl],
-                 patterns: 'Optional[List[TypePatternLiteral]]',
-                 body: List[Union[StaticAssert, ConstantDef, Typedef]]):
+                 patterns: 'Optional[List[TemplateArgPatternLiteral]]',
+                 body: List[TemplateBodyElement]):
         self.args = args
         self.patterns = patterns
         self.body = body
@@ -103,15 +108,38 @@ class Literal(Expr):
     def references_any_of(self, variables: Set[str]):
         return False
 
+    def get_free_vars(self):
+        if False:
+            yield
+
 class TypeLiteral(Expr):
-    def __init__(self, cpp_type: str, kind: ExprKind = ExprKind.TYPE):
+    def __init__(self, cpp_type: str, is_local: bool, kind: Optional[ExprKind] = None, type: Optional[ExprType] = None):
+        if is_local:
+            assert type
+        assert not (type and kind)
+        if type:
+            kind = type.kind
         super().__init__(kind=kind)
         self.cpp_type = cpp_type
+        self.is_local = is_local
+        self.type = type
+
+    @staticmethod
+    def for_local(cpp_type: str, type: ExprType):
+        return TypeLiteral(cpp_type=cpp_type, is_local=True, type=type)
+
+    @staticmethod
+    def for_nonlocal(cpp_type: str, kind: ExprKind):
+        return TypeLiteral(cpp_type=cpp_type, is_local=False, kind=kind)
 
     def references_any_of(self, variables: Set[str]):
         return False
 
-class TypePatternLiteral:
+    def get_free_vars(self):
+        if self.is_local:
+            yield self
+
+class TemplateArgPatternLiteral:
     def __init__(self, cxx_pattern: str = None):
         self.cxx_pattern = cxx_pattern
 
@@ -126,6 +154,11 @@ class EqualityComparison(Expr):
     def references_any_of(self, variables: Set[str]):
         return self.lhs.references_any_of(variables) or self.rhs.references_any_of(variables)
 
+    def get_free_vars(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_vars():
+                yield var
+
 class TemplateInstantiation(Expr):
     def __init__(self, template_expr: Expr, args: List[Expr]):
         assert template_expr.kind == ExprKind.TEMPLATE
@@ -137,6 +170,12 @@ class TemplateInstantiation(Expr):
         return self.template_expr.references_any_of(variables) or any(expr.references_any_of(variables)
                                                                       for expr in self.args)
 
+    def get_free_vars(self):
+        for exprs in ((self.template_expr,), self.args):
+            for expr in exprs:
+                for var in expr.get_free_vars():
+                    yield var
+
 class ClassMemberAccess(Expr):
     def __init__(self, class_type_expr: Expr, member_name: str, member_kind: ExprKind):
         super().__init__(kind=member_kind)
@@ -146,6 +185,10 @@ class ClassMemberAccess(Expr):
 
     def references_any_of(self, variables: Set[str]):
         return self.class_type_expr.references_any_of(variables)
+
+    def get_free_vars(self):
+        for var in self.class_type_expr.get_free_vars():
+            yield var
 
 class Header:
     def __init__(self, template_defns: List[TemplateDefn], assertions: List[StaticAssert]):
