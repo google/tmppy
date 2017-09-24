@@ -13,30 +13,36 @@
 # limitations under the License.
 
 import textwrap
-import _py2tmp.lowir as lowir
-import _py2tmp.types as types
+import _py2tmp.ir as ir
 import typed_ast.ast3 as ast
 from typing import List, Tuple, Dict, Optional, Union
 
 class Symbol:
-    def __init__(self, name: str, type: types.ExprType):
+    def __init__(self, name: str, type: ir.ExprType):
         self.type = type
         self.name = name
+
+class SymbolLookupResult:
+    def __init__(self, symbol: Symbol, ast_node: ast.AST, symbol_table: 'SymbolTable'):
+        self.symbol = symbol
+        self.ast_node = ast_node
+        self.symbol_table = symbol_table
 
 class SymbolTable:
     def __init__(self, parent=None):
         self.symbols_by_name = dict() # type: Dict[str, Tuple[Symbol, ast.AST]]
         self.parent = parent
 
-    def get_symbol_definition(self, name: str) -> Tuple[Optional[Symbol], Optional[ast.AST]]:
+    def get_symbol_definition(self, name: str):
         result = self.symbols_by_name.get(name)
         if result:
-            return result
+            symbol, ast = result
+            return SymbolLookupResult(symbol, ast, self)
         if self.parent:
             return self.parent.get_symbol_definition(name)
-        return None, None
+        return None
 
-    def add_symbol(self, name: str, type: types.ExprType, definition_ast_node: ast.AST, compilation_context):
+    def add_symbol(self, name: str, type: ir.ExprType, definition_ast_node: ast.AST, compilation_context):
         '''
         Adds a symbol to the symbol table.
 
@@ -97,11 +103,14 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
     toplevel_assertions = []
     for ast_node in module_ast_node.body:
         if isinstance(ast_node, ast.FunctionDef):
-            new_function_defns, fun_type = function_def_ast_to_ir(ast_node, compilation_context)
-            function_defns += new_function_defns
+            new_function_defn = function_def_ast_to_ir(ast_node, compilation_context)
+            function_defns.append(new_function_defn)
+
             compilation_context.symbol_table.add_symbol(
                 name=ast_node.name,
-                type=fun_type,
+                type=ir.FunctionType(argtypes=[arg.type
+                                               for arg in new_function_defn.args],
+                                     returns=new_function_defn.expr.type),
                 definition_ast_node=ast_node,
                 compilation_context=compilation_context)
         elif isinstance(ast_node, ast.ImportFrom):
@@ -128,18 +137,21 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
             toplevel_assertions.append(assert_ast_to_ir(ast_node, compilation_context))
         else:
             raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy')
-    return lowir.Module(function_defns=function_defns, assertions=toplevel_assertions)
+    return ir.Module(function_defns=function_defns,
+                     assertions=toplevel_assertions)
 
 def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     assert isinstance(ast_node.func, ast.Call)
-    if ast_node.keywords or ast_node.func.keywords:
-        raise CompilationError(compilation_context, ast_node, 'Keyword arguments are not allowed in match(...)({...})')
+    if ast_node.keywords:
+        raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not allowed in match(...)({...})')
+    if ast_node.func.keywords:
+        raise CompilationError(compilation_context, ast_node.func.keywords[0].value, 'Keyword arguments are not allowed in match(...)({...})')
     if not ast_node.func.args:
         raise CompilationError(compilation_context, ast_node.func, 'Found match() with no arguments; it must have at least 1 argument.')
     matched_exprs = []
     for expr_ast in ast_node.func.args:
         expr = expression_ast_to_ir(expr_ast, compilation_context)
-        if expr.type != types.TypeType():
+        if expr.type != ir.TypeType():
             raise CompilationError(compilation_context, expr_ast,
                                    'All arguments passed to match must have type Type, but an argument with type %s was specified.' % str(expr.type))
         matched_exprs.append(expr)
@@ -147,23 +159,18 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
         raise CompilationError(compilation_context, ast_node, 'Malformed match(...)({...})')
     [dict_expr_ast] = ast_node.args
 
-    # Note that we only forward "local" symbols (excluding e.g. the symbols of global functions).
-    local_variables_args = [lowir.FunctionArgDecl(type=symbol.type, name=symbol.name)
-                            for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()]
+    if not dict_expr_ast.keys:
+        raise CompilationError(compilation_context, dict_expr_ast,
+                               'An empty mapping dict was passed to match(), but at least 1 mapping is required.')
 
     parent_function_name = compilation_context.current_function_name
     assert parent_function_name
-    # TODO: the names of these helpers might conflict once we allow multiple match() expressions (e.g. in an if-else).
-    helper_function_name = parent_function_name + '_MatchHelper'
-
-    forwarded_args_patterns = [lowir.TypePatternLiteral(cxx_pattern=function_arg.to_cpp())
-                               for function_arg in local_variables_args]
 
     main_definition = None
     main_definition_key_expr_ast = None
-    function_specializations = []
     last_lambda_body_type = None
     last_lambda_body_ast_node = None
+    match_cases = []
     for key_expr_ast, value_expr_ast in zip(dict_expr_ast.keys, dict_expr_ast.values):
         if not isinstance(key_expr_ast, ast.Call) or not isinstance(key_expr_ast.func, ast.Name) or key_expr_ast.func.id != 'TypePattern':
             raise CompilationError(compilation_context, key_expr_ast, 'All keys in the dict used in match(...)({...}) must be of the form TypePattern(...).')
@@ -174,7 +181,7 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
                 raise CompilationError(compilation_context, arg, 'The non-keyword arguments of TypePattern must be string literals.')
         type_patterns = [arg.s for arg in key_expr_ast.args]
         if key_expr_ast.keywords:
-            raise CompilationError(compilation_context, key_expr_ast, 'Keyword arguments in TypePattern are not supported yet.')
+            raise CompilationError(compilation_context, key_expr_ast.keywords[0].value, 'Keyword arguments in TypePattern are not supported yet.')
         if not isinstance(value_expr_ast, ast.Lambda):
             raise CompilationError(compilation_context, value_expr_ast, 'All values in the dict used in match(...)({...}) must be lambdas.')
         assert not value_expr_ast.args.kwonlyargs
@@ -187,7 +194,7 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
         for arg in value_expr_ast.args.args:
             lambda_arguments.append(arg.arg)
             lambda_body_compilation_context.symbol_table.add_symbol(name=arg.arg,
-                                                                    type=types.TypeType(),
+                                                                    type=ir.TypeType(),
                                                                     definition_ast_node=arg,
                                                                     compilation_context=lambda_body_compilation_context)
         lambda_body = expression_ast_to_ir(value_expr_ast.body, lambda_body_compilation_context)
@@ -202,43 +209,19 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
         last_lambda_body_type = lambda_body.type
         last_lambda_body_ast_node = value_expr_ast.body
 
-        function_specialization_args = local_variables_args + [lowir.FunctionArgDecl(type=types.TypeType(), name=arg_name)
-                                                               for arg_name in lambda_arguments]
+        match_case = ir.MatchCase(type_patterns=type_patterns, matched_var_names=lambda_arguments, expr=lambda_body)
+        match_cases.append(match_case)
 
-        specialization_patterns = forwarded_args_patterns + [lowir.TypePatternLiteral(cxx_pattern=pattern)
-                                                             for pattern in type_patterns]
-        function_specialization = lowir.FunctionSpecialization(args=function_specialization_args,
-                                                               patterns=specialization_patterns,
-                                                               asserts_and_assignments=[],
-                                                               expression=lambda_body)
-
-        if function_specialization.is_main_definition():
+        if match_case.is_main_definition():
             if main_definition:
                 assert main_definition_key_expr_ast
                 raise CompilationError(compilation_context, key_expr_ast,
                                        'Found multiple specializations that specialize nothing',
                                        notes=[(main_definition_key_expr_ast, 'A previous specialization that specializes nothing was here')])
-            main_definition = function_specialization
+            main_definition = match_case
             main_definition_key_expr_ast = key_expr_ast
-        else:
-            function_specializations.append(function_specialization)
 
-    expression_args = [lowir.VarReference(symbol.type, symbol.name)
-                       for _, (symbol, _) in compilation_context.symbol_table.symbols_by_name.items()] + matched_exprs
-
-    helper_function = lowir.FunctionDefn(args=local_variables_args + [lowir.FunctionArgDecl(type=types.TypeType()) for _ in matched_exprs],
-                                         main_definition=main_definition,
-                                         specializations=function_specializations,
-                                         cxx_name=helper_function_name,
-                                         original_name=compilation_context.current_function_name,
-                                         return_type=last_lambda_body_type)
-
-    helper_function_reference = lowir.VarReference(type=helper_function.type,
-                                                   cxx_name=helper_function.cxx_name)
-    expression = lowir.FunctionCall(fun_expr=helper_function_reference,
-                                    args=expression_args)
-
-    return helper_function, expression
+    return ir.MatchExpr(matched_exprs=matched_exprs, match_cases=match_cases)
 
 def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
     function_body_compilation_context = compilation_context.create_child_context(function_name=ast_node.name)
@@ -255,7 +238,7 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
             type=arg_type,
             definition_ast_node=arg,
             compilation_context=compilation_context)
-        args.append(lowir.FunctionArgDecl(type=arg_type, name=arg.arg))
+        args.append(ir.FunctionArgDecl(type=arg_type, name=arg.arg))
     if not args:
         raise CompilationError(compilation_context, ast_node, 'Functions with no arguments are not supported.')
 
@@ -292,35 +275,22 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
     expression = ast_node.body[-1].value
     if not expression:
         raise CompilationError(compilation_context, ast_node.body[-1], 'Return statements with no returned expression are not supported.')
-    if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Call) and isinstance(expression.func.func, ast.Name) and expression.func.func.id == 'match':
-        helper_function, expression = match_expression_ast_to_ir(expression, function_body_compilation_context)
-        helper_functions = [helper_function]
-    else:
-        expression = expression_ast_to_ir(expression, function_body_compilation_context)
-        helper_functions = []
-    fun_type = types.FunctionType(argtypes=[arg.type for arg in args],
-                                  returns=expression.type)
+
+    expression = expression_ast_to_ir(expression, function_body_compilation_context)
 
     if declared_return_type and declared_return_type != expression.type:
         raise CompilationError(compilation_context, ast_node.returns,
                                '%s declared %s as return type, but the actual return type was %s.' % (
                                    ast_node.name, str(declared_return_type), str(expression.type)))
 
-    main_definition = lowir.FunctionSpecialization(args=args,
-                                                   patterns=None,
-                                                   asserts_and_assignments=asserts_and_assignments,
-                                                   expression=expression)
-
-    function_defn = lowir.FunctionDefn(main_definition=main_definition,
-                                       name=ast_node.name,
-                                       return_type=expression.type,
-                                       args=args,
-                                       specializations=[])
-    return helper_functions + [function_defn], fun_type
+    return ir.FunctionDefn(name=ast_node.name,
+                           args=args,
+                           asserts_and_assignments=asserts_and_assignments,
+                           expr=expression)
 
 def assert_ast_to_ir(ast_node: ast.Assert, compilation_context: CompilationContext):
     expr = expression_ast_to_ir(ast_node.test, compilation_context)
-    assert expr.type.kind == types.ExprKind.BOOL
+    assert isinstance(expr.type, ir.BoolType)
 
     if ast_node.msg:
         assert isinstance(ast_node.msg, ast.Str)
@@ -336,7 +306,7 @@ def assert_ast_to_ir(ast_node: ast.Assert, compilation_context: CompilationConte
         line=compilation_context.source_lines[first_line_number - 1])
     message = message.replace('\\', '\\\\').replace('"', '\"').replace('\n', '\\n')
 
-    return lowir.StaticAssert(expr=expr, message=message)
+    return ir.Assert(expr=expr, message=message)
 
 def assignment_ast_to_ir(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssign],
                          compilation_context: CompilationContext):
@@ -357,8 +327,8 @@ def assignment_ast_to_ir(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssig
 
     expr = expression_ast_to_ir(ast_node.value, compilation_context)
 
-    return lowir.Assignment(lhs=lowir.VarReference(type=expr.type, name=target.id),
-                            rhs=expr)
+    return ir.Assignment(lhs=ir.VarReference(type=expr.type, name=target.id, is_global_function=False),
+                         rhs=expr)
 
 def compare_ast_to_ir(ast_node: ast.Compare, compilation_context: CompilationContext):
     if len(ast_node.ops) == 1 and isinstance(ast_node.ops[0], ast.Eq):
@@ -376,7 +346,7 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'empty_list':
         return empty_list_literal_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Call) and isinstance(ast_node.func.func, ast.Name) and ast_node.func.func.id == 'match':
-        raise CompilationError(compilation_context, ast_node, 'match expressions are only allowed at the top-level of a return statement')
+        return match_expression_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call):
         return function_call_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Compare):
@@ -389,34 +359,29 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
         raise CompilationError(compilation_context, ast_node, 'Unsupported expression type.')  # pragma: no cover
 
 def name_constant_ast_to_ir(ast_node: ast.NameConstant, compilation_context: CompilationContext):
-    if ast_node.value in (True, False):
-        type = types.BoolType()
+    if isinstance(ast_node.value, bool):
+        return ir.BoolLiteral(value=ast_node.value)
     else:
         raise CompilationError(compilation_context, ast_node, 'NameConstant not supported: ' + str(ast_node.value))  # pragma: no cover
 
-    return lowir.Literal(
-        value=ast_node.value,
-        type=type)
-
 def type_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     if ast_node.keywords:
-        raise CompilationError(compilation_context, ast_node, 'Keyword arguments are not supported.')
+        raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not supported.')
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'Type() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
     if not isinstance(arg, ast.Str):
         raise CompilationError(compilation_context, arg, 'The first argument to Type should be a string constant.')
-    return lowir.TypeLiteral(cpp_type=arg.s)
+    return ir.TypeLiteral(cpp_type=arg.s)
 
 def empty_list_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     if ast_node.keywords:
-        raise CompilationError(compilation_context, ast_node, 'Keyword arguments are not supported.')
+        raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not supported.')
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'empty_list() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
     elem_type = type_declaration_ast_to_ir_expression_type(arg, compilation_context)
-    return lowir.ListExpr(type=types.ListType(elem_type),
-                          elem_exprs=[])
+    return ir.ListExpr(elem_type=elem_type, elem_exprs=[])
 
 def eq_ast_to_ir(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: CompilationContext):
     lhs = expression_ast_to_ir(lhs_node, compilation_context)
@@ -424,13 +389,13 @@ def eq_ast_to_ir(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: Comp
     if lhs.type != rhs.type:
         raise CompilationError(compilation_context, lhs_node, 'Type mismatch in ==: %s vs %s' % (
             str(lhs.type), str(rhs.type)))
-    if lhs.type.kind not in (types.ExprKind.BOOL, types.ExprKind.TYPE):
+    if isinstance(lhs.type, ir.FunctionType):
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.type))
-    return lowir.EqualityComparison(lhs=lhs, rhs=rhs)
+    return ir.EqualityComparison(lhs=lhs, rhs=rhs)
 
 def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     fun_expr = expression_ast_to_ir(ast_node.func, compilation_context)
-    if not isinstance(fun_expr.type, types.FunctionType):
+    if not isinstance(fun_expr.type, ir.FunctionType):
         raise CompilationError(compilation_context, ast_node,
                                'Attempting to call an object that is not a function. It has type: %s' % str(fun_expr.type))
 
@@ -438,13 +403,14 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
         raise CompilationError(compilation_context, ast_node, 'Function calls with a mix of keyword and non-keyword arguments are not supported. Please choose either style.')
 
     if ast_node.keywords:
-        if not isinstance(fun_expr, lowir.VarReference):
+        if not isinstance(fun_expr, ir.VarReference):
             raise CompilationError(compilation_context, ast_node,
                                    'Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.')
-        fun_symbol, fun_definition_ast_node = compilation_context.symbol_table.get_symbol_definition(fun_expr.name)
+        lookup_result = compilation_context.symbol_table.get_symbol_definition(fun_expr.name)
+        assert lookup_result
+        fun_definition_ast_node = lookup_result.ast_node
+
         function_definition_note = (fun_definition_ast_node, 'The definition of %s was here' % ast_node.func.id)
-        assert fun_symbol
-        assert fun_definition_ast_node
         if not isinstance(fun_definition_ast_node, ast.FunctionDef):
             raise CompilationError(compilation_context, ast_node,
                                    'Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.',
@@ -478,8 +444,8 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
                 notes = [function_definition_note]
 
                 if isinstance(keyword_arg.value, ast.Name):
-                    _, var_ref_ast_node = compilation_context.symbol_table.get_symbol_definition(keyword_arg.value.id)
-                    notes.append((var_ref_ast_node, 'The definition of %s was here' % keyword_arg.value.id))
+                    lookup_result = compilation_context.symbol_table.get_symbol_definition(keyword_arg.value.id)
+                    notes.append((lookup_result.ast_node, 'The definition of %s was here' % keyword_arg.value.id))
 
                 raise CompilationError(compilation_context, keyword_arg.value,
                                        'Type mismatch for argument %s: expected type %s but was: %s' % (
@@ -490,12 +456,12 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
         args = [expression_ast_to_ir(arg_node, compilation_context) for arg_node in ast_node_args]
         if len(args) != len(fun_expr.type.argtypes):
             if isinstance(ast_node.func, ast.Name):
-                _, function_definition_ast_node = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
-                assert function_definition_ast_node
+                lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
+                assert lookup_result
                 raise CompilationError(compilation_context, ast_node,
                                        'Argument number mismatch in function call to %s: got %s arguments, expected %s' % (
                                            ast_node.func.id, len(args), len(fun_expr.type.argtypes)),
-                                       notes=[(function_definition_ast_node, 'The definition of %s was here' % ast_node.func.id)])
+                                       notes=[(lookup_result.ast_node, 'The definition of %s was here' % ast_node.func.id)])
             else:
                 raise CompilationError(compilation_context, ast_node,
                                        'Argument number mismatch in function call: got %s arguments, expected %s' % (
@@ -505,28 +471,29 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
             if expr.type != arg_type:
                 notes = []
                 if isinstance(ast_node.func, ast.Name):
-                    _, function_definition_ast_node = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
-                    notes.append((function_definition_ast_node, 'The definition of %s was here' % ast_node.func.id))
+                    lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
+                    notes.append((lookup_result.ast_node, 'The definition of %s was here' % ast_node.func.id))
 
                 if isinstance(expr_ast_node, ast.Name):
-                    _, var_ref_ast_node = compilation_context.symbol_table.get_symbol_definition(expr_ast_node.id)
-                    notes.append((var_ref_ast_node, 'The definition of %s was here' % expr_ast_node.id))
+                    lookup_result = compilation_context.symbol_table.get_symbol_definition(expr_ast_node.id)
+                    notes.append((lookup_result.ast_node, 'The definition of %s was here' % expr_ast_node.id))
 
                 raise CompilationError(compilation_context, expr_ast_node,
                                        'Type mismatch for argument %s: expected type %s but was: %s' % (
                                            arg_index, str(arg_type), str(expr.type)),
                                        notes=notes)
 
-    return lowir.FunctionCall(fun_expr=fun_expr, args=args)
+    return ir.FunctionCall(fun_expr=fun_expr, args=args)
 
 def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: CompilationContext):
     assert isinstance(ast_node.ctx, ast.Load)
-    symbol, _ = compilation_context.symbol_table.get_symbol_definition(ast_node.id)
-    if not symbol:
-        # TODO: remove debugging detail
+    lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.id)
+    if not lookup_result:
         if compilation_context.symbol_table.parent:
-            raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function: ' + ast_node.id)
-    return lowir.VarReference(type=symbol.type, name=symbol.name)
+            raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function')
+    return ir.VarReference(type=lookup_result.symbol.type,
+                           name=lookup_result.symbol.name,
+                           is_global_function=lookup_result.symbol_table.parent is None)
 
 def list_expression_ast_to_ir(ast_node: ast.List, compilation_context: CompilationContext):
     elem_exprs = [expression_ast_to_ir(elem_expr_node, compilation_context) for elem_expr_node in ast_node.elts]
@@ -539,19 +506,18 @@ def list_expression_ast_to_ir(ast_node: ast.List, compilation_context: Compilati
                                    'Found different types in list elements, this is not supported. The type of this element was %s instead of %s' % (
                                        str(elem_expr.type), str(elem_type)),
                                    notes=[(ast_node.elts[0], 'A previous list element with type %s was here.' % str(elem_type))])
-    if isinstance(elem_type, types.FunctionType):
+    if isinstance(elem_type, ir.FunctionType):
         raise CompilationError(compilation_context, ast_node,
                                'Creating lists of functions is not supported. The elements of this list have type: %s' % str(elem_type))
 
-    list_type = types.ListType(elem_type)
-    return lowir.ListExpr(type=list_type, elem_exprs=elem_exprs)
+    return ir.ListExpr(elem_type=elem_type, elem_exprs=elem_exprs)
 
 def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.Name) and isinstance(ast_node.ctx, ast.Load):
         if ast_node.id == 'bool':
-            return types.BoolType()
+            return ir.BoolType()
         elif ast_node.id == 'Type':
-            return types.TypeType()
+            return ir.TypeType()
         else:
             raise CompilationError(compilation_context, ast_node, 'Unsupported type: ' + ast_node.id)
 
@@ -561,7 +527,7 @@ def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_co
           and isinstance(ast_node.ctx, ast.Load)
           and isinstance(ast_node.slice, ast.Index)):
         if ast_node.value.id == 'List':
-            return types.ListType(type_declaration_ast_to_ir_expression_type(ast_node.slice.value, compilation_context))
+            return ir.ListType(type_declaration_ast_to_ir_expression_type(ast_node.slice.value, compilation_context))
         elif (ast_node.value.id == 'Callable'
               and isinstance(ast_node.slice.value, ast.Tuple)
               and len(ast_node.slice.value.elts) == 2
@@ -569,7 +535,7 @@ def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_co
               and isinstance(ast_node.slice.value.elts[0].ctx, ast.Load)
               and all(isinstance(elem, ast.Name) and isinstance(elem.ctx, ast.Load)
                       for elem in ast_node.slice.value.elts[0].elts)):
-            return types.FunctionType(
+            return ir.FunctionType(
                 argtypes=[type_declaration_ast_to_ir_expression_type(arg_type_decl, compilation_context)
                           for arg_type_decl in ast_node.slice.value.elts[0].elts],
                 returns=type_declaration_ast_to_ir_expression_type(ast_node.slice.value.elts[1], compilation_context))

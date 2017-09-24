@@ -59,3 +59,42 @@ def test_variable_reassigned_error():
         y = x  # note: The previous declaration was here.
         y = x  # error: y was already defined in this scope.
         return y
+
+@assert_conversion_fails
+def test_augmented_assignment_error():
+    def f(x: bool):
+        y = x
+        y += x # error: Augmented assignments are not supported.
+        return y
+
+@assert_conversion_fails
+def test_assignment_with_type_annotation_error():
+    '''
+    def f(x: bool):
+        y: bool = x  # error: Assignments with type annotations are not supported.
+        return y
+    '''
+
+@assert_conversion_fails
+def test_assignment_with_type_comment_error():
+    def f(x: bool):
+        y = x  # type: bool # error: Type comments in assignments are not supported.
+        return y
+
+@assert_conversion_fails
+def test_multi_assignment_error():
+    def f(x: bool):
+        y = z = x  # error: Multi-assignment is not supported.
+        return y
+
+@assert_conversion_fails
+def test_unpacking_error():
+    def f(x: bool):
+        y, z = x  # error: Unpacking in assignments is not currently supported.
+        return y
+
+@assert_conversion_fails
+def test_assignment_to_expression_error():
+    def f(x: bool):
+        x[0] = x  # error: Assignment not supported.
+        return x

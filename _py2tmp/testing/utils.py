@@ -187,18 +187,24 @@ def try_remove_temporary_file(filename):
         # This shouldn't cause the tests to fail, so we ignore the exception and go ahead.
         pass
 
-def expect_cpp_code_compile_error_helper(
-        check_error_fun,
-        source_code):
-    source_file_name = _create_temporary_file(source_code, file_name_suffix='.cpp')
+def expect_cpp_code_compile_error_helper(check_error_fun, tmppy_source, cxx_source):
+    source_file_name = _create_temporary_file(cxx_source, file_name_suffix='.cpp')
 
     try:
         compiler.compile_discarding_output(
             source=source_file_name,
             include_dirs=[config.MPYL_INCLUDE_DIR],
             args=[])
-        pytest.fail(
-            'The test should have failed to compile, but it compiled successfully',
+        pytest.fail(textwrap.dedent('''\
+            The test should have failed to compile, but it compiled successfully.
+            
+            TMPPy source:
+            {tmppy_source}
+            
+            C++ source code:
+            {cxx_source}
+            ''').format(tmppy_source = add_line_numbers(tmppy_source),
+                        cxx_source = add_line_numbers(cxx_source)),
             pytrace=False)
     except CompilationFailedException as e1:
         e = e1
@@ -248,7 +254,7 @@ def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, cx
                             error_message = error_message_head),
             pytrace=False)
 
-    expect_cpp_code_compile_error_helper(check_error, cxx_source)
+    expect_cpp_code_compile_error_helper(check_error, tmppy_source, cxx_source)
 
 
 def expect_cpp_code_compile_error(
@@ -438,7 +444,7 @@ def expect_cpp_code_compile_error(
                     'The compilation failed with the expected message, but the error message contained some metaprogramming types in the output (besides Error). Error message:\n%s' + error_message_head,
                     pytrace=False)
 
-    expect_cpp_code_compile_error_helper(check_error, cxx_source)
+    expect_cpp_code_compile_error_helper(check_error, tmppy_source, cxx_source)
 
 def expect_cpp_code_success(tmppy_source, cxx_source):
     """
@@ -522,27 +528,10 @@ def _get_function_body(f):
         source_code = source_code[1:-1]
     return textwrap.dedent(''.join(source_code))
 
-def _convert_to_cpp_expecting_ir_generation_success(tmppy_source):
+def _convert_to_cpp_expecting_success(tmppy_source):
     try:
         return py2tmp.convert_to_cpp(tmppy_source)
     except _py2tmp.ast2ir.CompilationError as e1:
-        e = e1
-    pytest.fail(
-        textwrap.dedent('''\
-            The conversion from TMPPy to C++ failed.
-            stderr was:
-            {error_message}
-            
-            TMPPy source:
-            {tmppy_source}
-            ''').format(tmppy_source = add_line_numbers(tmppy_source),
-                        error_message = e.args[0]),
-        pytrace=False)
-
-def _convert_to_cpp_expecting_success(tmppy_source):
-    try:
-        return _convert_to_cpp_expecting_ir_generation_success(tmppy_source)
-    except _py2tmp.lowir.CodegenError as e1:
         e = e1
     pytest.fail(
         textwrap.dedent('''\
@@ -734,7 +723,7 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
         def wrapper():
             tmppy_source = _get_function_body(f)
             try:
-                cpp_source = _convert_to_cpp_expecting_ir_generation_success(tmppy_source)
+                cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
                 e = None
             except _py2tmp.lowir.CodegenError as e1:
                 e = e1

@@ -22,5 +22,5 @@ def test_global_variable_error():
 def test_reference_to_undefined_identifier_error():
     '''
     def f(x: bool):
-        return undefined_identifier  # error: Reference to undefined variable/function: undefined_identifier
+        return undefined_identifier  # error: Reference to undefined variable/function
     '''

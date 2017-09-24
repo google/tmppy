@@ -19,6 +19,24 @@ def test_simple_assertion():
     from tmppy import Type
     assert Type('int') == Type('int')
 
+@assert_compilation_succeeds
+def test_assertion_in_function():
+    from tmppy import Type
+    def f(x: bool):
+        assert Type('int') == Type('int')
+        return x
+    assert f(True) == True
+
+@assert_compilation_succeeds
+def test_assertion_with_function_call_in_function():
+    from tmppy import Type
+    def f(x: Type):
+        return x
+    def g(x: bool):
+        assert f(Type('int')) == Type('int')
+        return x
+    assert g(True) == True
+
 @assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
 def test_simple_assertion_error():
     from tmppy import Type
@@ -72,14 +90,14 @@ def test_unconditional_true_assertion_type_param_function_called_ok():
         return x
     assert f(Type('int')) == Type('int')
 
-@assert_conversion_fails_with_codegen_error('Unable to convert to C\+\+ an assertion in the function f because it\'s a constant expression and f only has functions as params.')
+@assert_compilation_succeeds
 def test_unconditional_false_assertion_function_param_function_never_called_ok():
     from typing import Callable
     def f(x: Callable[[bool], bool]):
         assert False == True
         return True
 
-@assert_conversion_fails_with_codegen_error('Unable to convert to C\+\+ an assertion in the function f because it\'s a constant expression and f only has functions as params.')
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
 def test_unconditional_false_assertion_function_param_function_called_error():
     from typing import Callable
     def f(x: Callable[[bool], bool]):
@@ -89,7 +107,7 @@ def test_unconditional_false_assertion_function_param_function_called_error():
         return x
     assert f(g) == True
 
-@assert_conversion_fails_with_codegen_error('Unable to convert to C\+\+ an assertion in the function f because it\'s a constant expression and f only has functions as params.')
+@assert_compilation_succeeds
 def test_unconditional_true_assertion_function_param_function_called_ok():
     from typing import Callable
     def f(x: Callable[[bool], bool]):

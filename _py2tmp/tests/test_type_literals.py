@@ -41,4 +41,5 @@ def test_type_literal_argument_with_wrong_type_error():
 def test_type_literal_keyword_argument_error():
     from tmppy import Type
     def f(x: bool):
-        return Type('int', x=x) # error: Keyword arguments are not supported.
+        return Type('int',
+                    x=x) # error: Keyword arguments are not supported.

@@ -12,21 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import itertools
 import typed_ast.ast3 as ast
 
-import _py2tmp.ast2ir as sema
+import _py2tmp.ast2ir as ast2ir
+import _py2tmp.ir2lowir as ir2lowir
+import _py2tmp.lowir2cpp as lowir2cpp
 import _py2tmp.utils as utils
 
 import argparse
 
 def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
     source_ast = ast.parse(python_source, filename=filename)
-    compilation_context = sema.CompilationContext(sema.SymbolTable(), filename, python_source.splitlines())
+    compilation_context = ast2ir.CompilationContext(ast2ir.SymbolTable(), filename, python_source.splitlines())
     if verbose:
         print('Python AST:')
         print(utils.ast_to_string(source_ast))
         print()
-    result = utils.clang_format(sema.module_ast_to_ir(source_ast, compilation_context).to_cpp())
+
+    def cxx_identifier_generator_fun():
+        for i in itertools.count():
+            yield 'TmppyInternal_%s' % i
+    cxx_identifier_generator = iter(cxx_identifier_generator_fun())
+
+    module_ir = ast2ir.module_ast_to_ir(source_ast, compilation_context)
+    header = ir2lowir.module_to_low_ir(module_ir, cxx_identifier_generator)
+    result = lowir2cpp.header_to_cpp(header, cxx_identifier_generator)
+    result = utils.clang_format(result)
+
     if verbose:
         print('Conversion result:')
         print(result)
