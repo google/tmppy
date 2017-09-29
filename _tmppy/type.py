@@ -24,6 +24,8 @@ class Type:
 
     def matches(self, str) -> 'typing.List[Type]': ...
 
+    def __getattr__(self, item) -> 'Type': ...
+
 class TypePattern():
     def __init__(self, *p: str, **kwargs):
         pass

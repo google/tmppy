@@ -50,6 +50,8 @@ def expr_to_low_ir(expr: ir.Expr, cxx_identifier_generator: Iterator[str]) \
         return function_call_to_low_ir(expr, cxx_identifier_generator)
     elif isinstance(expr, ir.EqualityComparison):
         return equality_comparison_to_low_ir(expr, cxx_identifier_generator)
+    elif isinstance(expr, ir.AttributeAccessExpr):
+        return attribute_access_expr_to_low_ir(expr, cxx_identifier_generator)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -212,6 +214,13 @@ def equality_comparison_to_low_ir(comparison_expr: ir.EqualityComparison, cxx_id
     else:
         comparison_expr = lowir.EqualityComparison(lhs=lhs, rhs=rhs)
     return lhs_helper_fns + rhs_helper_fns, comparison_expr
+
+def attribute_access_expr_to_low_ir(attribute_access_expr: ir.AttributeAccessExpr, cxx_identifier_generator: Iterator[str]):
+    helper_fns, class_expr = expr_to_low_ir(attribute_access_expr.expr, cxx_identifier_generator)
+    assert class_expr.kind == lowir.ExprKind.TYPE
+    return helper_fns, lowir.ClassMemberAccess(class_type_expr=class_expr,
+                                               member_name=attribute_access_expr.attribute_name,
+                                               member_kind=lowir.ExprKind.TYPE)
 
 def assert_to_low_ir(assert_stmt: ir.Assert, cxx_identifier_generator: Iterator[str]):
     helper_fns, expr = expr_to_low_ir(assert_stmt.expr, cxx_identifier_generator)

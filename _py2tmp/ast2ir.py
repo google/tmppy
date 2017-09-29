@@ -480,6 +480,13 @@ def compare_ast_to_ir(ast_node: ast.Compare, compilation_context: CompilationCon
     else:
         raise CompilationError(compilation_context, ast_node, 'Comparison not supported.')  # pragma: no cover
 
+def attribute_expression_ast_to_ir(ast_node: ast.Attribute, compilation_context: CompilationContext):
+    value_expr = expression_ast_to_ir(ast_node.value, compilation_context)
+    if not isinstance(value_expr.type, ir.TypeType):
+        raise CompilationError(compilation_context, ast_node.value,
+                               'Attribute access is not supported for values of type %s.' % str(value_expr.type))
+    return ir.AttributeAccessExpr(expr=value_expr, attribute_name=ast_node.attr)
+
 def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.NameConstant):
         return name_constant_ast_to_ir(ast_node, compilation_context)
@@ -497,8 +504,10 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
         return var_reference_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.List) and isinstance(ast_node.ctx, ast.Load):
         return list_expression_ast_to_ir(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.Attribute) and isinstance(ast_node.ctx, ast.Load):
+        return attribute_expression_ast_to_ir(ast_node, compilation_context)
     else:
-        raise CompilationError(compilation_context, ast_node, 'Unsupported expression type.')  # pragma: no cover
+        raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported.')  # pragma: no cover
 
 def name_constant_ast_to_ir(ast_node: ast.NameConstant, compilation_context: CompilationContext):
     if isinstance(ast_node.value, bool):

@@ -174,6 +174,17 @@ class EqualityComparison(Expr):
             for var in expr.get_free_variables():
                 yield var
 
+class AttributeAccessExpr(Expr):
+    def __init__(self, expr: Expr, attribute_name: str):
+        super().__init__(type=TypeType())
+        assert isinstance(expr.type, TypeType)
+        self.expr = expr
+        self.attribute_name = attribute_name
+
+    def get_free_variables(self):
+        for var in self.expr.get_free_variables():
+            yield var
+
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
         # When expr_type is None, the statement never returns.
