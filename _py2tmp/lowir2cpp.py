@@ -52,6 +52,9 @@ def static_assert_to_cpp(assert_stmt: lowir.StaticAssert,
             if arg_decl.type.kind == lowir.ExprKind.BOOL:
                 bound_var = arg_decl.name
                 return 'static_assert(AlwaysTrueFromBool<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(**locals())
+            if arg_decl.type.kind == lowir.ExprKind.INT64:
+                bound_var = arg_decl.name
+                return 'static_assert(AlwaysTrueFromInt64<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(**locals())
             elif arg_decl.type.kind == lowir.ExprKind.TYPE:
                 bound_var = arg_decl.name
                 return 'static_assert(AlwaysTrueFromType<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(**locals())
@@ -72,6 +75,8 @@ def static_assert_to_cpp(assert_stmt: lowir.StaticAssert,
 def constant_def_to_cpp(constant_def: lowir.ConstantDef, cxx_identifier_generator: Iterator[str]):
     if isinstance(constant_def.type, lowir.BoolType):
         type_cpp = 'bool'
+    elif isinstance(constant_def.type, lowir.Int64Type):
+        type_cpp = 'int64_t'
     else:
         raise NotImplementedError('Unexpected expression type: %s' % constant_def.type)
 
@@ -113,6 +118,8 @@ def typedef_to_cpp(typedef: lowir.Typedef, cxx_identifier_generator: Iterator[st
 def _type_to_template_param_declaration(type: lowir.ExprType):
     if type.kind == lowir.ExprKind.BOOL:
         return 'bool'
+    elif type.kind == lowir.ExprKind.INT64:
+        return 'int64_t'
     elif type.kind == lowir.ExprKind.TYPE:
         return 'typename'
     elif type.kind == lowir.ExprKind.TEMPLATE:
@@ -184,10 +191,15 @@ def template_defn_to_cpp(template_defn: lowir.TemplateDefn, cxx_identifier_gener
     return main_definition_str + specializations_str
 
 def literal_to_cpp(literal: lowir.Literal):
-    return {
-        True: 'true',
-        False: 'false',
-    }[literal.value]
+    if isinstance(literal.value, bool):
+        return {
+            True: 'true',
+            False: 'false',
+        }[literal.value]
+    elif isinstance(literal.value, int):
+        return str(literal.value) + 'LL'
+    else:
+        raise NotImplementedError('Unexpected literal value: %s' % repr(literal.value))
 
 def type_literal_to_cpp(literal: lowir.TypeLiteral):
     return literal.cpp_type
@@ -221,7 +233,7 @@ def class_member_access_to_cpp(expr: lowir.ClassMemberAccess,
     else:
         cpp_fun = expr_to_cpp(expr.class_type_expr)
     member_name = expr.member_name
-    if expr.member_kind == lowir.ExprKind.BOOL:
+    if expr.member_kind in (lowir.ExprKind.BOOL, lowir.ExprKind.INT64):
         cpp_str_template = '{cpp_fun}::{member_name}'
     elif expr.member_kind in (lowir.ExprKind.TYPE, lowir.ExprKind.TEMPLATE):
         if omit_typename:

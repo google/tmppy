@@ -17,15 +17,25 @@
 #ifndef TMPPY_H
 #define TMPPY_H
 
-template <typename... Ts>
+#include <cstdint>
+
+template <typename...>
 struct List;
 
-template <bool... Ts>
+template <int64_t...>
+struct Int64List;
+
+template <bool...>
 struct BoolList;
 
 template <bool>
 struct AlwaysTrueFromBool {
   static constexpr bool value = true;
+};
+
+template <int64_t>
+struct AlwaysTrueFromInt64 {
+  static constexpr int64_t value = true;
 };
 
 template <typename>

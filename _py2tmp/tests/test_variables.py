@@ -22,6 +22,13 @@ def test_bool_variable_success():
     assert f(True) == True
 
 @assert_compilation_succeeds
+def test_int_variable_success():
+    def f(x: int):
+        y = x
+        return y
+    assert f(3) == 3
+
+@assert_compilation_succeeds
 def test_type_variable_success():
     from tmppy import Type
     def f(x: Type):

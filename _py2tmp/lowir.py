@@ -17,8 +17,9 @@ from enum import Enum
 
 class ExprKind(Enum):
     BOOL = 1
-    TYPE = 2
-    TEMPLATE = 3
+    INT64 = 2
+    TYPE = 3
+    TEMPLATE = 4
 
 class ExprType:
     def __init__(self, kind: ExprKind):
@@ -29,6 +30,10 @@ class ExprType:
 class BoolType(ExprType):
     def __init__(self):
         super().__init__(kind=ExprKind.BOOL)
+
+class Int64Type(ExprType):
+    def __init__(self):
+        super().__init__(kind=ExprKind.INT64)
 
 class TypeType(ExprType):
     def __init__(self):
@@ -59,7 +64,7 @@ class StaticAssert(TemplateBodyElement):
 class ConstantDef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr, type: ExprType):
         assert expr.kind == type.kind
-        assert isinstance(type, BoolType)
+        assert isinstance(type, BoolType) or isinstance(type, Int64Type)
         self.name = name
         self.expr = expr
         self.type = type
@@ -102,7 +107,7 @@ class TemplateDefn:
 class Literal(Expr):
     def __init__(self, value, kind: ExprKind):
         super().__init__(kind)
-        assert value in (True, False)
+        assert value in (True, False) or isinstance(value, int)
         self.value = value
 
     def references_any_of(self, variables: Set[str]):
@@ -147,7 +152,7 @@ class EqualityComparison(Expr):
     def __init__(self, lhs: Expr, rhs: Expr):
         super().__init__(kind=ExprKind.BOOL)
         assert lhs.kind == rhs.kind
-        assert lhs.kind in (ExprKind.BOOL, ExprKind.TYPE)
+        assert lhs.kind in (ExprKind.BOOL, ExprKind.INT64, ExprKind.TYPE)
         self.lhs = lhs
         self.rhs = rhs
 

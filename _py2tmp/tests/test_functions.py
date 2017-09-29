@@ -29,6 +29,14 @@ def test_function_call_returning_bool():
     assert g(True) == True
 
 @assert_compilation_succeeds
+def test_function_call_returning_int():
+    def f(x: int):
+        return x
+    def g(the_argument: int):
+        return f(f(the_argument))
+    assert g(3) == 3
+
+@assert_compilation_succeeds
 def test_function_call_returning_type():
     from tmppy import Type
     def f(x: Type):
@@ -356,6 +364,15 @@ def test_function_returning_function_returning_bool_ok():
     def g(b: Type):
         return f
     assert g(Type('int'))(True) == True
+
+@assert_compilation_succeeds
+def test_function_returning_function_returning_int_ok():
+    from tmppy import Type
+    def f(x: int):
+        return x
+    def g(b: Type):
+        return f
+    assert g(Type('int'))(15) == 15
 
 @assert_compilation_succeeds
 def test_function_returning_function_returning_function_ok():

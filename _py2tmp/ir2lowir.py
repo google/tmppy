@@ -21,6 +21,8 @@ from typing import List, Tuple, Optional, Iterator, Union
 def type_to_low_ir(type: ir.ExprType):
     if isinstance(type, ir.BoolType):
         return lowir.BoolType()
+    elif isinstance(type, ir.IntType):
+        return lowir.Int64Type()
     elif isinstance(type, ir.TypeType):
         return lowir.TypeType()
     elif isinstance(type, ir.ListType):
@@ -42,6 +44,8 @@ def expr_to_low_ir(expr: ir.Expr, cxx_identifier_generator: Iterator[str]) \
         return match_expr_to_low_ir(expr, cxx_identifier_generator)
     elif isinstance(expr, ir.BoolLiteral):
         return [], bool_literal_to_low_ir(expr)
+    elif isinstance(expr, ir.IntLiteral):
+        return [], int_literal_to_low_ir(expr)
     elif isinstance(expr, ir.TypeLiteral):
         return [], type_literal_to_low_ir(expr)
     elif isinstance(expr, ir.ListExpr):
@@ -69,7 +73,7 @@ def var_reference_to_low_ir(var: ir.VarReference):
 
 def _create_metafunction_call(template_expr: lowir.Expr, args: List[lowir.Expr], member_kind: lowir.ExprKind):
     assert template_expr.kind == lowir.ExprKind.TEMPLATE
-    if member_kind == lowir.ExprKind.BOOL:
+    if member_kind in (lowir.ExprKind.BOOL, lowir.ExprKind.INT64):
         member_name = 'value'
     else:
         member_name = 'type'
@@ -165,6 +169,9 @@ def match_expr_to_low_ir(match_expr: ir.MatchExpr, cxx_identifier_generator: Ite
 def bool_literal_to_low_ir(literal: ir.BoolLiteral):
     return lowir.Literal(value=literal.value, kind=lowir.ExprKind.BOOL)
 
+def int_literal_to_low_ir(literal: ir.IntLiteral):
+    return lowir.Literal(value=literal.value, kind=lowir.ExprKind.INT64)
+
 def type_literal_to_low_ir(literal: ir.TypeLiteral):
     return lowir.TypeLiteral.for_nonlocal(cpp_type=literal.cpp_type, kind=type_to_low_ir(literal.type).kind)
 
@@ -179,6 +186,8 @@ def list_expr_to_low_ir(list_expr: ir.ListExpr, cxx_identifier_generator: Iterat
     elem_kind = type_to_low_ir(list_expr.elem_type).kind
     if elem_kind == lowir.ExprKind.BOOL:
         list_template = lowir.TypeLiteral.for_nonlocal('BoolList', kind=lowir.ExprKind.TEMPLATE)
+    elif elem_kind == lowir.ExprKind.INT64:
+        list_template = lowir.TypeLiteral.for_nonlocal('Int64List', kind=lowir.ExprKind.TEMPLATE)
     elif elem_kind == lowir.ExprKind.TYPE:
         list_template = lowir.TypeLiteral.for_nonlocal('List', kind=lowir.ExprKind.TEMPLATE)
     else:
@@ -231,7 +240,7 @@ def assignment_to_low_ir(assignment: ir.Assignment, cxx_identifier_generator: It
     helper_fns, rhs = expr_to_low_ir(assignment.rhs, cxx_identifier_generator)
 
     low_ir_type = type_to_low_ir(assignment.lhs.type)
-    if low_ir_type.kind == lowir.ExprKind.BOOL:
+    if low_ir_type.kind in (lowir.ExprKind.BOOL, lowir.ExprKind.INT64):
         element = lowir.ConstantDef(name=lhs.cpp_type, expr=rhs, type=low_ir_type)
     else:
         element = lowir.Typedef(name=lhs.cpp_type, expr=rhs, type=low_ir_type)
@@ -239,7 +248,7 @@ def assignment_to_low_ir(assignment: ir.Assignment, cxx_identifier_generator: It
     return helper_fns, element
 
 def _create_result_body_element(expr: lowir.Expr, expr_type: lowir.ExprType):
-    if expr.kind == lowir.ExprKind.BOOL:
+    if expr.kind in (lowir.ExprKind.BOOL, lowir.ExprKind.INT64):
         return lowir.ConstantDef(name='value', expr=expr, type=expr_type)
     else:
         return lowir.Typedef(name='type', expr=expr, type=expr_type)

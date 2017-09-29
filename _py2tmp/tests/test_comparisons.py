@@ -39,3 +39,11 @@ def test_comparing_functions_error():
 def test_type_equals_success():
     from tmppy import Type
     assert Type('int') == Type('int')
+
+@assert_compilation_succeeds
+def test_int_equals_success():
+    assert 15 == 15
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_int_equals_error():
+    assert 1 == 0

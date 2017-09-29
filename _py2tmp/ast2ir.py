@@ -487,6 +487,23 @@ def attribute_expression_ast_to_ir(ast_node: ast.Attribute, compilation_context:
                                'Attribute access is not supported for values of type %s.' % str(value_expr.type))
     return ir.AttributeAccessExpr(expr=value_expr, attribute_name=ast_node.attr)
 
+def number_literal_expression_ast_to_ir(ast_node: ast.Num, compilation_context: CompilationContext, positive: bool):
+    n = ast_node.n
+    if isinstance(n, float):
+        raise CompilationError(compilation_context, ast_node, 'Floating-point values are not supported.')
+    if isinstance(n, complex):
+        raise CompilationError(compilation_context, ast_node, 'Complex values are not supported.')
+    assert isinstance(n, int)
+    if not positive:
+        n = -n
+    if n <= -2**63:
+        raise CompilationError(compilation_context, ast_node,
+                               'int value out of bounds: values lower than -2^63+1 are not supported.')
+    if n >= 2**63:
+        raise CompilationError(compilation_context, ast_node,
+                               'int value out of bounds: values greater than 2^63-1 are not supported.')
+    return ir.IntLiteral(value=n)
+
 def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.NameConstant):
         return name_constant_ast_to_ir(ast_node, compilation_context)
@@ -506,6 +523,10 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
         return list_expression_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Attribute) and isinstance(ast_node.ctx, ast.Load):
         return attribute_expression_ast_to_ir(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.Num):
+        return number_literal_expression_ast_to_ir(ast_node, compilation_context, positive=True)
+    elif isinstance(ast_node, ast.UnaryOp) and isinstance(ast_node.op, ast.USub) and isinstance(ast_node.operand, ast.Num):
+        return number_literal_expression_ast_to_ir(ast_node.operand, compilation_context, positive=False)
     else:
         raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported.')  # pragma: no cover
 
@@ -677,6 +698,8 @@ def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_co
     if isinstance(ast_node, ast.Name) and isinstance(ast_node.ctx, ast.Load):
         if ast_node.id == 'bool':
             return ir.BoolType()
+        elif ast_node.id == 'int':
+            return ir.IntType()
         elif ast_node.id == 'Type':
             return ir.TypeType()
         else:

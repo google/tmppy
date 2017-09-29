@@ -66,3 +66,11 @@ def test_list_of_functions_error():
         return [  # error: Creating lists of functions is not supported. The elements of this list have type: \(bool\) -> bool
             f
         ]
+
+@assert_compilation_succeeds
+def test_list_of_bools_ok():
+    assert [True, False] == [True, False]
+
+@assert_compilation_succeeds
+def test_list_of_ints_ok():
+    assert [1, 2, 5] == [1, 2, 5]

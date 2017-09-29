@@ -41,6 +41,13 @@ def test_attribute_access_on_bool_error():
     assert True.type == Type('int')  # error: Attribute access is not supported for values of type bool.
 
 @assert_conversion_fails
+def test_attribute_access_on_int_error():
+    from tmppy import Type
+    def f(b: bool):
+        x = 15
+        assert x.type == Type('int')  # error: Attribute access is not supported for values of type int.
+
+@assert_conversion_fails
 def test_attribute_access_on_list_error():
     from tmppy import Type
     assert [Type('int')].type == Type('int')  # error: Attribute access is not supported for values of type List\[Type\].

@@ -68,6 +68,26 @@ def test_unconditional_true_assertion_bool_param_function_called_ok():
     assert f(True) == True
 
 @assert_compilation_succeeds
+def test_unconditional_false_assertion_int_param_function_never_called_ok():
+    def f(x: int):
+        assert False == True
+        return x
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_unconditional_false_assertion_int_param_function_called_error():
+    def f(x: int):
+        assert False == True
+        return x
+    assert f(15) == 15
+
+@assert_compilation_succeeds
+def test_unconditional_true_assertion_int_param_function_called_ok():
+    def f(x: int):
+        assert False == False
+        return x
+    assert f(15) == 15
+
+@assert_compilation_succeeds
 def test_unconditional_false_assertion_type_param_function_never_called_ok():
     from tmppy import Type
     def f(x: Type):

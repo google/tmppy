@@ -26,6 +26,13 @@ class BoolType(ExprType):
     def __eq__(self, other):
         return isinstance(other, BoolType)
 
+class IntType(ExprType):
+    def __str__(self):
+        return 'int'
+
+    def __eq__(self, other):
+        return isinstance(other, IntType)
+
 class TypeType(ExprType):
     def __str__(self):
         return 'Type'
@@ -184,6 +191,15 @@ class AttributeAccessExpr(Expr):
     def get_free_variables(self):
         for var in self.expr.get_free_variables():
             yield var
+
+class IntLiteral(Expr):
+    def __init__(self, value: int):
+        super().__init__(type=IntType())
+        self.value = value
+
+    def get_free_variables(self):
+        if False:
+            yield
 
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
