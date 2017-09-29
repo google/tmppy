@@ -195,7 +195,6 @@ def test_if_else_else_branch_defining_additional_var_success():
         return y
     assert f(True) == Type('int')
 
-# TODO: We could return a better error in this case, by keeping track of "sometimes defined" symbols in the symbol table.
 @assert_conversion_fails
 def test_if_else_defining_different_vars_possibly_undefined_var_used_in_continuation_error():
     from tmppy import Type
@@ -204,8 +203,36 @@ def test_if_else_defining_different_vars_possibly_undefined_var_used_in_continua
             y = Type('int')
         else:
             y = Type('float')
+            b = True  # note: b might have been initialized here
+        return b  # error: Reference to a variable that may or may not have been initialized \(depending on which branch was taken\)
+
+@assert_conversion_fails
+def test_if_else_defining_different_vars_definitely_undefined_var_from_if_branch_used_in_continuation_error():
+    '''
+    from tmppy import Type
+    def f(x: bool):
+        if x:
+            y = Type('int')
             b = True
+            return True
+        else:
+            y = Type('float')
         return b  # error: Reference to undefined variable/function
+    '''
+
+@assert_conversion_fails
+def test_if_else_defining_different_vars_definitely_undefined_var_from_else_branch_used_in_continuation_error():
+    '''
+    from tmppy import Type
+    def f(x: bool):
+        if x:
+            y = Type('int')
+        else:
+            y = Type('float')
+            b = True
+            return True
+        return b  # error: Reference to undefined variable/function
+    '''
 
 @assert_conversion_fails
 def test_if_else_if_branch_does_not_return_error():
@@ -244,3 +271,96 @@ def test_if_else_sequential_success():
         else:
             return True
     assert f(False) == True
+
+@assert_conversion_fails
+def test_if_else_sequential_reassigned_var_if_if_error():
+    from tmppy import Type
+    def f(x: bool, y: bool):
+        if x:
+            z = Type('int')  # note: It might have been initialized here \(depending on which branch is taken\).
+        else:
+            p1 = True
+        if y:
+            z = Type('int')  # error: z could be already initialized at this point.
+        else:
+            p2 = True
+        return True
+
+@assert_conversion_fails
+def test_if_else_sequential_reassigned_var_if_without_else_if_error():
+    from tmppy import Type
+    def f(x: bool, y: bool):
+        if x:
+            z = Type('int')  # note: It might have been initialized here \(depending on which branch is taken\).
+        if y:
+            z = Type('int')  # error: z could be already initialized at this point.
+        else:
+            p1 = True
+        return True
+
+@assert_conversion_fails
+def test_if_else_sequential_reassigned_var_if_else_error():
+    from tmppy import Type
+    def f(x: bool, y: bool):
+        if x:
+            z = Type('int')  # note: It might have been initialized here \(depending on which branch is taken\).
+        else:
+            p1 = True
+        if y:
+            p2 = True
+        else:
+            z = Type('int')  # error: z could be already initialized at this point.
+        return True
+
+@assert_conversion_fails
+def test_if_else_sequential_reassigned_var_if_without_else_else_error():
+    from tmppy import Type
+    def f(x: bool, y: bool):
+        if x:
+            z = Type('int')  # note: It might have been initialized here \(depending on which branch is taken\).
+        if y:
+            p1 = True
+        else:
+            z = Type('int')  # error: z could be already initialized at this point.
+        return True
+
+@assert_conversion_fails
+def test_if_else_sequential_reassigned_var_else_if_error():
+    from tmppy import Type
+    def f(x: bool, y: bool):
+        if x:
+            p1 = True
+        else:
+            z = Type('int')  # note: It might have been initialized here \(depending on which branch is taken\).
+        if y:
+            z = Type('int')  # error: z could be already initialized at this point.
+        else:
+            p2 = True
+        return True
+
+@assert_conversion_fails
+def test_if_else_sequential_reassigned_var_else_if_without_else_error():
+    from tmppy import Type
+    def f(x: bool, y: bool):
+        if x:
+            p1 = True
+        else:
+            z = Type('int')  # note: It might have been initialized here \(depending on which branch is taken\).
+        if y:
+            z = Type('int')  # error: z could be already initialized at this point.
+        return True
+
+@assert_conversion_fails
+def test_if_else_sequential_reassigned_var_else_else_error():
+    from tmppy import Type
+    def f(x: bool, y: bool):
+        if x:
+            p1 = True
+        else:
+            z = Type('int')  # note: It might have been initialized here \(depending on which branch is taken\).
+        if y:
+            p2 = True
+        else:
+            z = Type('int')  # error: z could be already initialized at this point.
+        return True
+

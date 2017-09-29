@@ -23,40 +23,52 @@ class Symbol:
         self.name = name
 
 class SymbolLookupResult:
-    def __init__(self, symbol: Symbol, ast_node: ast.AST, symbol_table: 'SymbolTable'):
+    def __init__(self, symbol: Symbol, ast_node: ast.AST, is_only_partially_defined: bool, symbol_table: 'SymbolTable'):
         self.symbol = symbol
         self.ast_node = ast_node
+        self.is_only_partially_defined = is_only_partially_defined
         self.symbol_table = symbol_table
 
 class SymbolTable:
     def __init__(self, parent=None):
-        self.symbols_by_name = dict() # type: Dict[str, Tuple[Symbol, ast.AST]]
+        self.symbols_by_name = dict() # type: Dict[str, Tuple[Symbol, ast.AST, bool]]
         self.parent = parent
 
     def get_symbol_definition(self, name: str):
         result = self.symbols_by_name.get(name)
         if result:
-            symbol, ast = result
-            return SymbolLookupResult(symbol, ast, self)
+            symbol, ast, is_only_partially_defined = result
+            return SymbolLookupResult(symbol, ast, is_only_partially_defined, self)
         if self.parent:
             return self.parent.get_symbol_definition(name)
         return None
 
-    def add_symbol(self, name: str, type: ir.ExprType, definition_ast_node: ast.AST, compilation_context):
+    def add_symbol(self,
+                   name: str,
+                   type: ir.ExprType,
+                   definition_ast_node: ast.AST,
+                   compilation_context: 'CompilationContext',
+                   is_only_partially_defined: bool = False):
         '''
         Adds a symbol to the symbol table.
 
         This throws an error (created by calling `create_already_defined_error(previous_type)`) if a symbol with the
         same name and different type was already defined in this scope.
         '''
-        previous_symbol, previous_definition_ast_node = self.symbols_by_name.get(name, (None, None))
+        previous_symbol, previous_definition_ast_node, previous_symbol_is_only_partially_defined = self.symbols_by_name.get(name, (None, None, None))
         if previous_symbol:
             assert isinstance(previous_definition_ast_node, ast.AST)
-            raise CompilationError(compilation_context,
-                                   definition_ast_node,
-                                   '%s was already defined in this scope.' % name,
-                                   notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
-        self.symbols_by_name[name] = (Symbol(name, type), definition_ast_node)
+            if previous_symbol_is_only_partially_defined:
+                raise CompilationError(compilation_context,
+                                       definition_ast_node,
+                                       '%s could be already initialized at this point.' % name,
+                                       notes=[(previous_definition_ast_node, 'It might have been initialized here (depending on which branch is taken).')])
+            else:
+                raise CompilationError(compilation_context,
+                                       definition_ast_node,
+                                       '%s was already defined in this scope.' % name,
+                                       notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
+        self.symbols_by_name[name] = (Symbol(name, type), definition_ast_node, is_only_partially_defined)
 
 class CompilationContext:
     def __init__(self, symbol_table: SymbolTable, filename: str, source_lines: List[str], function_name: Optional[str] = None):
@@ -250,43 +262,74 @@ def if_stmt_ast_to_ir(ast_node: ast.If,
     if not previous_return_stmt and first_return_stmt:
         previous_return_stmt = first_return_stmt
 
+    else_branch_compilation_context = compilation_context.create_child_context()
+
     if ast_node.orelse:
-        else_branch_compilation_context = compilation_context.create_child_context()
         else_stmts, first_return_stmt = statements_ast_to_ir(ast_node.orelse, else_branch_compilation_context, previous_return_stmt, check_always_returns)
         else_branch_return_info = else_stmts[-1].get_return_type()
 
         if not previous_return_stmt and first_return_stmt:
             previous_return_stmt = first_return_stmt
-
-        for symbol, definition_ast_node in if_branch_compilation_context.symbol_table.symbols_by_name.values():
-            if symbol.name in else_branch_compilation_context.symbol_table.symbols_by_name:
-                other_symbol, other_definition_ast_node = else_branch_compilation_context.symbol_table.symbols_by_name[symbol.name]
-                if symbol.type != other_symbol.type:
-                    raise CompilationError(compilation_context, other_definition_ast_node,
-                                           'The variable %s is defined with type %s here, but it was previously defined with type %s in another branch.' % (
-                                               symbol.name, str(other_symbol.type), str(symbol.type)),
-                                           notes=[(definition_ast_node, 'A previous definition with type %s was here.' % str(symbol.type))])
-                compilation_context.symbol_table.add_symbol(name=symbol.name,
-                                                            type=symbol.type,
-                                                            definition_ast_node=definition_ast_node,
-                                                            compilation_context=compilation_context)
-            elif else_branch_return_info.always_returns:
-                compilation_context.symbol_table.add_symbol(name=symbol.name,
-                                                            type=symbol.type,
-                                                            definition_ast_node=definition_ast_node,
-                                                            compilation_context=compilation_context)
-
-        if if_branch_return_info.always_returns and not else_branch_return_info.always_returns:
-            for symbol, definition_ast_node in else_branch_compilation_context.symbol_table.symbols_by_name.values():
-                compilation_context.symbol_table.add_symbol(name=symbol.name,
-                                                            type=symbol.type,
-                                                            definition_ast_node=definition_ast_node,
-                                                            compilation_context=compilation_context)
     else:
+        else_branch_return_info = ir.ReturnTypeInfo(type=None, always_returns=False)
+
         else_stmts = []
         if check_always_returns:
             raise CompilationError(compilation_context, ast_node,
                                    'Missing return statement. You should add an else branch that returns, or a return after the if.')
+
+    symbol_names = set()
+    if not if_branch_return_info.always_returns:
+        symbol_names = symbol_names.union(if_branch_compilation_context.symbol_table.symbols_by_name.keys())
+    if not else_branch_return_info.always_returns:
+        symbol_names = symbol_names.union(else_branch_compilation_context.symbol_table.symbols_by_name.keys())
+
+    for symbol_name in symbol_names:
+        if if_branch_return_info.always_returns or symbol_name not in if_branch_compilation_context.symbol_table.symbols_by_name:
+            if_branch_symbol = None
+            if_branch_definition_ast_node = None
+            if_branch_is_only_partially_defined = None
+        else:
+            if_branch_symbol, if_branch_definition_ast_node, if_branch_is_only_partially_defined = if_branch_compilation_context.symbol_table.symbols_by_name[symbol_name]
+
+        if else_branch_return_info.always_returns or symbol_name not in else_branch_compilation_context.symbol_table.symbols_by_name:
+            else_branch_symbol = None
+            else_branch_definition_ast_node = None
+            else_branch_is_only_partially_defined = None
+        else:
+            else_branch_symbol, else_branch_definition_ast_node, else_branch_is_only_partially_defined = else_branch_compilation_context.symbol_table.symbols_by_name[symbol_name]
+
+        if if_branch_symbol and else_branch_symbol:
+            if if_branch_symbol.type != else_branch_symbol.type:
+                raise CompilationError(compilation_context, else_branch_definition_ast_node,
+                                       'The variable %s is defined with type %s here, but it was previously defined with type %s in another branch.' % (
+                                           symbol_name, str(else_branch_symbol.type), str(if_branch_symbol.type)),
+                                       notes=[(if_branch_definition_ast_node, 'A previous definition with type %s was here.' % str(if_branch_symbol.type))])
+            symbol = if_branch_symbol
+            definition_ast_node = if_branch_definition_ast_node
+            is_only_partially_defined = if_branch_is_only_partially_defined or else_branch_is_only_partially_defined
+        elif if_branch_symbol:
+            symbol = if_branch_symbol
+            definition_ast_node = if_branch_definition_ast_node
+            if else_branch_return_info.always_returns:
+                is_only_partially_defined = if_branch_is_only_partially_defined
+            else:
+                is_only_partially_defined = True
+        elif else_branch_symbol:
+            symbol = else_branch_symbol
+            definition_ast_node = else_branch_definition_ast_node
+            if if_branch_return_info.always_returns:
+                is_only_partially_defined = else_branch_is_only_partially_defined
+            else:
+                is_only_partially_defined = True
+        else:
+            continue
+
+        compilation_context.symbol_table.add_symbol(name=symbol.name,
+                                                    type=symbol.type,
+                                                    definition_ast_node=definition_ast_node,
+                                                    compilation_context=compilation_context,
+                                                    is_only_partially_defined=is_only_partially_defined)
 
     return ir.IfStmt(cond_expr=cond_expr, if_stmts=if_stmts, else_stmts=else_stmts), previous_return_stmt
 
@@ -507,6 +550,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
                                    'Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.')
         lookup_result = compilation_context.symbol_table.get_symbol_definition(fun_expr.name)
         assert lookup_result
+        assert not lookup_result.is_only_partially_defined
         fun_definition_ast_node = lookup_result.ast_node
 
         function_definition_note = (fun_definition_ast_node, 'The definition of %s was here' % ast_node.func.id)
@@ -544,6 +588,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
 
                 if isinstance(keyword_arg.value, ast.Name):
                     lookup_result = compilation_context.symbol_table.get_symbol_definition(keyword_arg.value.id)
+                    assert not lookup_result.is_only_partially_defined
                     notes.append((lookup_result.ast_node, 'The definition of %s was here' % keyword_arg.value.id))
 
                 raise CompilationError(compilation_context, keyword_arg.value,
@@ -557,6 +602,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
             if isinstance(ast_node.func, ast.Name):
                 lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
                 assert lookup_result
+                assert not lookup_result.is_only_partially_defined
                 raise CompilationError(compilation_context, ast_node,
                                        'Argument number mismatch in function call to %s: got %s arguments, expected %s' % (
                                            ast_node.func.id, len(args), len(fun_expr.type.argtypes)),
@@ -571,10 +617,14 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
                 notes = []
                 if isinstance(ast_node.func, ast.Name):
                     lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
+                    assert lookup_result
+                    assert not lookup_result.is_only_partially_defined
                     notes.append((lookup_result.ast_node, 'The definition of %s was here' % ast_node.func.id))
 
                 if isinstance(expr_ast_node, ast.Name):
                     lookup_result = compilation_context.symbol_table.get_symbol_definition(expr_ast_node.id)
+                    assert lookup_result
+                    assert not lookup_result.is_only_partially_defined
                     notes.append((lookup_result.ast_node, 'The definition of %s was here' % expr_ast_node.id))
 
                 raise CompilationError(compilation_context, expr_ast_node,
@@ -589,6 +639,10 @@ def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: Compilation
     lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.id)
     if not lookup_result:
         raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function')
+    if lookup_result.is_only_partially_defined:
+        raise CompilationError(compilation_context, ast_node,
+                               'Reference to a variable that may or may not have been initialized (depending on which branch was taken)',
+                               notes=[(lookup_result.ast_node, '%s might have been initialized here' % ast_node.id)])
     return ir.VarReference(type=lookup_result.symbol.type,
                            name=lookup_result.symbol.name,
                            is_global_function=lookup_result.symbol_table.parent is None)
