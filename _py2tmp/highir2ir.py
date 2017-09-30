@@ -56,6 +56,8 @@ def expr_to_ir(expr: highir.Expr, identifier_generator: Iterator[str]) \
         stmts, expr = and_expr_to_ir(expr, identifier_generator)
     elif isinstance(expr, highir.OrExpr):
         stmts, expr = or_expr_to_ir(expr, identifier_generator)
+    elif isinstance(expr, highir.NotExpr):
+        stmts, expr = not_expr_to_ir(expr, identifier_generator)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -134,7 +136,7 @@ def attribute_access_expr_to_ir(attribute_access_expr: highir.AttributeAccessExp
     stmts, var = expr_to_ir(attribute_access_expr.expr, identifier_generator)
     return stmts, ir.AttributeAccessExpr(var=var, attribute_name=attribute_access_expr.attribute_name)
 
-def and_expr_to_ir(expr, identifier_generator):
+def and_expr_to_ir(expr: highir.AndExpr, identifier_generator: Iterator[str]):
     lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
     rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
 
@@ -161,7 +163,7 @@ def and_expr_to_ir(expr, identifier_generator):
 
     return lhs_stmts, var
 
-def or_expr_to_ir(expr, identifier_generator):
+def or_expr_to_ir(expr: highir.OrExpr, identifier_generator: Iterator[str]):
     lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
     rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
 
@@ -187,6 +189,18 @@ def or_expr_to_ir(expr, identifier_generator):
                                else_stmts=rhs_stmts))
 
     return lhs_stmts, var
+
+def not_expr_to_ir(expr: highir.NotExpr, identifier_generator: Iterator[str]):
+    stmts, var = expr_to_ir(expr.expr, identifier_generator)
+
+    var2 = ir.VarReference(type=ir.BoolType(),
+                           name=next(identifier_generator),
+                           is_global_function=False)
+
+    stmts.append(ir.Assignment(lhs=var2,
+                               rhs=ir.NotExpr(var=var)))
+
+    return stmts, var2
 
 def assert_to_ir(assert_stmt: highir.Assert, identifier_generator: Iterator[str]):
     stmts, var = expr_to_ir(assert_stmt.expr, identifier_generator)

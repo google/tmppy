@@ -206,6 +206,16 @@ class IntLiteral(Expr):
         if False:
             yield
 
+class NotExpr(Expr):
+    def __init__(self, var: VarReference):
+        assert var.type == BoolType()
+        super().__init__(type=BoolType())
+        self.var = var
+
+    def get_free_variables(self):
+        for var in self.var.get_free_variables():
+            yield var
+
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
         # When expr_type is None, the statement never returns.

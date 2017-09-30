@@ -54,6 +54,8 @@ def expr_to_low_ir(expr: ir.Expr, identifier_generator: Iterator[str]) -> Tuple[
         return [], equality_comparison_to_low_ir(expr)
     elif isinstance(expr, ir.AttributeAccessExpr):
         return [], attribute_access_expr_to_low_ir(expr)
+    elif isinstance(expr, ir.NotExpr):
+        return [], not_expr_to_low_ir(expr)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -250,6 +252,9 @@ def attribute_access_expr_to_low_ir(attribute_access_expr: ir.AttributeAccessExp
     return lowir.ClassMemberAccess(class_type_expr=class_expr,
                                    member_name=attribute_access_expr.attribute_name,
                                    member_kind=lowir.ExprKind.TYPE)
+
+def not_expr_to_low_ir(not_expr: ir.NotExpr):
+    return lowir.NotExpr(expr=var_reference_to_low_ir(not_expr.var))
 
 def assert_to_low_ir(assert_stmt: ir.Assert):
     expr = var_reference_to_low_ir(assert_stmt.var)

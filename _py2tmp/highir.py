@@ -208,6 +208,12 @@ class OrExpr(Expr):
         self.lhs = lhs
         self.rhs = rhs
 
+class NotExpr(Expr):
+    def __init__(self, expr: Expr):
+        assert expr.type == BoolType()
+        super().__init__(type=BoolType())
+        self.expr = expr
+
 class IntLiteral(Expr):
     def __init__(self, value: int):
         super().__init__(type=IntType())

@@ -203,6 +203,18 @@ class ClassMemberAccess(Expr):
         for var in self.class_type_expr.get_free_vars():
             yield var
 
+class NotExpr(Expr):
+    def __init__(self, expr: Expr):
+        super().__init__(kind=ExprKind.BOOL)
+        self.expr = expr
+
+    def references_any_of(self, variables: Set[str]):
+        return self.expr.references_any_of(variables)
+
+    def get_free_vars(self):
+        for var in self.expr.get_free_vars():
+            yield var
+
 class Header:
     def __init__(self, content: List[Union[TemplateDefn, StaticAssert, ConstantDef, Typedef]]):
         self.content = content

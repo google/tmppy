@@ -504,7 +504,7 @@ def number_literal_expression_ast_to_ir(ast_node: ast.Num, compilation_context: 
                                'int value out of bounds: values greater than 2^63-1 are not supported.')
     return highir.IntLiteral(value=n)
 
-def and_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context):
+def and_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context: CompilationContext):
     assert isinstance(ast_node.op, ast.And)
 
     if not compilation_context.current_function_name:
@@ -527,7 +527,7 @@ def and_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context):
 
     return final_expr
 
-def or_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context):
+def or_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context: CompilationContext):
     assert isinstance(ast_node.op, ast.Or)
 
     if not compilation_context.current_function_name:
@@ -549,6 +549,17 @@ def or_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context):
         final_expr = highir.OrExpr(lhs=expr, rhs=final_expr)
 
     return final_expr
+
+def not_expression_ast_to_ir(ast_node: ast.UnaryOp, compilation_context: CompilationContext):
+    assert isinstance(ast_node.op, ast.Not)
+
+    expr = expression_ast_to_ir(ast_node.operand, compilation_context)
+
+    if expr.type != highir.BoolType():
+        raise CompilationError(compilation_context, ast_node.operand,
+                               'The "or" operator is only supported for booleans, but this value has type %s.' % str(expr.type))
+
+    return highir.NotExpr(expr=expr)
 
 def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.NameConstant):
@@ -577,6 +588,8 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
         return and_expression_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.BoolOp) and isinstance(ast_node.op, ast.Or):
         return or_expression_ast_to_ir(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.UnaryOp) and isinstance(ast_node.op, ast.Not):
+        return not_expression_ast_to_ir(ast_node, compilation_context)
     else:
         # raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported: %s' % ast_to_string(ast_node))
         raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported.')  # pragma: no cover

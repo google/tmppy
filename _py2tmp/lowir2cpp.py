@@ -28,6 +28,8 @@ def expr_to_cpp(expr: lowir.Expr,
         return template_instantiation_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
     elif isinstance(expr, lowir.ClassMemberAccess):
         return class_member_access_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+    elif isinstance(expr, lowir.NotExpr):
+        return not_expr_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
     else:
         raise NotImplementedError('Unexpected expr: %s' % str(expr.__class__))
 
@@ -364,6 +366,12 @@ def class_member_access_to_cpp(expr: lowir.ClassMemberAccess,
     else:
         raise NotImplementedError('Member kind: %s' % expr.member_kind)
     return helper_decls, cpp_str_template.format(**locals())
+
+def not_expr_to_cpp(expr: lowir.NotExpr,
+                    enclosing_function_defn_args: List[lowir.TemplateArgDecl],
+                    identifier_generator: Iterator[str]):
+    helper_decls, inner_expr = expr_to_cpp(expr.expr, enclosing_function_defn_args, identifier_generator)
+    return helper_decls, '!({inner_expr})'.format(**locals())
 
 def header_to_cpp(header: lowir.Header, identifier_generator: Iterator[str]):
     header_chunks = ['''\
