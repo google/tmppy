@@ -22,6 +22,10 @@ def test_bool_equals_success():
 def test_bool_equals_error():
     assert True == False
 
+@assert_compilation_succeeds
+def test_bool_not_equals_success():
+    assert True == True, 'Assertion error'
+
 @assert_conversion_fails
 def test_comparison_different_types():
     from tmppy import Type
@@ -35,10 +39,22 @@ def test_comparing_functions_error():
     def g(x: bool):
         return f == f  # error: Type not supported in equality comparison: \(bool\) -> bool
 
+@assert_conversion_fails
+def test_comparing_functions_with_not_equal_error():
+    def f(x: bool):
+        return x
+    def g(x: bool):
+        return f != f  # error: Type not supported in equality comparison: \(bool\) -> bool
+
 @assert_compilation_succeeds
 def test_type_equals_success():
     from tmppy import Type
     assert Type('int') == Type('int')
+
+@assert_compilation_succeeds
+def test_type_not_equal_success():
+    from tmppy import Type
+    assert Type('int') != Type('float')
 
 @assert_compilation_succeeds
 def test_int_equals_success():
@@ -47,3 +63,7 @@ def test_int_equals_success():
 @assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
 def test_int_equals_error():
     assert 1 == 0
+
+@assert_compilation_succeeds
+def test_int_not_equal_success():
+    assert 15 != 3

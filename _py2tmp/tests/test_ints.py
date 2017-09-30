@@ -76,6 +76,30 @@ def test_int_modulus_success():
     assert 7 % 3 == 1
 
 @assert_compilation_succeeds
+def test_int_equals_when_less_than():
+    assert not 1 == 3
+
+@assert_compilation_succeeds
+def test_int_equals_when_equal():
+    assert 1 == 1
+
+@assert_compilation_succeeds
+def test_int_equals_when_greater_than():
+    assert not 3 == 1
+
+@assert_compilation_succeeds
+def test_int_not_equals_when_less_than():
+    assert 1 != 3
+
+@assert_compilation_succeeds
+def test_int_not_equals_when_equal():
+    assert not 1 != 1
+
+@assert_compilation_succeeds
+def test_int_not_equals_when_greater_than():
+    assert 3 != 1
+
+@assert_compilation_succeeds
 def test_int_less_than_when_less_than():
     assert 1 < 3
 

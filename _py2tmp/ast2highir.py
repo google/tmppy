@@ -498,6 +498,8 @@ def compare_ast_to_ir(ast_node: ast.Compare, compilation_context: CompilationCon
 
     if isinstance(op, ast.Eq):
         return eq_ast_to_ir(lhs, rhs, compilation_context)
+    elif isinstance(op, ast.NotEq):
+        return not_eq_ast_to_ir(lhs, rhs, compilation_context)
     elif isinstance(op, ast.Lt):
         return int_comparison_ast_to_ir(lhs, rhs, '<', compilation_context)
     elif isinstance(op, ast.LtE):
@@ -694,6 +696,16 @@ def eq_ast_to_ir(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: Comp
     if isinstance(lhs.type, highir.FunctionType):
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.type))
     return highir.EqualityComparison(lhs=lhs, rhs=rhs)
+
+def not_eq_ast_to_ir(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: CompilationContext):
+    lhs = expression_ast_to_ir(lhs_node, compilation_context)
+    rhs = expression_ast_to_ir(rhs_node, compilation_context)
+    if lhs.type != rhs.type:
+        raise CompilationError(compilation_context, lhs_node, 'Type mismatch in !=: %s vs %s' % (
+            str(lhs.type), str(rhs.type)))
+    if isinstance(lhs.type, highir.FunctionType):
+        raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.type))
+    return highir.NotExpr(expr=highir.EqualityComparison(lhs=lhs, rhs=rhs))
 
 def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     fun_expr = expression_ast_to_ir(ast_node.func, compilation_context)
