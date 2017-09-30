@@ -216,6 +216,46 @@ class NotExpr(Expr):
         for var in self.var.get_free_variables():
             yield var
 
+class UnaryMinusExpr(Expr):
+    def __init__(self, var: VarReference):
+        assert var.type == IntType()
+        super().__init__(type=IntType())
+        self.var = var
+
+    def get_free_variables(self):
+        for var in self.var.get_free_variables():
+            yield var
+
+class IntComparisonExpr(Expr):
+    def __init__(self, lhs: VarReference, rhs: VarReference, op: str):
+        assert lhs.type == IntType()
+        assert rhs.type == IntType()
+        assert op in ('<', '>', '<=', '>=')
+        super().__init__(type=BoolType())
+        self.lhs = lhs
+        self.rhs = rhs
+        self.op = op
+
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
+class IntBinaryOpExpr(Expr):
+    def __init__(self, lhs: VarReference, rhs: VarReference, op: str):
+        assert lhs.type == IntType()
+        assert rhs.type == IntType()
+        assert op in ('+', '-', '*', '//', '%')
+        super().__init__(type=IntType())
+        self.lhs = lhs
+        self.rhs = rhs
+        self.op = op
+
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
         # When expr_type is None, the statement never returns.

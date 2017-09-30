@@ -22,14 +22,18 @@ def expr_to_cpp(expr: lowir.Expr,
         return '', literal_to_cpp(expr)
     elif isinstance(expr, lowir.TypeLiteral):
         return '', type_literal_to_cpp(expr)
-    elif isinstance(expr, lowir.EqualityComparison):
-        return equality_comparison_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+    elif isinstance(expr, lowir.ComparisonExpr):
+        return comparison_expr_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
     elif isinstance(expr, lowir.TemplateInstantiation):
         return template_instantiation_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
     elif isinstance(expr, lowir.ClassMemberAccess):
         return class_member_access_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
     elif isinstance(expr, lowir.NotExpr):
         return not_expr_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+    elif isinstance(expr, lowir.UnaryMinusExpr):
+        return unary_minus_expr_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+    elif isinstance(expr, lowir.Int64BinaryOpExpr):
+        return int64_binary_op_expr_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
     else:
         raise NotImplementedError('Unexpected expr: %s' % str(expr.__class__))
 
@@ -228,12 +232,21 @@ def type_literal_to_cpp(literal: lowir.TypeLiteral):
 def type_pattern_literal_to_cpp(pattern: lowir.TemplateArgPatternLiteral):
     return pattern.cxx_pattern
 
-def equality_comparison_to_cpp(comparison: lowir.EqualityComparison,
-                               enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                               identifier_generator: Iterator[str]):
+def comparison_expr_to_cpp(comparison: lowir.ComparisonExpr,
+                           enclosing_function_defn_args: List[lowir.TemplateArgDecl],
+                           identifier_generator: Iterator[str]):
     lhs_helper_decls, lhs_cpp_meta_expr = expr_to_cpp(comparison.lhs, enclosing_function_defn_args, identifier_generator)
     rhs_helper_decls, rhs_cpp_meta_expr = expr_to_cpp(comparison.rhs, enclosing_function_defn_args, identifier_generator)
-    return lhs_helper_decls + rhs_helper_decls, '({lhs_cpp_meta_expr}) == ({rhs_cpp_meta_expr})'.format(**locals())
+    op = comparison.op
+    return lhs_helper_decls + rhs_helper_decls, '({lhs_cpp_meta_expr}) {op} ({rhs_cpp_meta_expr})'.format(**locals())
+
+def int64_binary_op_expr_to_cpp(expr: lowir.Int64BinaryOpExpr,
+                                enclosing_function_defn_args: List[lowir.TemplateArgDecl],
+                                identifier_generator: Iterator[str]):
+    lhs_helper_decls, lhs_cpp_meta_expr = expr_to_cpp(expr.lhs, enclosing_function_defn_args, identifier_generator)
+    rhs_helper_decls, rhs_cpp_meta_expr = expr_to_cpp(expr.rhs, enclosing_function_defn_args, identifier_generator)
+    op = expr.op
+    return lhs_helper_decls + rhs_helper_decls, '({lhs_cpp_meta_expr}) {op} ({rhs_cpp_meta_expr})'.format(**locals())
 
 def _select_best_arg_decl_for_select1st(args: List[lowir.TemplateArgDecl]):
     for arg in args:
@@ -372,6 +385,12 @@ def not_expr_to_cpp(expr: lowir.NotExpr,
                     identifier_generator: Iterator[str]):
     helper_decls, inner_expr = expr_to_cpp(expr.expr, enclosing_function_defn_args, identifier_generator)
     return helper_decls, '!({inner_expr})'.format(**locals())
+
+def unary_minus_expr_to_cpp(expr: lowir.UnaryMinusExpr,
+                            enclosing_function_defn_args: List[lowir.TemplateArgDecl],
+                            identifier_generator: Iterator[str]):
+    helper_decls, inner_expr = expr_to_cpp(expr.expr, enclosing_function_defn_args, identifier_generator)
+    return helper_decls, '-({inner_expr})'.format(**locals())
 
 def header_to_cpp(header: lowir.Header, identifier_generator: Iterator[str]):
     header_chunks = ['''\

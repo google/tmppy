@@ -47,3 +47,78 @@ def test_int_min_success():
 def test_int_min_minus_one_error():
     def f(x: bool):
         return -9223372036854775808  # error: int value out of bounds: values lower than -2\^63\+1 are not supported.
+
+@assert_compilation_succeeds
+def test_int_unary_minus_success():
+    def f(x: int):
+        return -x
+    assert f(3) == -3
+    assert f(f(3)) == 3
+
+@assert_compilation_succeeds
+def test_int_plus_success():
+    assert 2 + 3 == 5
+
+@assert_compilation_succeeds
+def test_int_minus_success():
+    assert 2 - 3 == -1
+
+@assert_compilation_succeeds
+def test_int_multiplication_success():
+    assert 2 * 3 == 6
+
+@assert_compilation_succeeds
+def test_int_division_success():
+    assert 7 // 3 == 2
+
+@assert_compilation_succeeds
+def test_int_modulus_success():
+    assert 7 % 3 == 1
+
+@assert_compilation_succeeds
+def test_int_less_than_when_less_than():
+    assert 1 < 3
+
+@assert_compilation_succeeds
+def test_int_less_than_when_equal():
+    assert not 1 < 1
+
+@assert_compilation_succeeds
+def test_int_less_than_when_greater_than():
+    assert not 3 < 1
+
+@assert_compilation_succeeds
+def test_int_greater_than_when_less_than():
+    assert not 1 > 3
+
+@assert_compilation_succeeds
+def test_int_greater_than_when_equal():
+    assert not 1 > 1
+
+@assert_compilation_succeeds
+def test_int_greater_than_when_greater_than():
+    assert 3 > 1
+
+@assert_compilation_succeeds
+def test_int_less_than_or_equal_to_when_less_than():
+    assert 1 <= 3
+
+@assert_compilation_succeeds
+def test_int_less_than_or_equal_to_when_equal():
+    assert 1 <= 1
+
+@assert_compilation_succeeds
+def test_int_less_than_or_equal_to_when_greater_than():
+    assert not 3 <= 1
+
+@assert_compilation_succeeds
+def test_int_greater_than_or_equal_to_when_less_than():
+    assert not 1 >= 3
+
+@assert_compilation_succeeds
+def test_int_greater_than_or_equal_to_when_equal():
+    assert 1 >= 1
+
+@assert_compilation_succeeds
+def test_int_greater_than_or_equal_to_when_greater_than():
+    assert 3 >= 1

@@ -56,6 +56,12 @@ def expr_to_low_ir(expr: ir.Expr, identifier_generator: Iterator[str]) -> Tuple[
         return [], attribute_access_expr_to_low_ir(expr)
     elif isinstance(expr, ir.NotExpr):
         return [], not_expr_to_low_ir(expr)
+    elif isinstance(expr, ir.UnaryMinusExpr):
+        return [], unary_minus_expr_to_low_ir(expr)
+    elif isinstance(expr, ir.IntComparisonExpr):
+        return [], int_comparison_expr_to_low_ir(expr)
+    elif isinstance(expr, ir.IntBinaryOpExpr):
+        return [], int_binary_op_expr_to_low_ir(expr)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -243,7 +249,7 @@ def equality_comparison_to_low_ir(comparison_expr: ir.EqualityComparison):
                                                                type_to_low_ir(comparison_expr.rhs.type)],
                                                     member_kind=lowir.ExprKind.BOOL)
     else:
-        comparison_expr = lowir.EqualityComparison(lhs=lhs, rhs=rhs)
+        comparison_expr = lowir.ComparisonExpr(lhs=lhs, rhs=rhs, op='==')
     return comparison_expr
 
 def attribute_access_expr_to_low_ir(attribute_access_expr: ir.AttributeAccessExpr):
@@ -255,6 +261,26 @@ def attribute_access_expr_to_low_ir(attribute_access_expr: ir.AttributeAccessExp
 
 def not_expr_to_low_ir(not_expr: ir.NotExpr):
     return lowir.NotExpr(expr=var_reference_to_low_ir(not_expr.var))
+
+def unary_minus_expr_to_low_ir(expr: ir.UnaryMinusExpr):
+    return lowir.UnaryMinusExpr(expr=var_reference_to_low_ir(expr.var))
+
+def int_comparison_expr_to_low_ir(expr: ir.IntComparisonExpr):
+    lhs = var_reference_to_low_ir(expr.lhs)
+    rhs = var_reference_to_low_ir(expr.rhs)
+    return lowir.ComparisonExpr(lhs=lhs, rhs=rhs, op=expr.op)
+
+def int_binary_op_expr_to_low_ir(expr: ir.IntBinaryOpExpr):
+    lhs = var_reference_to_low_ir(expr.lhs)
+    rhs = var_reference_to_low_ir(expr.rhs)
+    cpp_op = {
+        '+': '+',
+        '-': '-',
+        '*': '*',
+        '//': '/',
+        '%': '%',
+    }[expr.op]
+    return lowir.Int64BinaryOpExpr(lhs=lhs, rhs=rhs, op=cpp_op)
 
 def assert_to_low_ir(assert_stmt: ir.Assert):
     expr = var_reference_to_low_ir(assert_stmt.var)

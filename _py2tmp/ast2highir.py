@@ -472,11 +472,40 @@ def assignment_ast_to_ir(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssig
     return highir.Assignment(lhs=highir.VarReference(type=expr.type, name=target.id, is_global_function=False),
                              rhs=expr)
 
+def int_comparison_ast_to_ir(lhs_ast_node: ast.AST,
+                             rhs_ast_node: ast.AST,
+                             op: str,
+                             compilation_context: CompilationContext):
+    lhs = expression_ast_to_ir(lhs_ast_node, compilation_context)
+    rhs = expression_ast_to_ir(rhs_ast_node, compilation_context)
+
+    if lhs.type != highir.IntType():
+        raise CompilationError(compilation_context, lhs_ast_node,
+                               'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(lhs.type)))
+    if rhs.type != highir.IntType():
+        raise CompilationError(compilation_context, lhs_ast_node,
+                               'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(rhs.type)))
+
+    return highir.IntComparisonExpr(lhs=lhs, rhs=rhs, op=op)
+
 def compare_ast_to_ir(ast_node: ast.Compare, compilation_context: CompilationContext):
-    if len(ast_node.ops) == 1 and isinstance(ast_node.ops[0], ast.Eq):
-        if len(ast_node.comparators) != 1:
-            raise CompilationError(compilation_context, ast_node, 'Expected exactly 1 comparator in expression, but got %s' % len(ast_node.comparators))
-        return eq_ast_to_ir(ast_node.left, ast_node.comparators[0], compilation_context)
+    if len(ast_node.ops) != 1 or len(ast_node.comparators) != 1:
+        raise CompilationError(compilation_context, ast_node, 'Comparison not supported.')  # pragma: no cover
+
+    lhs = ast_node.left
+    op = ast_node.ops[0]
+    rhs = ast_node.comparators[0]
+
+    if isinstance(op, ast.Eq):
+        return eq_ast_to_ir(lhs, rhs, compilation_context)
+    elif isinstance(op, ast.Lt):
+        return int_comparison_ast_to_ir(lhs, rhs, '<', compilation_context)
+    elif isinstance(op, ast.LtE):
+        return int_comparison_ast_to_ir(lhs, rhs, '<=', compilation_context)
+    elif isinstance(op, ast.Gt):
+        return int_comparison_ast_to_ir(lhs, rhs, '>', compilation_context)
+    elif isinstance(op, ast.GtE):
+        return int_comparison_ast_to_ir(lhs, rhs, '>=', compilation_context)
     else:
         raise CompilationError(compilation_context, ast_node, 'Comparison not supported.')  # pragma: no cover
 
@@ -561,6 +590,31 @@ def not_expression_ast_to_ir(ast_node: ast.UnaryOp, compilation_context: Compila
 
     return highir.NotExpr(expr=expr)
 
+def unary_minus_expression_ast_to_ir(ast_node: ast.UnaryOp, compilation_context: CompilationContext):
+    assert isinstance(ast_node.op, ast.USub)
+
+    expr = expression_ast_to_ir(ast_node.operand, compilation_context)
+
+    if expr.type != highir.IntType():
+        raise CompilationError(compilation_context, ast_node.operand,
+                               'The "-" operator is only supported for ints, but this value has type %s.' % str(expr.type))
+
+    return highir.IntUnaryMinusExpr(expr=expr)
+
+def int_binary_op_expression_ast_to_ir(ast_node: ast.BinOp, op: str, compilation_context: CompilationContext):
+    lhs = expression_ast_to_ir(ast_node.left, compilation_context)
+    rhs = expression_ast_to_ir(ast_node.right, compilation_context)
+
+    if lhs.type != highir.IntType():
+        raise CompilationError(compilation_context, ast_node.left,
+                               'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(lhs.type)))
+
+    if rhs.type != highir.IntType():
+        raise CompilationError(compilation_context, ast_node.right,
+                               'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(rhs.type)))
+
+    return highir.IntBinaryOpExpr(lhs=lhs, rhs=rhs, op=op)
+
 def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.NameConstant):
         return name_constant_ast_to_ir(ast_node, compilation_context)
@@ -590,6 +644,18 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
         return or_expression_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.UnaryOp) and isinstance(ast_node.op, ast.Not):
         return not_expression_ast_to_ir(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.UnaryOp) and isinstance(ast_node.op, ast.USub):
+        return unary_minus_expression_ast_to_ir(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Add):
+        return int_binary_op_expression_ast_to_ir(ast_node, '+', compilation_context)
+    elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Sub):
+        return int_binary_op_expression_ast_to_ir(ast_node, '-', compilation_context)
+    elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Mult):
+        return int_binary_op_expression_ast_to_ir(ast_node, '*', compilation_context)
+    elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.FloorDiv):
+        return int_binary_op_expression_ast_to_ir(ast_node, '//', compilation_context)
+    elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Mod):
+        return int_binary_op_expression_ast_to_ir(ast_node, '%', compilation_context)
     else:
         # raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported: %s' % ast_to_string(ast_node))
         raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported.')  # pragma: no cover

@@ -148,13 +148,33 @@ class TemplateArgPatternLiteral:
     def __init__(self, cxx_pattern: str = None):
         self.cxx_pattern = cxx_pattern
 
-class EqualityComparison(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr):
+class ComparisonExpr(Expr):
+    def __init__(self, lhs: Expr, rhs: Expr, op: str):
         super().__init__(kind=ExprKind.BOOL)
         assert lhs.kind == rhs.kind
-        assert lhs.kind in (ExprKind.BOOL, ExprKind.INT64, ExprKind.TYPE)
+        assert lhs.kind in (ExprKind.BOOL, ExprKind.INT64)
+        assert op in ('==', '!=', '<', '>', '<=', '>=')
         self.lhs = lhs
         self.rhs = rhs
+        self.op = op
+
+    def references_any_of(self, variables: Set[str]):
+        return self.lhs.references_any_of(variables) or self.rhs.references_any_of(variables)
+
+    def get_free_vars(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_vars():
+                yield var
+
+class Int64BinaryOpExpr(Expr):
+    def __init__(self, lhs: Expr, rhs: Expr, op: str):
+        super().__init__(kind=ExprKind.INT64)
+        assert lhs.kind == ExprKind.INT64
+        assert rhs.kind == ExprKind.INT64
+        assert op in ('+', '-', '*', '/', '%')
+        self.lhs = lhs
+        self.rhs = rhs
+        self.op = op
 
     def references_any_of(self, variables: Set[str]):
         return self.lhs.references_any_of(variables) or self.rhs.references_any_of(variables)
@@ -206,6 +226,18 @@ class ClassMemberAccess(Expr):
 class NotExpr(Expr):
     def __init__(self, expr: Expr):
         super().__init__(kind=ExprKind.BOOL)
+        self.expr = expr
+
+    def references_any_of(self, variables: Set[str]):
+        return self.expr.references_any_of(variables)
+
+    def get_free_vars(self):
+        for var in self.expr.get_free_vars():
+            yield var
+
+class UnaryMinusExpr(Expr):
+    def __init__(self, expr: Expr):
+        super().__init__(kind=ExprKind.INT64)
         self.expr = expr
 
     def references_any_of(self, variables: Set[str]):

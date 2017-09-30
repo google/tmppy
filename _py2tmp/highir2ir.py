@@ -58,6 +58,12 @@ def expr_to_ir(expr: highir.Expr, identifier_generator: Iterator[str]) \
         stmts, expr = or_expr_to_ir(expr, identifier_generator)
     elif isinstance(expr, highir.NotExpr):
         stmts, expr = not_expr_to_ir(expr, identifier_generator)
+    elif isinstance(expr, highir.IntUnaryMinusExpr):
+        stmts, expr = int_unary_minus_expr_to_ir(expr, identifier_generator)
+    elif isinstance(expr, highir.IntComparisonExpr):
+        stmts, expr = int_comparison_expr_to_ir(expr, identifier_generator)
+    elif isinstance(expr, highir.IntBinaryOpExpr):
+        stmts, expr = int_binary_op_expr_to_ir(expr, identifier_generator)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -201,6 +207,48 @@ def not_expr_to_ir(expr: highir.NotExpr, identifier_generator: Iterator[str]):
                                rhs=ir.NotExpr(var=var)))
 
     return stmts, var2
+
+def int_unary_minus_expr_to_ir(expr: highir.IntUnaryMinusExpr, identifier_generator: Iterator[str]):
+    stmts, var = expr_to_ir(expr.expr, identifier_generator)
+
+    var2 = ir.VarReference(type=ir.IntType(),
+                           name=next(identifier_generator),
+                           is_global_function=False)
+
+    stmts.append(ir.Assignment(lhs=var2,
+                               rhs=ir.UnaryMinusExpr(var=var)))
+
+    return stmts, var2
+
+def int_comparison_expr_to_ir(expr: highir.IntComparisonExpr, identifier_generator: Iterator[str]):
+    lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
+    rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
+
+    var = ir.VarReference(type=ir.BoolType(),
+                          name=next(identifier_generator),
+                          is_global_function=False)
+
+    assignment = ir.Assignment(lhs=var,
+                               rhs=ir.IntComparisonExpr(lhs=lhs_var,
+                                                        rhs=rhs_var,
+                                                        op=expr.op))
+
+    return lhs_stmts + rhs_stmts + [assignment], var
+
+def int_binary_op_expr_to_ir(expr: highir.IntBinaryOpExpr, identifier_generator: Iterator[str]):
+    lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
+    rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
+
+    var = ir.VarReference(type=ir.IntType(),
+                          name=next(identifier_generator),
+                          is_global_function=False)
+
+    assignment = ir.Assignment(lhs=var,
+                               rhs=ir.IntBinaryOpExpr(lhs=lhs_var,
+                                                      rhs=rhs_var,
+                                                      op=expr.op))
+
+    return lhs_stmts + rhs_stmts + [assignment], var
 
 def assert_to_ir(assert_stmt: highir.Assert, identifier_generator: Iterator[str]):
     stmts, var = expr_to_ir(assert_stmt.expr, identifier_generator)

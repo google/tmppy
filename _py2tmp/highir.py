@@ -200,6 +200,11 @@ class AndExpr(Expr):
         self.lhs = lhs
         self.rhs = rhs
 
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
 class OrExpr(Expr):
     def __init__(self, lhs: Expr, rhs: Expr):
         assert lhs.type == BoolType()
@@ -208,11 +213,20 @@ class OrExpr(Expr):
         self.lhs = lhs
         self.rhs = rhs
 
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
 class NotExpr(Expr):
     def __init__(self, expr: Expr):
         assert expr.type == BoolType()
         super().__init__(type=BoolType())
         self.expr = expr
+
+    def get_free_variables(self):
+        for var in self.expr.get_free_variables():
+            yield var
 
 class IntLiteral(Expr):
     def __init__(self, value: int):
@@ -222,6 +236,45 @@ class IntLiteral(Expr):
     def get_free_variables(self):
         if False:
             yield
+
+class IntComparisonExpr(Expr):
+    def __init__(self, lhs: Expr, rhs: Expr, op: str):
+        assert lhs.type == IntType()
+        assert rhs.type == IntType()
+        assert op in ('<', '>', '<=', '>=')
+        super().__init__(type=BoolType())
+        self.lhs = lhs
+        self.rhs = rhs
+        self.op = op
+
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
+class IntUnaryMinusExpr(Expr):
+    def __init__(self, expr: Expr):
+        assert expr.type == IntType()
+        super().__init__(type=IntType())
+        self.expr = expr
+
+    def get_free_variables(self):
+        for var in self.expr.get_free_variables():
+            yield var
+
+class IntBinaryOpExpr(Expr):
+    def __init__(self, lhs: Expr, rhs: Expr, op: str):
+        assert lhs.type == IntType()
+        assert rhs.type == IntType()
+        super().__init__(type=IntType())
+        self.lhs = lhs
+        self.rhs = rhs
+        self.op = op
+
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
 
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
