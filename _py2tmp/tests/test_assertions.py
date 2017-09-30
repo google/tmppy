@@ -136,3 +136,169 @@ def test_unconditional_true_assertion_function_param_function_called_ok():
     def g(x: bool):
         return x
     assert f(g) == True
+
+
+@assert_compilation_succeeds
+def test_assert_false_in_function_call_with_constant_args_never_called_bool_bool_ok():
+    def f(x: bool):
+        assert False
+        return True
+    def g(x: bool):
+        return f(True)
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_assert_false_in_function_call_with_constant_args_called_bool_bool_error():
+    def f(x: bool):
+        assert False
+        return True
+    def g(x: bool):
+        return f(True)
+    assert g(True)
+
+
+@assert_compilation_succeeds
+def test_assert_false_in_function_call_with_constant_args_never_called_bool_int_ok():
+    def f(x: bool):
+        assert False
+        return True
+    def g(x: int):
+        return f(True)
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_assert_false_in_function_call_with_constant_args_called_bool_int_error():
+    def f(x: bool):
+        assert False
+        return True
+    def g(x: int):
+        return f(True)
+    assert g(1)
+
+@assert_compilation_succeeds
+def test_assert_false_in_function_call_with_constant_args_never_called_bool_type_ok():
+    from tmppy import Type
+    def f(x: bool):
+        assert False
+        return True
+    def g(x: Type):
+        return f(True)
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_assert_false_in_function_call_with_constant_args_called_bool_type_error():
+    from tmppy import Type
+    def f(x: bool):
+        assert False
+        return True
+    def g(x: Type):
+        return f(True)
+    assert g(Type('float'))
+
+@assert_compilation_succeeds
+def test_assert_false_in_function_call_with_constant_args_never_called_int_bool_ok():
+    def f(x: int):
+        assert False
+        return True
+    def g(x: bool):
+        return f(1)
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_assert_false_in_function_call_with_constant_args_called_int_bool_error():
+    def f(x: int):
+        assert False
+        return True
+    def g(x: bool):
+        return f(1)
+    assert g(True)
+
+
+@assert_compilation_succeeds
+def test_assert_false_in_function_call_with_constant_args_never_called_int_int_ok():
+    def f(x: int):
+        assert False
+        return True
+    def g(x: int):
+        return f(1)
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_assert_false_in_function_call_with_constant_args_called_int_int_error():
+    def f(x: int):
+        assert False
+        return True
+    def g(x: int):
+        return f(1)
+    assert g(1)
+
+@assert_compilation_succeeds
+def test_assert_false_in_function_call_with_constant_args_never_called_int_type_ok():
+    from tmppy import Type
+    def f(x: int):
+        assert False
+        return True
+    def g(x: Type):
+        return f(1)
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_assert_false_in_function_call_with_constant_args_called_int_type_error():
+    from tmppy import Type
+    def f(x: int):
+        assert False
+        return True
+    def g(x: Type):
+        return f(1)
+    assert g(Type('float'))
+
+@assert_compilation_succeeds
+def test_assert_false_in_function_call_with_constant_args_never_called_type_bool_ok():
+    from tmppy import Type
+    def f(x: Type):
+        assert False
+        return True
+    def g(x: bool):
+        return f(Type('double'))
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_assert_false_in_function_call_with_constant_args_called_type_bool_error():
+    from tmppy import Type
+    def f(x: Type):
+        assert False
+        return True
+    def g(x: bool):
+        return f(Type('double'))
+    assert g(True)
+
+@assert_compilation_succeeds
+def test_assert_false_in_function_call_with_constant_args_never_called_type_int_ok():
+    from tmppy import Type
+    def f(x: Type):
+        assert False
+        return True
+    def g(x: int):
+        return f(Type('double'))
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_assert_false_in_function_call_with_constant_args_called_type_int_error():
+    from tmppy import Type
+    def f(x: Type):
+        assert False
+        return True
+    def g(x: int):
+        return f(Type('double'))
+    assert g(1)
+
+@assert_compilation_succeeds
+def test_assert_false_in_function_call_with_constant_args_never_called_type_type_ok():
+    from tmppy import Type
+    def f(x: Type):
+        assert False
+        return True
+    def g(x: Type):
+        return f(Type('double'))
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+def test_assert_false_in_function_call_with_constant_args_called_type_type_error():
+    from tmppy import Type
+    def f(x: Type):
+        assert False
+        return True
+    def g(x: Type):
+        return f(Type('double'))
+    assert g(Type('float'))

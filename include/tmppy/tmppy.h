@@ -43,4 +43,52 @@ struct AlwaysTrueFromType {
   static constexpr bool value = true;
 };
 
+template <bool b, bool>
+struct Select1stBoolBool {
+  static constexpr bool value = b;
+};
+
+template <bool b, int64_t>
+struct Select1stBoolInt64 {
+  static constexpr bool value = b;
+};
+
+template <bool b, typename>
+struct Select1stBoolType {
+  static constexpr bool value = b;
+};
+
+template <int64_t n, bool>
+struct Select1stInt64Bool {
+  static constexpr int64_t value = n;
+};
+
+template <int64_t n, int64_t>
+struct Select1stInt64Int64 {
+  static constexpr int64_t value = n;
+};
+
+template <int64_t n, typename>
+struct Select1stInt64Type {
+  static constexpr int64_t value = n;
+};
+
+template <typename T, bool>
+struct Select1stTypeBool {
+  // We intentionally use `value` instead of `type`, for simplicity of the implementation.
+  using value = T;
+};
+
+template <typename T, int64_t>
+struct Select1stTypeInt64 {
+  // We intentionally use `value` instead of `type`, for simplicity of the implementation.
+  using value = T;
+};
+
+template <typename T, typename>
+struct Select1stTypeType {
+  // We intentionally use `value` instead of `type`, for simplicity of the implementation.
+  using value = T;
+};
+
 #endif // TMPPY_H

@@ -165,11 +165,19 @@ class EqualityComparison(Expr):
                 yield var
 
 class TemplateInstantiation(Expr):
-    def __init__(self, template_expr: Expr, args: List[Expr]):
+    def __init__(self,
+                 template_expr: Expr,
+                 args: List[Expr],
+                 arg_types: List[ExprType],
+                 instantiation_might_trigger_static_asserts: bool):
         assert template_expr.kind == ExprKind.TEMPLATE
+        assert arg_types or not instantiation_might_trigger_static_asserts
+        assert not arg_types or len(arg_types) == len(args)
         super().__init__(kind=ExprKind.TYPE)
         self.template_expr = template_expr
         self.args = args
+        self.arg_types = arg_types
+        self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
 
     def references_any_of(self, variables: Set[str]):
         return self.template_expr.references_any_of(variables) or any(expr.references_any_of(variables)

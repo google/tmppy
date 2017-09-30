@@ -69,13 +69,19 @@ def var_reference_to_low_ir(var: ir.VarReference):
         return lowir.TypeLiteral.for_local(cpp_type=var.name,
                                            type=type_to_low_ir(var.type))
 
-def _create_metafunction_call(template_expr: lowir.Expr, args: List[lowir.Expr], member_kind: lowir.ExprKind):
+def _create_metafunction_call(template_expr: lowir.Expr,
+                              args: List[lowir.Expr],
+                              arg_types: List[lowir.ExprType],
+                              member_kind: lowir.ExprKind):
     assert template_expr.kind == lowir.ExprKind.TEMPLATE
     if member_kind in (lowir.ExprKind.BOOL, lowir.ExprKind.INT64):
         member_name = 'value'
     else:
         member_name = 'type'
-    template_instantiation_expr = lowir.TemplateInstantiation(template_expr=template_expr, args=args)
+    template_instantiation_expr = lowir.TemplateInstantiation(template_expr=template_expr,
+                                                              args=args,
+                                                              arg_types=arg_types,
+                                                              instantiation_might_trigger_static_asserts=True)
     return lowir.ClassMemberAccess(class_type_expr=template_instantiation_expr,
                                    member_name=member_name,
                                    member_kind=member_kind)
@@ -116,6 +122,8 @@ def match_expr_to_low_ir(match_expr: ir.MatchExpr, identifier_generator: Iterato
                                 for var_ref in forwarded_args]
         forwarded_args_patterns = [lowir.TemplateArgPatternLiteral(cxx_pattern=var_ref.name)
                                    for var_ref in forwarded_args]
+        forwarded_args_types = [type_to_low_ir(var_ref.type)
+                                for var_ref in forwarded_args]
     else:
         # We must add a dummy parameter so that the specialization isn't a full specialization.
         dummy_param_name = next(identifier_generator)
@@ -124,9 +132,12 @@ def match_expr_to_low_ir(match_expr: ir.MatchExpr, identifier_generator: Iterato
         forwarded_args_exprs = [lowir.TypeLiteral.for_nonlocal(cpp_type='void',
                                                                kind=lowir.ExprKind.TYPE)]
         forwarded_args_patterns = [lowir.TemplateArgPatternLiteral(cxx_pattern=dummy_param_name)]
+        forwarded_args_types = [lowir.TypeType()]
 
     matched_vars = [var_reference_to_low_ir(var)
                     for var in match_expr.matched_vars]
+    matched_vars_types = [type_to_low_ir(var.type)
+                          for var in match_expr.matched_vars]
 
     main_definition = None
     specializations = []
@@ -159,6 +170,7 @@ def match_expr_to_low_ir(match_expr: ir.MatchExpr, identifier_generator: Iterato
                                          for _ in match_expr.matched_vars]
 
     args_exprs = forwarded_args_exprs + matched_vars
+    arg_types = forwarded_args_types + matched_vars_types
 
     helper_function = lowir.TemplateDefn(args=args_decls,
                                          main_definition=main_definition,
@@ -169,6 +181,7 @@ def match_expr_to_low_ir(match_expr: ir.MatchExpr, identifier_generator: Iterato
                                                                cpp_type=helper_function.name)
     expression = _create_metafunction_call(template_expr=helper_function_reference,
                                            args=args_exprs,
+                                           arg_types=arg_types,
                                            member_kind=type_to_low_ir(match_expr.type).kind)
 
     return helper_functions + [helper_function], expression
@@ -197,16 +210,21 @@ def list_expr_to_low_ir(list_expr: ir.ListExpr):
         raise NotImplementedError('elem_kind: %s' % elem_kind)
 
     return lowir.TemplateInstantiation(template_expr=list_template,
+                                       arg_types=[],
+                                       instantiation_might_trigger_static_asserts=False,
                                        args=exprs)
 
 def function_call_to_low_ir(call_expr: ir.FunctionCall):
     fun = var_reference_to_low_ir(call_expr.fun)
     args = [var_reference_to_low_ir(arg)
             for arg in call_expr.args]
+    arg_types = [type_to_low_ir(arg.type)
+                 for arg in call_expr.args]
 
     assert isinstance(call_expr.fun.type, ir.FunctionType)
     metafunction_call_expr = _create_metafunction_call(template_expr=fun,
                                                        args=args,
+                                                       arg_types=arg_types,
                                                        member_kind=type_to_low_ir(call_expr.fun.type.returns).kind)
 
     return metafunction_call_expr
@@ -219,6 +237,8 @@ def equality_comparison_to_low_ir(comparison_expr: ir.EqualityComparison):
                                                      kind=lowir.ExprKind.TEMPLATE)
         comparison_expr = _create_metafunction_call(template_expr=std_is_same,
                                                     args=[lhs, rhs],
+                                                    arg_types=[type_to_low_ir(comparison_expr.lhs.type),
+                                                               type_to_low_ir(comparison_expr.rhs.type)],
                                                     member_kind=lowir.ExprKind.BOOL)
     else:
         comparison_expr = lowir.EqualityComparison(lhs=lhs, rhs=rhs)
@@ -302,6 +322,8 @@ def if_stmt_to_low_ir(if_stmt: ir.IfStmt,
     forwarded_vars_exprs = [lowir.TypeLiteral.for_local(cpp_type=var.cpp_type,
                                                         type=var.type)
                             for var in forwarded_vars]
+    forwarded_vars_types = [var.type
+                            for var in forwarded_vars]
     if not forwarded_vars:
         # We need to add a dummy template parameter, otherwise the true/false specializations will be full specializations
         # and the C++ compiler will eagerly evaluate them, even if they would never be instantiated (triggering e.g.
@@ -310,6 +332,7 @@ def if_stmt_to_low_ir(if_stmt: ir.IfStmt,
         forwarded_vars_patterns.append(lowir.TemplateArgPatternLiteral(cxx_pattern=parent_arbitrary_arg.name))
         forwarded_vars_exprs.append(lowir.TypeLiteral.for_local(cpp_type=parent_arbitrary_arg.name,
                                                                 type=parent_arbitrary_arg.type))
+        forwarded_vars_types.append(parent_arbitrary_arg.type)
 
     if_branch_specialization = _create_metafunction_specialization(args=forwarded_vars_args,
                                                                    patterns=forwarded_vars_patterns + [lowir.TemplateArgPatternLiteral('true')],
@@ -325,6 +348,7 @@ def if_stmt_to_low_ir(if_stmt: ir.IfStmt,
     function_call_expr = _create_metafunction_call(lowir.TypeLiteral.for_nonlocal(cpp_type=fun_defn.name,
                                                                                   kind=lowir.ExprKind.TEMPLATE),
                                                    args=forwarded_vars_exprs + [cond_expr],
+                                                   arg_types=forwarded_vars_types + [type_to_low_ir(if_stmt.cond.type)],
                                                    member_kind=parent_return_type.kind)
 
     function_call_result_element = _create_result_body_element(function_call_expr, expr_type=parent_return_type)
@@ -357,6 +381,8 @@ def stmts_to_low_ir(stmts: List[ir.Stmt],
                 forwarded_vars_exprs = [lowir.TypeLiteral.for_local(cpp_type=var.cpp_type,
                                                                     type=var.type)
                                         for var in forwarded_vars]
+                forwarded_vars_types = [var.type
+                                        for var in forwarded_vars]
                 if not forwarded_vars:
                     # We need to add a dummy template parameter, otherwise the true/false specializations will be full
                     # specializations and the C++ compiler will eagerly evaluate them, even if they would never be
@@ -364,6 +390,7 @@ def stmts_to_low_ir(stmts: List[ir.Stmt],
                     forwarded_vars_args.append(parent_arbitrary_arg)
                     forwarded_vars_exprs.append(lowir.TypeLiteral.for_local(cpp_type=parent_arbitrary_arg.name,
                                                                             type=parent_arbitrary_arg.type))
+                    forwarded_vars_types.append(parent_arbitrary_arg.type)
 
                 continuation_fun_main_definition = _create_metafunction_specialization(args=forwarded_vars_args,
                                                                                        patterns=None,
@@ -376,6 +403,7 @@ def stmts_to_low_ir(stmts: List[ir.Stmt],
                 continuation_call_expr = _create_metafunction_call(lowir.TypeLiteral.for_nonlocal(cpp_type=continuation_fun_defn.name,
                                                                                                   kind=lowir.ExprKind.TEMPLATE),
                                                                    args=forwarded_vars_exprs,
+                                                                   arg_types=forwarded_vars_types,
                                                                    member_kind=parent_return_type.kind)
                 continuation = _create_result_body_element(expr=continuation_call_expr,
                                                            expr_type=parent_return_type)
