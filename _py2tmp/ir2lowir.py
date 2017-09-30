@@ -15,7 +15,6 @@ import itertools
 
 import _py2tmp.lowir as lowir
 import _py2tmp.ir as ir
-import _py2tmp.utils as utils
 from typing import List, Tuple, Optional, Iterator, Union
 
 def type_to_low_ir(type: ir.ExprType):
@@ -36,12 +35,11 @@ def function_type_to_low_ir(fun_type: ir.FunctionType):
     return lowir.TemplateType(argtypes=[type_to_low_ir(arg)
                                         for arg in fun_type.argtypes])
 
-def expr_to_low_ir(expr: ir.Expr, cxx_identifier_generator: Iterator[str]) \
-        -> Tuple[List[lowir.TemplateDefn], lowir.Expr]:
+def expr_to_low_ir(expr: ir.Expr, identifier_generator: Iterator[str]) -> Tuple[List[lowir.TemplateDefn], lowir.Expr]:
     if isinstance(expr, ir.VarReference):
         return [], var_reference_to_low_ir(expr)
     elif isinstance(expr, ir.MatchExpr):
-        return match_expr_to_low_ir(expr, cxx_identifier_generator)
+        return match_expr_to_low_ir(expr, identifier_generator)
     elif isinstance(expr, ir.BoolLiteral):
         return [], bool_literal_to_low_ir(expr)
     elif isinstance(expr, ir.IntLiteral):
@@ -49,13 +47,13 @@ def expr_to_low_ir(expr: ir.Expr, cxx_identifier_generator: Iterator[str]) \
     elif isinstance(expr, ir.TypeLiteral):
         return [], type_literal_to_low_ir(expr)
     elif isinstance(expr, ir.ListExpr):
-        return list_expr_to_low_ir(expr, cxx_identifier_generator)
+        return [], list_expr_to_low_ir(expr)
     elif isinstance(expr, ir.FunctionCall):
-        return function_call_to_low_ir(expr, cxx_identifier_generator)
+        return [], function_call_to_low_ir(expr)
     elif isinstance(expr, ir.EqualityComparison):
-        return equality_comparison_to_low_ir(expr, cxx_identifier_generator)
+        return [], equality_comparison_to_low_ir(expr)
     elif isinstance(expr, ir.AttributeAccessExpr):
-        return attribute_access_expr_to_low_ir(expr, cxx_identifier_generator)
+        return [], attribute_access_expr_to_low_ir(expr)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -97,36 +95,42 @@ def _create_metafunction_specialization(args: List[lowir.TemplateArgDecl],
             # C++ compilation errors, so we remove them.
             patterns = None
 
-
     return lowir.TemplateSpecialization(args=args, patterns=patterns, body=body)
 
-def match_expr_to_low_ir(match_expr: ir.MatchExpr, cxx_identifier_generator: Iterator[str]):
+def match_expr_to_low_ir(match_expr: ir.MatchExpr, identifier_generator: Iterator[str]):
     forwarded_args = []  # type: List[ir.VarReference]
     forwarded_args_names = set()
     for match_case in match_expr.match_cases:
         local_vars = set(match_case.matched_var_names)
-        for var in match_case.expr.get_free_variables():
+        for var in ir.get_free_variables_in_stmts(match_case.stmts):
             if var.name not in local_vars and var.name not in forwarded_args_names:
                 forwarded_args_names.add(var.name)
                 forwarded_args.append(var)
 
-    forwarded_args_decls = [lowir.TemplateArgDecl(type=type_to_low_ir(var_ref.type), name=var_ref.name)
-                            for var_ref in forwarded_args]
-    forwarded_args_patterns = [lowir.TemplateArgPatternLiteral(cxx_pattern=var_ref.name)
-                               for var_ref in forwarded_args]
-    forwarded_args_exprs = [lowir.TypeLiteral.for_local(cpp_type=var_ref.name,
-                                                        type=type_to_low_ir(var_ref.type))
-                            for var_ref in forwarded_args]
+    if forwarded_args or all(match_case.matched_var_names
+                             for match_case in match_expr.match_cases):
+        forwarded_args_decls = [lowir.TemplateArgDecl(type=type_to_low_ir(var_ref.type), name=var_ref.name)
+                                for var_ref in forwarded_args]
+        forwarded_args_exprs = [lowir.TypeLiteral.for_local(cpp_type=var_ref.name,
+                                                            type=type_to_low_ir(var_ref.type))
+                                for var_ref in forwarded_args]
+        forwarded_args_patterns = [lowir.TemplateArgPatternLiteral(cxx_pattern=var_ref.name)
+                                   for var_ref in forwarded_args]
+    else:
+        # We must add a dummy parameter so that the specialization isn't a full specialization.
+        dummy_param_name = next(identifier_generator)
+        forwarded_args_decls = [lowir.TemplateArgDecl(type=lowir.TypeType(),
+                                                      name=dummy_param_name)]
+        forwarded_args_exprs = [lowir.TypeLiteral.for_nonlocal(cpp_type='void',
+                                                               kind=lowir.ExprKind.TYPE)]
+        forwarded_args_patterns = [lowir.TemplateArgPatternLiteral(cxx_pattern=dummy_param_name)]
 
-    helper_functions = []
-    matched_exprs = []
-    for expr in match_expr.matched_exprs:
-        other_helper_functions, expr = expr_to_low_ir(expr, cxx_identifier_generator)
-        helper_functions += other_helper_functions
-        matched_exprs.append(expr)
+    matched_vars = [var_reference_to_low_ir(var)
+                    for var in match_expr.matched_vars]
 
     main_definition = None
     specializations = []
+    helper_functions = []
     for match_case in match_expr.match_cases:
         specialization_arg_decls = forwarded_args_decls + [lowir.TemplateArgDecl(type=lowir.TypeType(), name=arg_name)
                                                            for arg_name in match_case.matched_var_names]
@@ -134,29 +138,32 @@ def match_expr_to_low_ir(match_expr: ir.MatchExpr, cxx_identifier_generator: Ite
         specialization_patterns = forwarded_args_patterns + [lowir.TemplateArgPatternLiteral(cxx_pattern=pattern)
                                                              for pattern in match_case.type_patterns]
 
-        other_helper_functions, return_stmt = return_stmt_to_low_ir(return_stmt=ir.ReturnStmt(match_case.expr),
-                                                                    cxx_identifier_generator=cxx_identifier_generator)
+        other_helper_functions, stmts = stmts_to_low_ir(match_case.stmts,
+                                                        parent_continuation=None,
+                                                        identifier_generator=identifier_generator,
+                                                        parent_arbitrary_arg=_select_arbitrary_parent_arg(specialization_arg_decls),
+                                                        parent_return_type=match_case.return_type)
         helper_functions += other_helper_functions
-
-        function_specialization = _create_metafunction_specialization(args=specialization_arg_decls,
-                                                                      patterns=specialization_patterns,
-                                                                      body=[return_stmt])
 
         if match_case.is_main_definition():
             assert not main_definition
-            main_definition = function_specialization
+            main_definition = _create_metafunction_specialization(args=specialization_arg_decls,
+                                                                  patterns=None,
+                                                                  body=stmts)
         else:
-            specializations.append(function_specialization)
+            specializations.append(_create_metafunction_specialization(args=specialization_arg_decls,
+                                                                       patterns=specialization_patterns,
+                                                                       body=stmts))
 
     args_decls = forwarded_args_decls + [lowir.TemplateArgDecl(type=lowir.TypeType(), name='')
-                                         for _ in match_expr.matched_exprs]
+                                         for _ in match_expr.matched_vars]
 
-    args_exprs = forwarded_args_exprs + matched_exprs
+    args_exprs = forwarded_args_exprs + matched_vars
 
     helper_function = lowir.TemplateDefn(args=args_decls,
                                          main_definition=main_definition,
                                          specializations=specializations,
-                                         name=next(cxx_identifier_generator))
+                                         name=next(identifier_generator))
 
     helper_function_reference = lowir.TypeLiteral.for_nonlocal(kind=lowir.ExprKind.TEMPLATE,
                                                                cpp_type=helper_function.name)
@@ -175,13 +182,9 @@ def int_literal_to_low_ir(literal: ir.IntLiteral):
 def type_literal_to_low_ir(literal: ir.TypeLiteral):
     return lowir.TypeLiteral.for_nonlocal(cpp_type=literal.cpp_type, kind=type_to_low_ir(literal.type).kind)
 
-def list_expr_to_low_ir(list_expr: ir.ListExpr, cxx_identifier_generator: Iterator[str]):
-    helper_fns = []
-    exprs = []
-    for expr in list_expr.elem_exprs:
-        other_helper_fns, expr = expr_to_low_ir(expr, cxx_identifier_generator)
-        helper_fns += other_helper_fns
-        exprs.append(expr)
+def list_expr_to_low_ir(list_expr: ir.ListExpr):
+    exprs = [var_reference_to_low_ir(elem)
+             for elem in list_expr.elems]
 
     elem_kind = type_to_low_ir(list_expr.elem_type).kind
     if elem_kind == lowir.ExprKind.BOOL:
@@ -193,27 +196,24 @@ def list_expr_to_low_ir(list_expr: ir.ListExpr, cxx_identifier_generator: Iterat
     else:
         raise NotImplementedError('elem_kind: %s' % elem_kind)
 
-    return helper_fns, lowir.TemplateInstantiation(template_expr=list_template,
-                                                   args=exprs)
+    return lowir.TemplateInstantiation(template_expr=list_template,
+                                       args=exprs)
 
-def function_call_to_low_ir(call_expr: ir.FunctionCall, cxx_identifier_generator: Iterator[str]):
-    helper_fns, fun_expr = expr_to_low_ir(call_expr.fun_expr, cxx_identifier_generator)
-    args = []
-    for arg in call_expr.args:
-        other_helper_fns, arg = expr_to_low_ir(arg, cxx_identifier_generator)
-        helper_fns += other_helper_fns
-        args.append(arg)
+def function_call_to_low_ir(call_expr: ir.FunctionCall):
+    fun = var_reference_to_low_ir(call_expr.fun)
+    args = [var_reference_to_low_ir(arg)
+            for arg in call_expr.args]
 
-    assert isinstance(call_expr.fun_expr.type, ir.FunctionType)
-    metafunction_call_expr = _create_metafunction_call(template_expr=fun_expr,
+    assert isinstance(call_expr.fun.type, ir.FunctionType)
+    metafunction_call_expr = _create_metafunction_call(template_expr=fun,
                                                        args=args,
-                                                       member_kind=type_to_low_ir(call_expr.fun_expr.type.returns).kind)
+                                                       member_kind=type_to_low_ir(call_expr.fun.type.returns).kind)
 
-    return helper_fns, metafunction_call_expr
+    return metafunction_call_expr
 
-def equality_comparison_to_low_ir(comparison_expr: ir.EqualityComparison, cxx_identifier_generator: Iterator[str]):
-    lhs_helper_fns, lhs = expr_to_low_ir(comparison_expr.lhs, cxx_identifier_generator)
-    rhs_helper_fns, rhs = expr_to_low_ir(comparison_expr.rhs, cxx_identifier_generator)
+def equality_comparison_to_low_ir(comparison_expr: ir.EqualityComparison):
+    lhs = var_reference_to_low_ir(comparison_expr.lhs)
+    rhs = var_reference_to_low_ir(comparison_expr.rhs)
     if lhs.kind == lowir.ExprKind.TYPE:
         std_is_same = lowir.TypeLiteral.for_nonlocal(cpp_type='std::is_same',
                                                      kind=lowir.ExprKind.TEMPLATE)
@@ -222,22 +222,22 @@ def equality_comparison_to_low_ir(comparison_expr: ir.EqualityComparison, cxx_id
                                                     member_kind=lowir.ExprKind.BOOL)
     else:
         comparison_expr = lowir.EqualityComparison(lhs=lhs, rhs=rhs)
-    return lhs_helper_fns + rhs_helper_fns, comparison_expr
+    return comparison_expr
 
-def attribute_access_expr_to_low_ir(attribute_access_expr: ir.AttributeAccessExpr, cxx_identifier_generator: Iterator[str]):
-    helper_fns, class_expr = expr_to_low_ir(attribute_access_expr.expr, cxx_identifier_generator)
+def attribute_access_expr_to_low_ir(attribute_access_expr: ir.AttributeAccessExpr):
+    class_expr = var_reference_to_low_ir(attribute_access_expr.var)
     assert class_expr.kind == lowir.ExprKind.TYPE
-    return helper_fns, lowir.ClassMemberAccess(class_type_expr=class_expr,
-                                               member_name=attribute_access_expr.attribute_name,
-                                               member_kind=lowir.ExprKind.TYPE)
+    return lowir.ClassMemberAccess(class_type_expr=class_expr,
+                                   member_name=attribute_access_expr.attribute_name,
+                                   member_kind=lowir.ExprKind.TYPE)
 
-def assert_to_low_ir(assert_stmt: ir.Assert, cxx_identifier_generator: Iterator[str]):
-    helper_fns, expr = expr_to_low_ir(assert_stmt.expr, cxx_identifier_generator)
-    return helper_fns, lowir.StaticAssert(expr=expr, message=assert_stmt.message)
+def assert_to_low_ir(assert_stmt: ir.Assert):
+    expr = var_reference_to_low_ir(assert_stmt.var)
+    return lowir.StaticAssert(expr=expr, message=assert_stmt.message)
 
-def assignment_to_low_ir(assignment: ir.Assignment, cxx_identifier_generator: Iterator[str]):
+def assignment_to_low_ir(assignment: ir.Assignment, identifier_generator: Iterator[str]):
     lhs = var_reference_to_low_ir(assignment.lhs)
-    helper_fns, rhs = expr_to_low_ir(assignment.rhs, cxx_identifier_generator)
+    helper_fns, rhs = expr_to_low_ir(assignment.rhs, identifier_generator)
 
     low_ir_type = type_to_low_ir(assignment.lhs.type)
     if low_ir_type.kind in (lowir.ExprKind.BOOL, lowir.ExprKind.INT64):
@@ -253,11 +253,11 @@ def _create_result_body_element(expr: lowir.Expr, expr_type: lowir.ExprType):
     else:
         return lowir.Typedef(name='type', expr=expr, type=expr_type)
 
-def return_stmt_to_low_ir(return_stmt: ir.ReturnStmt, cxx_identifier_generator: Iterator[str]):
-    helper_fns, expr = expr_to_low_ir(return_stmt.expr, cxx_identifier_generator)
-    expr_type = type_to_low_ir(return_stmt.expr.type)
+def return_stmt_to_low_ir(return_stmt: ir.ReturnStmt):
+    var = var_reference_to_low_ir(return_stmt.var)
+    expr_type = type_to_low_ir(return_stmt.var.type)
 
-    return helper_fns, _create_result_body_element(expr, expr_type)
+    return [], _create_result_body_element(var, expr_type)
 
 def _get_free_vars_in_elements(elements: List[lowir.TemplateBodyElement]):
     free_var_names = set()
@@ -266,7 +266,7 @@ def _get_free_vars_in_elements(elements: List[lowir.TemplateBodyElement]):
     for element in elements:
         if isinstance(element, lowir.StaticAssert) or isinstance(element, lowir.ConstantDef) or isinstance(element, lowir.Typedef):
             for var in element.expr.get_free_vars():
-                if not var.cpp_type in bound_var_names and not var.cpp_type in free_var_names:
+                if var.cpp_type not in bound_var_names and var.cpp_type not in free_var_names:
                     free_var_names.add(var.cpp_type)
                     free_vars.append(var)
         else:
@@ -277,15 +277,15 @@ def _get_free_vars_in_elements(elements: List[lowir.TemplateBodyElement]):
 
 def if_stmt_to_low_ir(if_stmt: ir.IfStmt,
                       continuation: Optional[lowir.TemplateBodyElement],
-                      cxx_identifier_generator: Iterator[str],
+                      identifier_generator: Iterator[str],
                       parent_arbitrary_arg: lowir.TemplateArgDecl,
                       parent_return_type: lowir.ExprType):
-    helper_fns, cond_expr = expr_to_low_ir(if_stmt.cond_expr, cxx_identifier_generator)
+    cond_expr = var_reference_to_low_ir(if_stmt.cond)
 
-    if_branch_helper_fns, if_branch_fun_body = stmts_to_low_ir(if_stmt.if_stmts, continuation, cxx_identifier_generator, parent_arbitrary_arg, parent_return_type)
+    if_branch_helper_fns, if_branch_fun_body = stmts_to_low_ir(if_stmt.if_stmts, continuation, identifier_generator, parent_arbitrary_arg, parent_return_type)
 
     if if_stmt.else_stmts:
-        else_branch_helper_fns, else_branch_fun_body = stmts_to_low_ir(if_stmt.else_stmts, continuation, cxx_identifier_generator, parent_arbitrary_arg, parent_return_type)
+        else_branch_helper_fns, else_branch_fun_body = stmts_to_low_ir(if_stmt.else_stmts, continuation, identifier_generator, parent_arbitrary_arg, parent_return_type)
     else:
         else_branch_helper_fns = []
         assert continuation
@@ -319,7 +319,7 @@ def if_stmt_to_low_ir(if_stmt: ir.IfStmt,
                                                                      body=else_branch_fun_body)
 
     fun_defn = lowir.TemplateDefn(main_definition=None,
-                                  name=next(cxx_identifier_generator),
+                                  name=next(identifier_generator),
                                   args=forwarded_vars_args + [lowir.TemplateArgDecl(type=lowir.BoolType())],
                                   specializations=[if_branch_specialization, else_branch_specialization])
     function_call_expr = _create_metafunction_call(lowir.TypeLiteral.for_nonlocal(cpp_type=fun_defn.name,
@@ -329,22 +329,23 @@ def if_stmt_to_low_ir(if_stmt: ir.IfStmt,
 
     function_call_result_element = _create_result_body_element(function_call_expr, expr_type=parent_return_type)
 
-    return (helper_fns + if_branch_helper_fns + else_branch_helper_fns + [fun_defn]), function_call_result_element
+    return (if_branch_helper_fns + else_branch_helper_fns + [fun_defn]), function_call_result_element
 
 def stmts_to_low_ir(stmts: List[ir.Stmt],
                     parent_continuation: Optional[Union[lowir.Typedef, lowir.ConstantDef]],
-                    cxx_identifier_generator: Iterator[str],
+                    identifier_generator: Iterator[str],
                     parent_arbitrary_arg: lowir.TemplateArgDecl,
                     parent_return_type: lowir.ExprType):
     reversed_helper_fun_defns = []
     reversed_body = []
     for x in reversed(stmts):
         if isinstance(x, ir.Assert):
-            other_helper_fns, x = assert_to_low_ir(x, cxx_identifier_generator)
+            other_helper_fns = []
+            x = assert_to_low_ir(x)
         elif isinstance(x, ir.Assignment):
-            other_helper_fns, x = assignment_to_low_ir(x, cxx_identifier_generator)
+            other_helper_fns, x = assignment_to_low_ir(x, identifier_generator)
         elif isinstance(x, ir.ReturnStmt):
-            other_helper_fns, x = return_stmt_to_low_ir(x, cxx_identifier_generator)
+            other_helper_fns, x = return_stmt_to_low_ir(x)
         elif isinstance(x, ir.IfStmt):
             if reversed_body:
                 body = list(reversed(reversed_body))
@@ -369,7 +370,7 @@ def stmts_to_low_ir(stmts: List[ir.Stmt],
                                                                                        body=body)
 
                 continuation_fun_defn = lowir.TemplateDefn(main_definition=continuation_fun_main_definition,
-                                                           name=next(cxx_identifier_generator),
+                                                           name=next(identifier_generator),
                                                            args=forwarded_vars_args,
                                                            specializations=[])
                 continuation_call_expr = _create_metafunction_call(lowir.TypeLiteral.for_nonlocal(cpp_type=continuation_fun_defn.name,
@@ -383,7 +384,7 @@ def stmts_to_low_ir(stmts: List[ir.Stmt],
                 continuation_fun_defn = None
             reversed_body = []
 
-            other_helper_fns, x = if_stmt_to_low_ir(x, continuation, cxx_identifier_generator, parent_arbitrary_arg, parent_return_type)
+            other_helper_fns, x = if_stmt_to_low_ir(x, continuation, identifier_generator, parent_arbitrary_arg, parent_return_type)
 
             if continuation_fun_defn:
                 # In this case we need a different order: the previous helper functions must be defined before the
@@ -400,22 +401,22 @@ def stmts_to_low_ir(stmts: List[ir.Stmt],
         body.append(parent_continuation)
     return list(reversed(reversed_helper_fun_defns)), body
 
-def function_defn_to_low_ir(function_defn: ir.FunctionDefn, cxx_identifier_generator: Iterator[str]):
-    args = [function_arg_decl_to_low_ir(arg)
-            for arg in function_defn.args]
-
+def _select_arbitrary_parent_arg(args: List[lowir.TemplateArgDecl]):
+    assert args
     # Prefer a non-template arg (if any), as that will lead to simpler/smaller generated code.
     for arg in args:
         if arg.type.kind != lowir.ExprKind.TEMPLATE:
-            arbitrary_arg = arg
-            break
-    else:
-        arbitrary_arg = args[0]
+            return arg
+    return args[0]
+
+def function_defn_to_low_ir(function_defn: ir.FunctionDefn, identifier_generator: Iterator[str]):
+    args = [function_arg_decl_to_low_ir(arg)
+            for arg in function_defn.args]
 
     helper_fn_defns, body = stmts_to_low_ir(stmts=function_defn.body,
                                             parent_continuation=None,
-                                            cxx_identifier_generator=cxx_identifier_generator,
-                                            parent_arbitrary_arg=arbitrary_arg,
+                                            identifier_generator=identifier_generator,
+                                            parent_arbitrary_arg=_select_arbitrary_parent_arg(args),
                                             parent_return_type=type_to_low_ir(function_defn.return_type))
 
     main_definition = _create_metafunction_specialization(args=args,
@@ -429,14 +430,18 @@ def function_defn_to_low_ir(function_defn: ir.FunctionDefn, cxx_identifier_gener
 
     return helper_fn_defns + [fun_defn]
 
-def module_to_low_ir(module: ir.Module, cxx_identifier_generator: Iterator[str]):
-    function_defns=[lowf
-                    for f in module.function_defns
-                    for lowf in function_defn_to_low_ir(f, cxx_identifier_generator)]
-    assertions = []
-    for assert_stmt in module.assertions:
-        other_fn_defs, assert_stmt = assert_to_low_ir(assert_stmt, cxx_identifier_generator)
-        function_defns += other_fn_defs
-        assertions.append(assert_stmt)
+def module_to_low_ir(module: ir.Module, identifier_generator: Iterator[str]):
+    header_content = []
+    for toplevel_elem in module.body:
+        if isinstance(toplevel_elem, ir.FunctionDefn):
+            header_content += function_defn_to_low_ir(toplevel_elem, identifier_generator)
+        elif isinstance(toplevel_elem, ir.Assert):
+            header_content.append(assert_to_low_ir(toplevel_elem))
+        elif isinstance(toplevel_elem, ir.Assignment):
+            template_defns, elem = assignment_to_low_ir(toplevel_elem, identifier_generator)
+            header_content += template_defns
+            header_content.append(elem)
+        else:
+            raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
 
-    return lowir.Header(template_defns=function_defns, assertions=assertions)
+    return lowir.Header(content=header_content)

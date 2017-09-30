@@ -15,7 +15,8 @@
 import itertools
 import typed_ast.ast3 as ast
 
-import _py2tmp.ast2ir as ast2ir
+import _py2tmp.ast2highir as ast2highir
+import _py2tmp.highir2ir as highir2ir
 import _py2tmp.ir2lowir as ir2lowir
 import _py2tmp.lowir2cpp as lowir2cpp
 import _py2tmp.utils as utils
@@ -24,26 +25,32 @@ import argparse
 
 def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
     source_ast = ast.parse(python_source, filename=filename)
-    compilation_context = ast2ir.CompilationContext(ast2ir.SymbolTable(), filename, python_source.splitlines())
+    compilation_context = ast2highir.CompilationContext(ast2highir.SymbolTable(), filename, python_source.splitlines())
 
-    def cxx_identifier_generator_fun():
+    def identifier_generator_fun():
         for i in itertools.count():
             yield 'TmppyInternal_%s' % i
-    cxx_identifier_generator = iter(cxx_identifier_generator_fun())
+    identifier_generator = iter(identifier_generator_fun())
 
-    module_ir = ast2ir.module_ast_to_ir(source_ast, compilation_context)
+    module_high_ir = ast2highir.module_ast_to_ir(source_ast, compilation_context)
+    if verbose:
+        print('TMPPy high IR:')
+        print(utils.ir_to_string(module_high_ir))
+        print()
+
+    module_ir = highir2ir.module_to_ir(module_high_ir, identifier_generator)
     if verbose:
         print('TMPPy IR:')
         print(utils.ir_to_string(module_ir))
         print()
 
-    header = ir2lowir.module_to_low_ir(module_ir, cxx_identifier_generator)
+    header = ir2lowir.module_to_low_ir(module_ir, identifier_generator)
     if verbose:
         print('TMPPy low IR:')
         print(utils.ir_to_string(header))
         print()
 
-    result = lowir2cpp.header_to_cpp(header, cxx_identifier_generator)
+    result = lowir2cpp.header_to_cpp(header, identifier_generator)
     result = utils.clang_format(result)
 
     if verbose:
@@ -67,7 +74,7 @@ def main():
             raise Exception('An input file name does not end with .py: ' + source_file_name)
         output_file_name = source_file_name[:-len(suffix)] + '.h'
         with open(output_file_name, 'w') as output_file:
-            output_file.write(convert_to_cpp(source, source_file_name, verbose=(args.verbose=='true')))
+            output_file.write(convert_to_cpp(source, source_file_name, verbose=(args.verbose == 'true')))
 
 if __name__ == '__main__':
     main()

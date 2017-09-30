@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Set, Optional, Union, Iterable
+from typing import List, Set, Optional, Iterable, Union
 from enum import Enum
 
 class ExprKind(Enum):
@@ -25,7 +25,7 @@ class ExprType:
     def __init__(self, kind: ExprKind):
         self.kind = kind
 
-    def __eq__(self, other) -> bool: ... # pragma: no cover
+    def __eq__(self, other) -> bool: ...  # pragma: no cover
 
 class BoolType(ExprType):
     def __init__(self):
@@ -196,6 +196,5 @@ class ClassMemberAccess(Expr):
             yield var
 
 class Header:
-    def __init__(self, template_defns: List[TemplateDefn], assertions: List[StaticAssert]):
-        self.template_defns = template_defns
-        self.assertions = assertions
+    def __init__(self, content: List[Union[TemplateDefn, StaticAssert, ConstantDef, Typedef]]):
+        self.content = content

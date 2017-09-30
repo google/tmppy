@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Optional, Union
+from typing import List, Iterable, Optional
 
 class ExprType:
     def __str__(self) -> str: ...  # pragma: no cover
@@ -90,28 +90,23 @@ class VarReference(Expr):
             yield self
 
 class MatchCase:
-    def __init__(self,
-                 type_patterns: List[str],
-                 matched_var_names: List[str],
-                 stmts: List['Stmt'],
-                 return_type: ExprType):
+    def __init__(self, type_patterns: List[str], matched_var_names: List[str], expr: Expr):
         self.type_patterns = type_patterns
         self.matched_var_names = matched_var_names
-        self.stmts = stmts
-        self.return_type = return_type
+        self.expr = expr
 
     def is_main_definition(self):
         return set(self.type_patterns) == set(self.matched_var_names)
 
 class MatchExpr(Expr):
-    def __init__(self, matched_vars: List[VarReference], match_cases: List[MatchCase]):
-        assert matched_vars
+    def __init__(self, matched_exprs: List[Expr], match_cases: List[MatchCase]):
+        assert matched_exprs
         assert match_cases
         for match_case in match_cases:
-            assert len(match_case.type_patterns) == len(matched_vars)
-            assert match_case.return_type == match_cases[0].return_type
-        super().__init__(type=match_cases[0].return_type)
-        self.matched_vars = matched_vars
+            assert len(match_case.type_patterns) == len(matched_exprs)
+            assert match_case.expr.type == match_cases[0].expr.type
+        super().__init__(type=match_cases[0].expr.type)
+        self.matched_exprs = matched_exprs
         self.match_cases = match_cases
 
         assert len([match_case
@@ -119,12 +114,12 @@ class MatchExpr(Expr):
                     if match_case.is_main_definition()]) <= 1
 
     def get_free_variables(self):
-        for expr in self.matched_vars:
+        for expr in self.matched_exprs:
             for var in expr.get_free_variables():
                 yield var
         for match_case in self.match_cases:
             local_vars = set(match_case.matched_var_names)
-            for var in get_free_variables_in_stmts(match_case.stmts):
+            for var in match_case.expr.get_free_variables():
                 if var.name not in local_vars:
                     yield var
 
@@ -147,36 +142,36 @@ class TypeLiteral(Expr):
             yield
 
 class ListExpr(Expr):
-    def __init__(self, elem_type: ExprType, elems: List[VarReference]):
+    def __init__(self, elem_type: ExprType, elem_exprs: List[Expr]):
         assert not isinstance(elem_type, FunctionType)
         super().__init__(type=ListType(elem_type))
         self.elem_type = elem_type
-        self.elems = elems
+        self.elem_exprs = elem_exprs
 
     def get_free_variables(self):
-        for expr in self.elems:
+        for expr in self.elem_exprs:
             for var in expr.get_free_variables():
                 yield var
 
 class FunctionCall(Expr):
-    def __init__(self, fun: VarReference, args: List[VarReference]):
-        assert isinstance(fun.type, FunctionType)
-        assert len(fun.type.argtypes) == len(args)
-        super().__init__(type=fun.type.returns)
-        self.fun = fun
+    def __init__(self, fun_expr: Expr, args: List[Expr]):
+        assert isinstance(fun_expr.type, FunctionType)
+        assert len(fun_expr.type.argtypes) == len(args)
+        super().__init__(type=fun_expr.type.returns)
+        self.fun_expr = fun_expr
         self.args = args
 
     def get_free_variables(self):
-        for var in self.fun.get_free_variables():
+        for var in self.fun_expr.get_free_variables():
             yield var
         for expr in self.args:
             for var in expr.get_free_variables():
                 yield var
 
 class EqualityComparison(Expr):
-    def __init__(self, lhs: VarReference, rhs: VarReference):
+    def __init__(self, lhs: Expr, rhs: Expr):
         super().__init__(type=BoolType())
-        assert lhs.type == rhs.type, '%s vs %s' % (str(lhs.type), str(rhs.type))
+        assert lhs.type == rhs.type
         assert not isinstance(lhs.type, FunctionType)
         self.lhs = lhs
         self.rhs = rhs
@@ -187,14 +182,14 @@ class EqualityComparison(Expr):
                 yield var
 
 class AttributeAccessExpr(Expr):
-    def __init__(self, var: VarReference, attribute_name: str):
+    def __init__(self, expr: Expr, attribute_name: str):
         super().__init__(type=TypeType())
-        assert isinstance(var.type, TypeType)
-        self.var = var
+        assert isinstance(expr.type, TypeType)
+        self.expr = expr
         self.attribute_name = attribute_name
 
     def get_free_variables(self):
-        for var in self.var.get_free_variables():
+        for var in self.expr.get_free_variables():
             yield var
 
 class IntLiteral(Expr):
@@ -216,22 +211,14 @@ class ReturnTypeInfo:
 class Stmt:
     def get_return_type(self) -> ReturnTypeInfo: ...  # pragma: no cover
 
-    # Note: it's the caller's responsibility to de-duplicate VarReference objects that reference the same symbol, if
-    # desired.
-    def get_free_variables(self) -> 'Iterable[VarReference]': ...  # pragma: no cover
-
 class Assert(Stmt):
-    def __init__(self, var: VarReference, message: str):
-        assert isinstance(var.type, BoolType)
-        self.var = var
+    def __init__(self, expr: Expr, message: str):
+        assert isinstance(expr.type, BoolType)
+        self.expr = expr
         self.message = message
 
     def get_return_type(self):
         return ReturnTypeInfo(type=None, always_returns=False)
-
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
 
 class Assignment(Stmt):
     def __init__(self, lhs: VarReference, rhs: Expr):
@@ -242,26 +229,18 @@ class Assignment(Stmt):
     def get_return_type(self):
         return ReturnTypeInfo(type=None, always_returns=False)
 
-    def get_free_variables(self):
-        for var in self.rhs.get_free_variables():
-            yield var
-
 class ReturnStmt(Stmt):
-    def __init__(self, var: VarReference):
-        self.var = var
+    def __init__(self, expr: Expr):
+        self.expr = expr
 
     def get_return_type(self):
-        return ReturnTypeInfo(type=self.var.type, always_returns=True)
-
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
+        return ReturnTypeInfo(type=self.expr.type, always_returns=True)
 
 class IfStmt(Stmt):
-    def __init__(self, cond: VarReference, if_stmts: List[Stmt], else_stmts: List[Stmt]):
-        assert cond.type == BoolType()
+    def __init__(self, cond_expr: Expr, if_stmts: List[Stmt], else_stmts: List[Stmt]):
+        assert cond_expr.type == BoolType()
         assert if_stmts
-        self.cond = cond
+        self.cond_expr = cond_expr
         self.if_stmts = if_stmts
         self.else_stmts = else_stmts
 
@@ -282,13 +261,6 @@ class IfStmt(Stmt):
         return ReturnTypeInfo(type=type,
                               always_returns=if_return_type_info.always_returns and else_return_type_info.always_returns)
 
-    def get_free_variables(self):
-        for var in self.cond.get_free_variables():
-            yield var
-        for stmts in (self.if_stmts, self.else_stmts):
-            for var in get_free_variables_in_stmts(stmts):
-                yield var
-
 class FunctionDefn:
     def __init__(self,
                  name: str,
@@ -301,14 +273,6 @@ class FunctionDefn:
         self.return_type = return_type
 
 class Module:
-    def __init__(self, body: List[Union[FunctionDefn, Assignment, Assert]]):
-        self.body = body
-
-def get_free_variables_in_stmts(stmts: List[Stmt]):
-    local_var_names = set()
-    for stmt in stmts:
-        for var in stmt.get_free_variables():
-            if var.name not in local_var_names:
-                yield var
-        if isinstance(stmt, Assignment):
-            local_var_names.add(stmt.lhs.name)
+    def __init__(self, function_defns: List[FunctionDefn], assertions: List[Assert]):
+        self.function_defns = function_defns
+        self.assertions = assertions

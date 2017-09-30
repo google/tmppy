@@ -53,11 +53,11 @@ def ir_to_string(ir_elem, line_indent=''):
                            for field_name, child_node in ir_elem.__dict__.items())
                 + ')')
 
-def clang_format(cxx_source: str, code_style = 'LLVM') -> str:
+def clang_format(cxx_source: str, code_style='LLVM') -> str:
     command = ['clang-format',
                '-assume-filename=file.h',
                "-style={BasedOnStyle: %s, MaxEmptyLinesToKeep: 0, KeepEmptyLinesAtTheStartOfBlocks: false}"
-                   % code_style
+               % code_style
                ]
     try:
         p = subprocess.Popen(
@@ -67,8 +67,9 @@ def clang_format(cxx_source: str, code_style = 'LLVM') -> str:
             stderr=subprocess.PIPE,
             universal_newlines=True)
         stdout, stderr = p.communicate(cxx_source)
-    except Exception: # pragma: no cover
+    except Exception:  # pragma: no cover
         raise Exception("Error while executing %s" % command)
-    if p.returncode != 0: # pragma: no cover
+    if p.returncode != 0:  # pragma: no cover
         raise Exception('clang-format exited with error code %s. Command was: %s. Error:\n%s' % (p.returncode, command, stderr))
+    assert isinstance(stdout, str)
     return stdout

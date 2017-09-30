@@ -27,7 +27,7 @@ from functools import wraps
 
 import pytest
 
-import _py2tmp.ast2ir
+import _py2tmp.ast2highir
 import _py2tmp.lowir
 import py2tmp
 
@@ -531,7 +531,7 @@ def _get_function_body(f):
 def _convert_to_cpp_expecting_success(tmppy_source):
     try:
         return py2tmp.convert_to_cpp(tmppy_source)
-    except _py2tmp.ast2ir.CompilationError as e1:
+    except _py2tmp.ast2highir.CompilationError as e1:
         e = e1
     pytest.fail(
         textwrap.dedent('''\
@@ -623,7 +623,7 @@ def assert_conversion_fails(f):
         try:
             py2tmp.convert_to_cpp('\n'.join(actual_source_lines))
             e = None
-        except _py2tmp.ast2ir.CompilationError as e1:
+        except _py2tmp.ast2highir.CompilationError as e1:
             e = e1
 
         if not e:

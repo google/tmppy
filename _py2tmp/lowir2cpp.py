@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterator, Union
+from typing import List, Iterator
 import _py2tmp.lowir as lowir
 
 def expr_to_cpp(expr: lowir.Expr) -> str:
@@ -31,7 +31,7 @@ def expr_to_cpp(expr: lowir.Expr) -> str:
 
 def static_assert_to_cpp(assert_stmt: lowir.StaticAssert,
                          enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                         cxx_identifier_generator: Iterator[str]):
+                         identifier_generator: Iterator[str]):
     if enclosing_function_defn_args:
         bound_variables = {arg_decl.name
                            for arg_decl in enclosing_function_defn_args}
@@ -61,7 +61,7 @@ def static_assert_to_cpp(assert_stmt: lowir.StaticAssert,
 
         # All of this function's params are functions, we can't use any of the predefined AlwaysTrue* templates.
         # We need to define a new AlwaysTrueFromType variant for this specific function type.
-        always_true_id = next(cxx_identifier_generator)
+        always_true_id = next(identifier_generator)
         template_param_decl = _type_to_template_param_declaration(type=enclosing_function_defn_args[0].type)
         template_param = enclosing_function_defn_args[0].name
         return '''\
@@ -72,7 +72,7 @@ def static_assert_to_cpp(assert_stmt: lowir.StaticAssert,
             static_assert({always_true_id}<{template_param}>::value && {cpp_meta_expr}, "{message}");
             '''.format(**locals())
 
-def constant_def_to_cpp(constant_def: lowir.ConstantDef, cxx_identifier_generator: Iterator[str]):
+def constant_def_to_cpp(constant_def: lowir.ConstantDef, identifier_generator: Iterator[str]):
     if isinstance(constant_def.type, lowir.BoolType):
         type_cpp = 'bool'
     elif isinstance(constant_def.type, lowir.Int64Type):
@@ -86,7 +86,7 @@ def constant_def_to_cpp(constant_def: lowir.ConstantDef, cxx_identifier_generato
         static constexpr {type_cpp} {name} = {cpp_meta_expr};
         '''.format(**locals())
 
-def typedef_to_cpp(typedef: lowir.Typedef, cxx_identifier_generator: Iterator[str]):
+def typedef_to_cpp(typedef: lowir.Typedef, identifier_generator: Iterator[str]):
     name = typedef.name
     if typedef.type.kind == lowir.ExprKind.TYPE:
         cpp_meta_expr = expr_to_cpp(typedef.expr)
@@ -96,7 +96,7 @@ def typedef_to_cpp(typedef: lowir.Typedef, cxx_identifier_generator: Iterator[st
     elif typedef.type.kind == lowir.ExprKind.TEMPLATE:
         assert isinstance(typedef.type, lowir.TemplateType)
 
-        template_args = [lowir.TemplateArgDecl(type=arg_type, name=next(cxx_identifier_generator))
+        template_args = [lowir.TemplateArgDecl(type=arg_type, name=next(identifier_generator))
                          for arg_type in typedef.type.argtypes]
         template_args_decl = ', '.join(template_arg_decl_to_cpp(arg)
                                        for arg in template_args)
@@ -104,7 +104,7 @@ def typedef_to_cpp(typedef: lowir.Typedef, cxx_identifier_generator: Iterator[st
         template_instantiation_expr = lowir.TemplateInstantiation(template_expr=typedef.expr,
                                                                   args=[lowir.TypeLiteral.for_local(type=arg.type,
                                                                                                     cpp_type=arg.name)
-                                                                  for arg in template_args])
+                                                                        for arg in template_args])
 
         cpp_meta_expr = template_instantiation_to_cpp(template_instantiation_expr)
 
@@ -136,19 +136,18 @@ def template_arg_decl_to_cpp(arg_decl: lowir.TemplateArgDecl):
 
 def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
                                    cxx_name: str,
-                                   cxx_identifier_generator: Iterator[str]):
+                                   identifier_generator: Iterator[str]):
     def _template_body_element_to_cpp(x):
         if isinstance(x, lowir.StaticAssert):
             return static_assert_to_cpp(x,
                                         enclosing_function_defn_args=specialization.args,
-                                        cxx_identifier_generator=cxx_identifier_generator)
+                                        identifier_generator=identifier_generator)
         elif isinstance(x, lowir.ConstantDef):
-            return constant_def_to_cpp(x, cxx_identifier_generator)
+            return constant_def_to_cpp(x, identifier_generator)
         elif isinstance(x, lowir.Typedef):
-            return typedef_to_cpp(x, cxx_identifier_generator)
+            return typedef_to_cpp(x, identifier_generator)
         else:
             raise NotImplementedError('Unsupported element: ' + str(x.__class__))
-
 
     asserts_and_assignments_str = ''.join(_template_body_element_to_cpp(x) + '\n'
                                           for x in specialization.body)
@@ -171,12 +170,12 @@ def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
             }};
             '''.format(**locals())
 
-def template_defn_to_cpp(template_defn: lowir.TemplateDefn, cxx_identifier_generator: Iterator[str]):
+def template_defn_to_cpp(template_defn: lowir.TemplateDefn, identifier_generator: Iterator[str]):
     template_name = template_defn.name
     if template_defn.main_definition:
         main_definition_str = template_specialization_to_cpp(template_defn.main_definition,
                                                              cxx_name=template_name,
-                                                             cxx_identifier_generator=cxx_identifier_generator)
+                                                             identifier_generator=identifier_generator)
     else:
         template_args = ', '.join(template_arg_decl_to_cpp(arg)
                                   for arg in template_defn.args)
@@ -186,7 +185,7 @@ def template_defn_to_cpp(template_defn: lowir.TemplateDefn, cxx_identifier_gener
             '''.format(**locals())
     specializations_str = ''.join(template_specialization_to_cpp(specialization,
                                                                  cxx_name=template_name,
-                                                                 cxx_identifier_generator=cxx_identifier_generator)
+                                                                 identifier_generator=identifier_generator)
                                   for specialization in template_defn.specializations)
     return main_definition_str + specializations_str
 
@@ -250,15 +249,22 @@ def class_member_access_to_cpp(expr: lowir.ClassMemberAccess,
         raise NotImplementedError('Member kind: %s' % expr.member_kind)
     return cpp_str_template.format(**locals())
 
-def header_to_cpp(header: lowir.Header, cxx_identifier_generator: Iterator[str]):
-    includes = '''\
+def header_to_cpp(header: lowir.Header, identifier_generator: Iterator[str]):
+    header_chunks = ['''\
         #include <tmppy/tmppy.h>
-        #include <type_traits>     
-        '''
-    return (includes
-            + ''.join(template_defn_to_cpp(x, cxx_identifier_generator=cxx_identifier_generator)
-                      for x in header.template_defns)
-            + ''.join(static_assert_to_cpp(x,
-                                           enclosing_function_defn_args=[],
-                                           cxx_identifier_generator=cxx_identifier_generator)
-                      for x in header.assertions))
+        #include <type_traits>
+        ''']
+    for elem in header.content:
+        if isinstance(elem, lowir.TemplateDefn):
+            header_chunks.append(template_defn_to_cpp(elem, identifier_generator=identifier_generator))
+        elif isinstance(elem, lowir.StaticAssert):
+            header_chunks.append(static_assert_to_cpp(elem,
+                                                      enclosing_function_defn_args=[],
+                                                      identifier_generator=identifier_generator))
+        elif isinstance(elem, lowir.ConstantDef):
+            header_chunks.append(constant_def_to_cpp(elem, identifier_generator))
+        elif isinstance(elem, lowir.Typedef):
+            header_chunks.append(typedef_to_cpp(elem, identifier_generator))
+        else:
+            raise NotImplementedError('Unexpected toplevel element: %s' % str(elem.__class__))
+    return ''.join(header_chunks)
