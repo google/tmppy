@@ -192,6 +192,22 @@ class AttributeAccessExpr(Expr):
         for var in self.expr.get_free_variables():
             yield var
 
+class AndExpr(Expr):
+    def __init__(self, lhs: Expr, rhs: Expr):
+        assert lhs.type == BoolType()
+        assert rhs.type == BoolType()
+        super().__init__(type=BoolType())
+        self.lhs = lhs
+        self.rhs = rhs
+
+class OrExpr(Expr):
+    def __init__(self, lhs: Expr, rhs: Expr):
+        assert lhs.type == BoolType()
+        assert rhs.type == BoolType()
+        super().__init__(type=BoolType())
+        self.lhs = lhs
+        self.rhs = rhs
+
 class IntLiteral(Expr):
     def __init__(self, value: int):
         super().__init__(type=IntType())

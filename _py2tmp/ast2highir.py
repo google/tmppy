@@ -16,6 +16,7 @@ import textwrap
 import _py2tmp.highir as highir
 import typed_ast.ast3 as ast
 from typing import List, Tuple, Dict, Optional, Union
+from _py2tmp.utils import ast_to_string
 
 class Symbol:
     def __init__(self, name: str, type: highir.ExprType):
@@ -503,6 +504,52 @@ def number_literal_expression_ast_to_ir(ast_node: ast.Num, compilation_context: 
                                'int value out of bounds: values greater than 2^63-1 are not supported.')
     return highir.IntLiteral(value=n)
 
+def and_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context):
+    assert isinstance(ast_node.op, ast.And)
+
+    if not compilation_context.current_function_name:
+        raise CompilationError(compilation_context, ast_node,
+                               'The "and" operator is only supported in functions, not at toplevel.')
+
+    assert len(ast_node.values) >= 2
+
+    exprs = []
+    for expr_ast_node in ast_node.values:
+        expr = expression_ast_to_ir(expr_ast_node, compilation_context)
+        if expr.type != highir.BoolType():
+            raise CompilationError(compilation_context, ast_node.left,
+                                   'The "and" operator is only supported for booleans, but this value has type %s.' % str(expr.type))
+        exprs.append(expr)
+
+    final_expr = exprs[-1]
+    for expr in reversed(exprs[:-1]):
+        final_expr = highir.AndExpr(lhs=expr, rhs=final_expr)
+
+    return final_expr
+
+def or_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context):
+    assert isinstance(ast_node.op, ast.Or)
+
+    if not compilation_context.current_function_name:
+        raise CompilationError(compilation_context, ast_node,
+                               'The "or" operator is only supported in functions, not at toplevel.')
+
+    assert len(ast_node.values) >= 2
+
+    exprs = []
+    for expr_ast_node in ast_node.values:
+        expr = expression_ast_to_ir(expr_ast_node, compilation_context)
+        if expr.type != highir.BoolType():
+            raise CompilationError(compilation_context, ast_node.left,
+                                   'The "or" operator is only supported for booleans, but this value has type %s.' % str(expr.type))
+        exprs.append(expr)
+
+    final_expr = exprs[-1]
+    for expr in reversed(exprs[:-1]):
+        final_expr = highir.OrExpr(lhs=expr, rhs=final_expr)
+
+    return final_expr
+
 def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.NameConstant):
         return name_constant_ast_to_ir(ast_node, compilation_context)
@@ -526,7 +573,12 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
         return number_literal_expression_ast_to_ir(ast_node, compilation_context, positive=True)
     elif isinstance(ast_node, ast.UnaryOp) and isinstance(ast_node.op, ast.USub) and isinstance(ast_node.operand, ast.Num):
         return number_literal_expression_ast_to_ir(ast_node.operand, compilation_context, positive=False)
+    elif isinstance(ast_node, ast.BoolOp) and isinstance(ast_node.op, ast.And):
+        return and_expression_ast_to_ir(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.BoolOp) and isinstance(ast_node.op, ast.Or):
+        return or_expression_ast_to_ir(ast_node, compilation_context)
     else:
+        # raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported: %s' % ast_to_string(ast_node))
         raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported.')  # pragma: no cover
 
 def name_constant_ast_to_ir(ast_node: ast.NameConstant, compilation_context: CompilationContext):

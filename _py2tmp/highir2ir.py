@@ -33,7 +33,7 @@ def type_to_ir(type: highir.ExprType):
         raise NotImplementedError('Unexpected type: %s' % str(type.__class__))
 
 def expr_to_ir(expr: highir.Expr, identifier_generator: Iterator[str]) \
-        -> Tuple[List[ir.Assignment], ir.VarReference]:
+        -> Tuple[List[ir.Stmt], ir.VarReference]:
     if isinstance(expr, highir.VarReference):
         return [], var_reference_to_ir(expr)
     elif isinstance(expr, highir.MatchExpr):
@@ -52,6 +52,10 @@ def expr_to_ir(expr: highir.Expr, identifier_generator: Iterator[str]) \
         stmts, expr = equality_comparison_to_ir(expr, identifier_generator)
     elif isinstance(expr, highir.AttributeAccessExpr):
         stmts, expr = attribute_access_expr_to_ir(expr, identifier_generator)
+    elif isinstance(expr, highir.AndExpr):
+        stmts, expr = and_expr_to_ir(expr, identifier_generator)
+    elif isinstance(expr, highir.OrExpr):
+        stmts, expr = or_expr_to_ir(expr, identifier_generator)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -80,17 +84,17 @@ def match_case_to_ir(match_case: highir.MatchCase, identifier_generator: Iterato
                         return_type=var.type)
 
 def match_expr_to_ir(match_expr: highir.MatchExpr, identifier_generator: Iterator[str]):
-    assignments = []
+    stmts = []
     matched_vars = []
     for expr in match_expr.matched_exprs:
-        additional_assignments, var = expr_to_ir(expr, identifier_generator)
-        assignments += additional_assignments
+        additional_stmts, var = expr_to_ir(expr, identifier_generator)
+        stmts += additional_stmts
         matched_vars.append(var)
 
     match_cases = [match_case_to_ir(match_case, identifier_generator)
                    for match_case in match_expr.match_cases]
 
-    return assignments, ir.MatchExpr(matched_vars, match_cases)
+    return stmts, ir.MatchExpr(matched_vars, match_cases)
 
 def bool_literal_to_ir(literal: highir.BoolLiteral):
     return [], ir.BoolLiteral(value=literal.value)
@@ -102,70 +106,124 @@ def type_literal_to_ir(literal: highir.TypeLiteral):
     return [], ir.TypeLiteral(cpp_type=literal.cpp_type)
 
 def list_expr_to_ir(list_expr: highir.ListExpr, identifier_generator: Iterator[str]):
-    assignments = []
+    stmts = []
     elem_vars = []
     for elem_expr in list_expr.elem_exprs:
-        other_assignments, var = expr_to_ir(elem_expr, identifier_generator)
-        assignments += other_assignments
+        other_stmts, var = expr_to_ir(elem_expr, identifier_generator)
+        stmts += other_stmts
         elem_vars.append(var)
-    return assignments, ir.ListExpr(elem_type=type_to_ir(list_expr.elem_type),
-                                    elems=elem_vars)
+    return stmts, ir.ListExpr(elem_type=type_to_ir(list_expr.elem_type),
+                              elems=elem_vars)
 
 def function_call_to_ir(call_expr: highir.FunctionCall, identifier_generator: Iterator[str]):
-    assignments, fun = expr_to_ir(call_expr.fun_expr, identifier_generator)
+    stmts, fun = expr_to_ir(call_expr.fun_expr, identifier_generator)
     args = []
     for arg_expr in call_expr.args:
-        other_assignments, arg_var = expr_to_ir(arg_expr, identifier_generator)
-        assignments += other_assignments
+        other_stmts, arg_var = expr_to_ir(arg_expr, identifier_generator)
+        stmts += other_stmts
         args.append(arg_var)
-    return assignments, ir.FunctionCall(fun=fun, args=args)
+    return stmts, ir.FunctionCall(fun=fun, args=args)
 
 def equality_comparison_to_ir(comparison_expr: highir.EqualityComparison, identifier_generator: Iterator[str]):
-    lhs_assignments, lhs = expr_to_ir(comparison_expr.lhs, identifier_generator)
-    rhs_assignments, rhs = expr_to_ir(comparison_expr.rhs, identifier_generator)
+    lhs_stmts, lhs = expr_to_ir(comparison_expr.lhs, identifier_generator)
+    rhs_stmts, rhs = expr_to_ir(comparison_expr.rhs, identifier_generator)
 
-    return lhs_assignments + rhs_assignments, ir.EqualityComparison(lhs=lhs, rhs=rhs)
+    return lhs_stmts + rhs_stmts, ir.EqualityComparison(lhs=lhs, rhs=rhs)
 
 def attribute_access_expr_to_ir(attribute_access_expr: highir.AttributeAccessExpr, identifier_generator: Iterator[str]):
-    assignments, var = expr_to_ir(attribute_access_expr.expr, identifier_generator)
-    return assignments, ir.AttributeAccessExpr(var=var, attribute_name=attribute_access_expr.attribute_name)
+    stmts, var = expr_to_ir(attribute_access_expr.expr, identifier_generator)
+    return stmts, ir.AttributeAccessExpr(var=var, attribute_name=attribute_access_expr.attribute_name)
+
+def and_expr_to_ir(expr, identifier_generator):
+    lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
+    rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
+
+    # y = f() and g()
+    #
+    # becomes:
+    #
+    # if f():
+    #   x = g()
+    # else:
+    #   x = False
+    # y = x
+
+    var = ir.VarReference(type=ir.BoolType(),
+                          name=next(identifier_generator),
+                          is_global_function=False)
+
+    rhs_stmts.append(ir.Assignment(lhs=var, rhs=rhs_var))
+
+    lhs_stmts.append(ir.IfStmt(cond=lhs_var,
+                               if_stmts=rhs_stmts,
+                               else_stmts=[ir.Assignment(lhs=var,
+                                                         rhs=ir.BoolLiteral(value=False))]))
+
+    return lhs_stmts, var
+
+def or_expr_to_ir(expr, identifier_generator):
+    lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
+    rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
+
+    # y = f() or g()
+    #
+    # becomes:
+    #
+    # if f():
+    #   x = True
+    # else:
+    #   x = g()
+    # y = x
+
+    var = ir.VarReference(type=ir.BoolType(),
+                          name=next(identifier_generator),
+                          is_global_function=False)
+
+    rhs_stmts.append(ir.Assignment(lhs=var, rhs=rhs_var))
+
+    lhs_stmts.append(ir.IfStmt(cond=lhs_var,
+                               if_stmts=[ir.Assignment(lhs=var,
+                                                       rhs=ir.BoolLiteral(value=True))],
+                               else_stmts=rhs_stmts))
+
+    return lhs_stmts, var
 
 def assert_to_ir(assert_stmt: highir.Assert, identifier_generator: Iterator[str]):
-    assignments, var = expr_to_ir(assert_stmt.expr, identifier_generator)
-    return assignments, ir.Assert(var=var, message=assert_stmt.message)
+    stmts, var = expr_to_ir(assert_stmt.expr, identifier_generator)
+    return stmts, ir.Assert(var=var, message=assert_stmt.message)
 
 def assignment_to_ir(assignment: highir.Assignment, identifier_generator: Iterator[str]):
-    assignments, var = expr_to_ir(assignment.rhs, identifier_generator)
-    return assignments, ir.Assignment(lhs=var_reference_to_ir(assignment.lhs),
-                                      rhs=var)
+    stmts, var = expr_to_ir(assignment.rhs, identifier_generator)
+    return stmts, ir.Assignment(lhs=var_reference_to_ir(assignment.lhs),
+                                rhs=var)
 
 def return_stmt_to_ir(return_stmt: highir.ReturnStmt, identifier_generator: Iterator[str]):
-    assignments, var = expr_to_ir(return_stmt.expr, identifier_generator)
-    return assignments, ir.ReturnStmt(var=var)
+    stmts, var = expr_to_ir(return_stmt.expr, identifier_generator)
+    return stmts, ir.ReturnStmt(var=var)
 
 def if_stmt_to_ir(if_stmt: highir.IfStmt,
                   identifier_generator: Iterator[str]):
-    cond_assignments, cond = expr_to_ir(if_stmt.cond_expr, identifier_generator)
+    cond_stmts, cond = expr_to_ir(if_stmt.cond_expr, identifier_generator)
     if_stmts = stmts_to_ir(if_stmt.if_stmts, identifier_generator)
     else_stmts = stmts_to_ir(if_stmt.else_stmts, identifier_generator)
-    return cond_assignments, ir.IfStmt(cond=cond, if_stmts=if_stmts, else_stmts=else_stmts)
+    return cond_stmts, ir.IfStmt(cond=cond, if_stmts=if_stmts, else_stmts=else_stmts)
 
 def stmts_to_ir(stmts: List[highir.Stmt],
                 identifier_generator: Iterator[str]):
     expanded_stmts = []
     for stmt in stmts:
         if isinstance(stmt, highir.IfStmt):
-            assignments, stmt = if_stmt_to_ir(stmt, identifier_generator)
+            stmts, stmt = if_stmt_to_ir(stmt, identifier_generator)
         elif isinstance(stmt, highir.Assignment):
-            assignments, stmt = assignment_to_ir(stmt, identifier_generator)
+            stmts, stmt = assignment_to_ir(stmt, identifier_generator)
         elif isinstance(stmt, highir.ReturnStmt):
-            assignments, stmt = return_stmt_to_ir(stmt, identifier_generator)
+            stmts, stmt = return_stmt_to_ir(stmt, identifier_generator)
         elif isinstance(stmt, highir.Assert):
-            assignments, stmt = assert_to_ir(stmt, identifier_generator)
+            stmts, stmt = assert_to_ir(stmt, identifier_generator)
         else:
             raise NotImplementedError('Unexpected statement: %s' % str(stmt.__class__))
 
-        expanded_stmts += assignments
+        expanded_stmts += stmts
         expanded_stmts.append(stmt)
 
     return expanded_stmts
