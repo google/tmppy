@@ -15,28 +15,17 @@
 from typing import List, Iterable, Optional, Union, Dict
 
 class ExprType:
-    def __str__(self) -> str: ...  # pragma: no cover
-
     def __eq__(self, other) -> bool: ...  # pragma: no cover
 
 class BoolType(ExprType):
-    def __str__(self):
-        return 'bool'
-
     def __eq__(self, other):
         return isinstance(other, BoolType)
 
 class IntType(ExprType):
-    def __str__(self):
-        return 'int'
-
     def __eq__(self, other):
         return isinstance(other, IntType)
 
 class TypeType(ExprType):
-    def __str__(self):
-        return 'Type'
-
     def __eq__(self, other):
         return isinstance(other, TypeType)
 
@@ -45,12 +34,6 @@ class FunctionType(ExprType):
         self.argtypes = argtypes
         self.returns = returns
 
-    def __str__(self):
-        return "(%s) -> %s" % (
-            ', '.join(str(arg)
-                      for arg in self.argtypes),
-            str(self.returns))
-
     def __eq__(self, other):
         return isinstance(other, FunctionType) and self.__dict__ == other.__dict__
 
@@ -58,9 +41,6 @@ class ListType(ExprType):
     def __init__(self, elem_type: ExprType):
         assert not isinstance(elem_type, FunctionType)
         self.elem_type = elem_type
-
-    def __str__(self):
-        return "List[%s]" % str(self.elem_type)
 
     def __eq__(self, other):
         return isinstance(other, ListType) and self.__dict__ == other.__dict__
@@ -77,9 +57,6 @@ class CustomType(ExprType):
     def __init__(self, name: str, arg_types: List[CustomTypeArgDecl]):
         self.name = name
         self.arg_types = arg_types
-
-    def __str__(self):
-        return self.name
 
     def __eq__(self, other):
         return isinstance(other, CustomType) and self.__dict__ == other.__dict__
@@ -284,8 +261,6 @@ class ReturnTypeInfo:
         self.always_returns = always_returns
 
 class Stmt:
-    def get_return_type(self) -> ReturnTypeInfo: ...  # pragma: no cover
-
     # Note: it's the caller's responsibility to de-duplicate VarReference objects that reference the same symbol, if
     # desired.
     def get_free_variables(self) -> 'Iterable[VarReference]': ...  # pragma: no cover
@@ -295,9 +270,6 @@ class Assert(Stmt):
         assert isinstance(var.type, BoolType)
         self.var = var
         self.message = message
-
-    def get_return_type(self):
-        return ReturnTypeInfo(type=None, always_returns=False)
 
     def get_free_variables(self):
         for var in self.var.get_free_variables():
@@ -309,9 +281,6 @@ class Assignment(Stmt):
         self.lhs = lhs
         self.rhs = rhs
 
-    def get_return_type(self):
-        return ReturnTypeInfo(type=None, always_returns=False)
-
     def get_free_variables(self):
         for var in self.rhs.get_free_variables():
             yield var
@@ -319,9 +288,6 @@ class Assignment(Stmt):
 class ReturnStmt(Stmt):
     def __init__(self, var: VarReference):
         self.var = var
-
-    def get_return_type(self):
-        return ReturnTypeInfo(type=self.var.type, always_returns=True)
 
     def get_free_variables(self):
         for var in self.var.get_free_variables():
@@ -334,23 +300,6 @@ class IfStmt(Stmt):
         self.cond = cond
         self.if_stmts = if_stmts
         self.else_stmts = else_stmts
-
-    def get_return_type(self):
-        if_return_type_info = self.if_stmts[-1].get_return_type()
-        if self.else_stmts:
-            else_return_type_info = self.else_stmts[-1].get_return_type()
-        else:
-            else_return_type_info = ReturnTypeInfo(type=None, always_returns=False)
-
-        if if_return_type_info.type:
-            assert not else_return_type_info.type or if_return_type_info.type == else_return_type_info.type
-            type = if_return_type_info.type
-        elif else_return_type_info.type:
-            type = else_return_type_info.type
-        else:
-            type = None
-        return ReturnTypeInfo(type=type,
-                              always_returns=if_return_type_info.always_returns and else_return_type_info.always_returns)
 
     def get_free_variables(self):
         for var in self.cond.get_free_variables():

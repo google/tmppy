@@ -25,6 +25,17 @@ def test_if_else_success():
     assert f(True) == Type('int')
 
 @assert_compilation_succeeds
+def test_if_else_defining_local_var_success():
+    from tmppy import Type
+    def f(x: bool):
+        if x:
+            y = x
+            return Type('int')
+        else:
+            return Type('float')
+    assert f(True) == Type('int')
+
+@assert_compilation_succeeds
 def test_if_else_only_if_returns_success():
     from tmppy import Type
     def f(x: bool):

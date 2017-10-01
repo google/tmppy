@@ -518,7 +518,7 @@ def int_comparison_ast_to_ir(lhs_ast_node: ast.AST,
         raise CompilationError(compilation_context, lhs_ast_node,
                                'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(lhs.type)))
     if rhs.type != highir.IntType():
-        raise CompilationError(compilation_context, lhs_ast_node,
+        raise CompilationError(compilation_context, rhs_ast_node,
                                'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(rhs.type)))
 
     return highir.IntComparisonExpr(lhs=lhs, rhs=rhs, op=op)
@@ -559,10 +559,13 @@ def attribute_expression_ast_to_ir(ast_node: ast.Attribute, compilation_context:
                                                   attribute_name=ast_node.attr,
                                                   type=arg.type)
         else:
+            lookup_result = compilation_context.custom_types_symbol_table.get_symbol_definition(value_expr.type.name)
+            assert lookup_result
             raise CompilationError(compilation_context, ast_node.value,
                                    'Values of type "%s" don\'t have the attribute "%s". The available attributes for this type are: {"%s"}.' % (
                                        str(value_expr.type), ast_node.attr, '", "'.join(sorted(arg.name
-                                                                                               for arg in value_expr.type.arg_types))))
+                                                                                               for arg in value_expr.type.arg_types))),
+                                   notes=[(lookup_result.ast_node, '%s was defined here.' % str(value_expr.type))])
     else:
         raise CompilationError(compilation_context, ast_node.value,
                                'Attribute access is not supported for values of type %s.' % str(value_expr.type))
@@ -597,7 +600,7 @@ def and_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context: Compilat
     for expr_ast_node in ast_node.values:
         expr = expression_ast_to_ir(expr_ast_node, compilation_context)
         if expr.type != highir.BoolType():
-            raise CompilationError(compilation_context, ast_node.left,
+            raise CompilationError(compilation_context, expr_ast_node,
                                    'The "and" operator is only supported for booleans, but this value has type %s.' % str(expr.type))
         exprs.append(expr)
 
@@ -620,7 +623,7 @@ def or_expression_ast_to_ir(ast_node: ast.BoolOp, compilation_context: Compilati
     for expr_ast_node in ast_node.values:
         expr = expression_ast_to_ir(expr_ast_node, compilation_context)
         if expr.type != highir.BoolType():
-            raise CompilationError(compilation_context, ast_node.left,
+            raise CompilationError(compilation_context, expr_ast_node,
                                    'The "or" operator is only supported for booleans, but this value has type %s.' % str(expr.type))
         exprs.append(expr)
 
@@ -637,7 +640,7 @@ def not_expression_ast_to_ir(ast_node: ast.UnaryOp, compilation_context: Compila
 
     if expr.type != highir.BoolType():
         raise CompilationError(compilation_context, ast_node.operand,
-                               'The "or" operator is only supported for booleans, but this value has type %s.' % str(expr.type))
+                               'The "not" operator is only supported for booleans, but this value has type %s.' % str(expr.type))
 
     return highir.NotExpr(expr=expr)
 
@@ -974,7 +977,7 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
         raise CompilationError(compilation_context, ast_node.bases[0],
                                'Base classes are not supported.')
     if ast_node.keywords:
-        raise CompilationError(compilation_context, ast_node.keywords[0],
+        raise CompilationError(compilation_context, ast_node,
                                'Keyword class arguments are not supported.')
     if ast_node.decorator_list:
         raise CompilationError(compilation_context, ast_node.decorator_list[0],
@@ -994,14 +997,11 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
     if init_args_ast_node.kwonlyargs:
         raise CompilationError(compilation_context, init_args_ast_node.kwonlyargs[0],
                                'Keyword-only arguments are not supported in __init__.')
-    if init_args_ast_node.kw_defaults:
-        raise CompilationError(compilation_context, init_args_ast_node.kw_defaults[0],
-                               'Default arguments are not supported in __init__.')
-    if init_args_ast_node.defaults:
-        raise CompilationError(compilation_context, init_args_ast_node.defaults[0],
+    if init_args_ast_node.kw_defaults or init_args_ast_node.defaults:
+        raise CompilationError(compilation_context, init_defn_ast_node,
                                'Default arguments are not supported in __init__.')
     if init_args_ast_node.kwarg:
-        raise CompilationError(compilation_context, ast_node.kwarg,
+        raise CompilationError(compilation_context, init_defn_ast_node,
                                'Keyword arguments are not supported in __init__.')
 
     init_args_ast_nodes = init_args_ast_node.args
@@ -1015,11 +1015,16 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
                                'Type annotations on the "self" argument are not supported.')
 
     for arg in init_args_ast_nodes:
-        if init_args_ast_nodes[0].type_comment:
-            raise CompilationError(compilation_context, init_args_ast_nodes[0].type_comment,
+        if arg.type_comment:
+            raise CompilationError(compilation_context, arg,
                                    'Type comments on arguments are not supported.')
 
     init_args_ast_nodes = init_args_ast_nodes[1:]
+
+    if not init_args_ast_nodes:
+        raise CompilationError(compilation_context, init_defn_ast_node,
+                               'Custom types must have at least 1 constructor argument (and field).')
+
     arg_decl_nodes_by_name = dict()
     arg_types = []
     for arg in init_args_ast_nodes:
@@ -1054,7 +1059,7 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
             previous_assign_node = arg_assign_nodes_by_name[stmt_ast_node.value.id]
             raise CompilationError(compilation_context, stmt_ast_node,
                                    'Found multiple assignments to the field "%s".' % stmt_ast_node.value.id,
-                                   notes=[(previous_assign_node, 'A previous assignment to "self.%s" was declared here.' % stmt_ast_node.value.id)])
+                                   notes=[(previous_assign_node, 'A previous assignment to "self.%s" was here.' % stmt_ast_node.value.id)])
 
         if stmt_ast_node.targets[0].attr != stmt_ast_node.value.id:
             raise CompilationError(compilation_context, stmt_ast_node,

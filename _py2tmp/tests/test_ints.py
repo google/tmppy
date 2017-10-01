@@ -55,25 +55,85 @@ def test_int_unary_minus_success():
     assert f(3) == -3
     assert f(f(3)) == 3
 
+@assert_conversion_fails
+def test_bool_unary_minus_error():
+    def f(x: bool):
+        return -x  # error: The "-" operator is only supported for ints, but this value has type bool.
+
 @assert_compilation_succeeds
 def test_int_plus_success():
     assert 2 + 3 == 5
+
+@assert_conversion_fails
+def test_int_plus_bool_error():
+    assert (2 +
+            True  # error: The "\+" operator is only supported for ints, but this value has type bool.
+            == 5)
+
+@assert_conversion_fails
+def test_bool_plus_int_error():
+    assert (True  # error: The "\+" operator is only supported for ints, but this value has type bool.
+            + 2 == 5)
 
 @assert_compilation_succeeds
 def test_int_minus_success():
     assert 2 - 3 == -1
 
+@assert_conversion_fails
+def test_int_minus_bool_error():
+    assert (2 -
+            True  # error: The "-" operator is only supported for ints, but this value has type bool.
+            == 5)
+
+@assert_conversion_fails
+def test_bool_minus_int_error():
+    assert (True  # error: The "-" operator is only supported for ints, but this value has type bool.
+            - 2 == 5)
+
 @assert_compilation_succeeds
 def test_int_multiplication_success():
     assert 2 * 3 == 6
+
+@assert_conversion_fails
+def test_int_bool_multiplication_error():
+    assert (2 *
+            True   # error: The "\*" operator is only supported for ints, but this value has type bool.
+            == 5)
+
+@assert_conversion_fails
+def test_bool_int_multiplication_error():
+    assert (True   # error: The "\*" operator is only supported for ints, but this value has type bool.
+            * 2 == 5)
 
 @assert_compilation_succeeds
 def test_int_division_success():
     assert 7 // 3 == 2
 
+@assert_conversion_fails
+def test_int_bool_division_error():
+    assert (2 //
+            True  # error: The "//" operator is only supported for ints, but this value has type bool.
+            == 5)
+
+@assert_conversion_fails
+def test_bool_int_division_error():
+    assert (True  # error: The "//" operator is only supported for ints, but this value has type bool.
+            // 2 == 5)
+
 @assert_compilation_succeeds
 def test_int_modulus_success():
     assert 7 % 3 == 1
+
+@assert_conversion_fails
+def test_int_bool_modulus_error():
+    assert (2 %
+            True  # error: The "%" operator is only supported for ints, but this value has type bool.
+            == 5)
+
+@assert_conversion_fails
+def test_bool_int_modulus_error():
+    assert (True  # error: The "%" operator is only supported for ints, but this value has type bool.
+            % 2 == 5)
 
 @assert_compilation_succeeds
 def test_int_equals_when_less_than():
@@ -111,6 +171,16 @@ def test_int_less_than_when_equal():
 def test_int_less_than_when_greater_than():
     assert not 3 < 1
 
+@assert_conversion_fails
+def test_int_less_than_bool_error():
+    assert (1 <
+            True)  # error: The "<" operator is only supported for ints, but this value has type bool.
+
+@assert_conversion_fails
+def test_bool_less_than_int_error():
+    assert (True  # error: The "<" operator is only supported for ints, but this value has type bool.
+            < 1)
+
 @assert_compilation_succeeds
 def test_int_greater_than_when_less_than():
     assert not 1 > 3
@@ -122,6 +192,16 @@ def test_int_greater_than_when_equal():
 @assert_compilation_succeeds
 def test_int_greater_than_when_greater_than():
     assert 3 > 1
+
+@assert_conversion_fails
+def test_int_greater_than_bool_error():
+    assert (1 >
+            True)  # error: The ">" operator is only supported for ints, but this value has type bool.
+
+@assert_conversion_fails
+def test_bool_greater_than_int_error():
+    assert (True  # error: The ">" operator is only supported for ints, but this value has type bool.
+            > 1)
 
 @assert_compilation_succeeds
 def test_int_less_than_or_equal_to_when_less_than():
@@ -135,6 +215,16 @@ def test_int_less_than_or_equal_to_when_equal():
 def test_int_less_than_or_equal_to_when_greater_than():
     assert not 3 <= 1
 
+@assert_conversion_fails
+def test_int_less_than_or_equal_to_bool_error():
+    assert (1 <=
+            True)  # error: The "<=" operator is only supported for ints, but this value has type bool.
+
+@assert_conversion_fails
+def test_bool_less_than_or_equal_to_int_error():
+    assert (True  # error: The "<=" operator is only supported for ints, but this value has type bool.
+            <= 1)
+
 @assert_compilation_succeeds
 def test_int_greater_than_or_equal_to_when_less_than():
     assert not 1 >= 3
@@ -146,3 +236,13 @@ def test_int_greater_than_or_equal_to_when_equal():
 @assert_compilation_succeeds
 def test_int_greater_than_or_equal_to_when_greater_than():
     assert 3 >= 1
+
+@assert_conversion_fails
+def test_int_greater_than_or_equal_to_bool_error():
+    assert (1 >=
+            True)  # error: The ">=" operator is only supported for ints, but this value has type bool.
+
+@assert_conversion_fails
+def test_bool_greater_than_or_equal_to_int_error():
+    assert (True  # error: The ">=" operator is only supported for ints, but this value has type bool.
+            >= 1)

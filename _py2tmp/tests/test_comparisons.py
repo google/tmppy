@@ -27,20 +27,26 @@ def test_bool_not_equals_success():
     assert True == True, 'Assertion error'
 
 @assert_conversion_fails
-def test_comparison_different_types():
+def test_equals_different_types():
     from tmppy import Type
     def f(x: bool, y: Type):
         return x == y  # error: Type mismatch in ==: bool vs Type
 
 @assert_conversion_fails
-def test_comparing_functions_error():
+def test_not_equals_different_types():
+    from tmppy import Type
+    def f(x: bool, y: Type):
+        return x != y  # error: Type mismatch in !=: bool vs Type
+
+@assert_conversion_fails
+def test_equals_functions_error():
     def f(x: bool):
         return x
     def g(x: bool):
         return f == f  # error: Type not supported in equality comparison: \(bool\) -> bool
 
 @assert_conversion_fails
-def test_comparing_functions_with_not_equal_error():
+def test_not_equals_functions_error():
     def f(x: bool):
         return x
     def g(x: bool):
@@ -67,3 +73,27 @@ def test_int_equals_error():
 @assert_compilation_succeeds
 def test_int_not_equal_success():
     assert 15 != 3
+
+@assert_compilation_succeeds
+def test_custom_class_equal_success():
+    class MyType:
+        def __init__(self, x: bool, y: int):
+            self.x = x
+            self.y = y
+    assert MyType(True, 15) == MyType(True, 15)
+
+@assert_compilation_succeeds
+def test_custom_class_first_field_not_equal_success():
+    class MyType:
+        def __init__(self, x: bool, y: int):
+            self.x = x
+            self.y = y
+    assert MyType(True, 15) != MyType(False, 15)
+
+@assert_compilation_succeeds
+def test_custom_class_second_field_not_equal_success():
+    class MyType:
+        def __init__(self, x: bool, y: int):
+            self.x = x
+            self.y = y
+    assert MyType(True, 15) != MyType(True, 17)

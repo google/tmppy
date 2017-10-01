@@ -97,30 +97,6 @@ def test_custom_class_as_function_return_value_success():
         return MyType(b, 15)
     assert f(True).x
 
-@assert_compilation_succeeds
-def test_custom_class_equal_success():
-    class MyType:
-        def __init__(self, x: bool, y: int):
-            self.x = x
-            self.y = y
-    assert MyType(True, 15) == MyType(True, 15)
-
-@assert_compilation_succeeds
-def test_custom_class_first_field_not_equal_success():
-    class MyType:
-        def __init__(self, x: bool, y: int):
-            self.x = x
-            self.y = y
-    assert MyType(True, 15) != MyType(False, 15)
-
-@assert_compilation_succeeds
-def test_custom_class_second_field_not_equal_success():
-    class MyType:
-        def __init__(self, x: bool, y: int):
-            self.x = x
-            self.y = y
-    assert MyType(True, 15) != MyType(True, 17)
-
 @assert_conversion_fails
 def test_custom_class_with_same_name_as_previous_function_error():
     def X(b: bool):  # note: The previous declaration was here.
@@ -130,7 +106,7 @@ def test_custom_class_with_same_name_as_previous_function_error():
             self.x = x
 
 @assert_conversion_fails
-def test_function_with_same_name_as_previous_custom_class_error():
+def test_constructor_with_same_name_as_previous_custom_class_error():
     class X:  # note: The previous declaration was here.
         def __init__(self, x: bool):
             self.x = x
@@ -274,3 +250,172 @@ def test_constructor_call_keyword_and_non_keyword_arguments_error():
             self.baz = baz
     def g(x: bool):
         return X(True, bar=Type('int'), baz=[x])  # error: Function calls with a mix of keyword and non-keyword arguments are not supported. Please choose either style.
+
+@assert_conversion_fails
+def test_custom_class_access_to_undefined_field_error():
+    class MyType:  # note: MyType was defined here.
+        def __init__(self, x: bool, y: int):
+            self.x = x
+            self.y = y
+    assert MyType(True, 15).z  # error: Values of type "MyType" don't have the attribute "z". The available attributes for this type are: \{"x", "y"\}.
+
+@assert_conversion_fails
+def test_custom_class_with_base_class_error():
+    class MyType(
+        int):  # error: Base classes are not supported.
+        def __init__(self, x: bool, y: int):
+            self.x = x
+            self.y = y
+
+@assert_conversion_fails
+def test_custom_class_with_keyword_class_arguments_error():
+    class MyType(x=1):  # error: Keyword class arguments are not supported.
+        def __init__(self, x: bool, y: int):
+            self.x = x
+            self.y = y
+
+@assert_conversion_fails
+def test_custom_class_with_decorator_error():
+    @staticmethod  # error: Class decorators are not supported.
+    class MyType:
+        def __init__(self, x: bool, y: int):
+            self.x = x
+            self.y = y
+
+@assert_conversion_fails
+def test_custom_class_with_no_init_error():
+    class MyType:  # error: Custom classes must contain an __init__ method \(and nothing else\).
+        pass
+
+@assert_conversion_fails
+def test_custom_class_with_no_init_with_other_method_error():
+    class MyType:  # error: Custom classes must contain an __init__ method \(and nothing else\).
+        def f(self):
+            return True
+
+@assert_conversion_fails
+def test_custom_class_with_no_init_with_class_constant_error():
+    class MyType:  # error: Custom classes must contain an __init__ method \(and nothing else\).
+        x = 1
+
+@assert_conversion_fails
+def test_custom_class_without_self_param_in_init_and_no_other_params_error():
+    '''
+    class MyType:
+        def __init__():  # error: Expected "self" as first argument of __init__.
+            pass
+    '''
+
+@assert_conversion_fails
+def test_custom_class_without_self_param_in_init_error():
+    class MyType:
+        def __init__(  # error: Expected "self" as first argument of __init__.
+                x: bool):
+            pass
+
+@assert_conversion_fails
+def test_custom_class_with_type_annotation_on_self_param_error():
+    class MyType:
+        def __init__(
+                self: int,  # error: Type annotations on the "self" argument are not supported.
+                x: bool):
+            pass
+
+@assert_conversion_fails
+def test_custom_class_with_vararg_in_init():
+    class MyType:
+        def __init__(self,
+                     *x: bool):  # error: Vararg arguments are not supported in __init__.
+            self.x = x
+
+@assert_conversion_fails
+def test_custom_type_multiple_parameters_with_same_name_error():
+    '''
+    class MyType:
+        def __init__(self,
+                     x: bool,  # note: A previous argument with name "x" was declared here.
+                     x: bool):  # error: Found multiple arguments with name "x".
+            pass
+    '''
+
+@assert_conversion_fails
+def test_constructor_argument_with_type_comment_error():
+    class MyType:
+        def __init__(self,
+                     x  # type: bool  # error: Type comments on arguments are not supported.
+          ):
+            pass
+
+@assert_conversion_fails
+def test_constructor_argument_with_no_type_annotation_error():
+    class MyType:
+        def __init__(self,
+                     x):  # error: All arguments of __init__ \(except "self"\) must have a type annotation.
+            pass
+
+@assert_conversion_fails
+def test_constructor_no_arguments_error():
+    class MyType:
+        def __init__(self):  # error: Custom types must have at least 1 constructor argument \(and field\).
+            pass
+
+@assert_conversion_fails
+def test_constructor_varargs_error():
+    class MyType:
+        def __init__(self, x: bool,
+                     *args):  # error: Vararg arguments are not supported in __init__.
+            pass
+
+@assert_conversion_fails
+def test_constructor_kwargs_error():
+    class MyType:
+        def __init__(self, x: bool, **kwargs):  # error: Keyword arguments are not supported in __init__.
+            pass
+
+@assert_conversion_fails
+def test_constructor_keyword_only_args_error():
+    class MyType:
+        def __init__(self, x: bool, *,
+                     y: bool):  # error: Keyword-only arguments are not supported in __init__.
+            pass
+
+@assert_conversion_fails
+def test_constructor_default_argument_error():
+    class MyType:
+        def __init__(self, x: bool = True):  # error: Default arguments are not supported in __init__.
+            pass
+
+@assert_conversion_fails
+def test_custom_type_unexpected_statement():
+    class MyType:
+        def __init__(self, x: bool):
+            self.x = x
+            y = 1  # error: Unsupported statement. All statements in __init__ methods must be of the form "self.some_var = some_var".
+
+@assert_conversion_fails
+def test_custom_type_multiple_assignments_for_field_error():
+    class MyType:
+        def __init__(self, x: bool):
+            self.x = x  # note: A previous assignment to "self.x" was here.
+            self.x = x  # error: Found multiple assignments to the field "x".
+
+@assert_conversion_fails
+def test_custom_type_missing_assignment_for_field_error():
+    class MyType:
+        def __init__(self, x: bool,
+                     y: bool):  # error: All __init__ arguments must be assigned to fields, but "y" was never assigned.
+            self.x = x
+
+@assert_conversion_fails
+def test_custom_type_argument_assigned_to_field_with_different_name_error():
+    class MyType:
+        def __init__(self, x: bool, y: bool):
+            self.x = y  # error: __init__ arguments must be assigned to a field of the same name, but "y" was assigned to "x".
+
+@assert_conversion_fails
+def test_custom_type_non_argument_assigned_to_field_error():
+    def f(b: bool):
+        return b
+    class MyType:
+        def __init__(self, y: bool):
+            self.f = f  # error: Unsupported assignment. All assigments in __init__ methods must assign a parameter to a field with the same name.
