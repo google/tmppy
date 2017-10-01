@@ -8,4 +8,6 @@ errors) and produces optimized C++ meta-functions, reducing the compile time for
 
 #### License
 
+TMPPy is released under the Apache 2.0 license. See the `LICENSE` file for details.
+
 This is not an official Google product.
