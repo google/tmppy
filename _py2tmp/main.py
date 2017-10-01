@@ -25,7 +25,10 @@ import argparse
 
 def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
     source_ast = ast.parse(python_source, filename=filename)
-    compilation_context = ast2highir.CompilationContext(ast2highir.SymbolTable(), filename, python_source.splitlines())
+    compilation_context = ast2highir.CompilationContext(ast2highir.SymbolTable(),
+                                                        ast2highir.SymbolTable(),
+                                                        filename,
+                                                        python_source.splitlines())
 
     def identifier_generator_fun():
         for i in itertools.count():

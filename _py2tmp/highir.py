@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Optional
+from typing import List, Iterable, Optional, Dict
 
 class ExprType:
     def __str__(self) -> str: ...  # pragma: no cover
@@ -64,6 +64,25 @@ class ListType(ExprType):
 
     def __eq__(self, other):
         return isinstance(other, ListType) and self.__dict__ == other.__dict__
+
+class CustomTypeArgDecl:
+    def __init__(self, name: str, type: ExprType):
+        self.name = name
+        self.type = type
+
+    def __eq__(self, other):
+        return isinstance(other, CustomTypeArgDecl) and self.__dict__ == other.__dict__
+
+class CustomType(ExprType):
+    def __init__(self, name: str, arg_types: List[CustomTypeArgDecl]):
+        self.name = name
+        self.arg_types = arg_types
+
+    def __str__(self):
+        return self.name
+
+    def __eq__(self, other):
+        return isinstance(other, CustomType) and self.__dict__ == other.__dict__
 
 class Expr:
     def __init__(self, type: ExprType):
@@ -182,9 +201,9 @@ class EqualityComparison(Expr):
                 yield var
 
 class AttributeAccessExpr(Expr):
-    def __init__(self, expr: Expr, attribute_name: str):
-        super().__init__(type=TypeType())
-        assert isinstance(expr.type, TypeType)
+    def __init__(self, expr: Expr, attribute_name: str, type: ExprType):
+        super().__init__(type=type)
+        assert isinstance(expr.type, (TypeType, CustomType))
         self.expr = expr
         self.attribute_name = attribute_name
 
@@ -348,6 +367,10 @@ class FunctionDefn:
         self.return_type = return_type
 
 class Module:
-    def __init__(self, function_defns: List[FunctionDefn], assertions: List[Assert]):
+    def __init__(self,
+                 function_defns: List[FunctionDefn],
+                 assertions: List[Assert],
+                 custom_types: List[CustomType]):
         self.function_defns = function_defns
         self.assertions = assertions
+        self.custom_types = custom_types

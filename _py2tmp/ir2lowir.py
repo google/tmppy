@@ -24,6 +24,8 @@ def type_to_low_ir(type: ir.ExprType):
         return lowir.Int64Type()
     elif isinstance(type, ir.TypeType):
         return lowir.TypeType()
+    elif isinstance(type, ir.CustomType):
+        return lowir.TypeType()
     elif isinstance(type, ir.ListType):
         return lowir.TypeType()
     elif isinstance(type, ir.FunctionType):
@@ -257,7 +259,7 @@ def attribute_access_expr_to_low_ir(attribute_access_expr: ir.AttributeAccessExp
     assert class_expr.kind == lowir.ExprKind.TYPE
     return lowir.ClassMemberAccess(class_type_expr=class_expr,
                                    member_name=attribute_access_expr.attribute_name,
-                                   member_kind=lowir.ExprKind.TYPE)
+                                   member_kind=type_to_low_ir(attribute_access_expr.type).kind)
 
 def not_expr_to_low_ir(not_expr: ir.NotExpr):
     return lowir.NotExpr(expr=var_reference_to_low_ir(not_expr.var))
@@ -297,6 +299,75 @@ def assignment_to_low_ir(assignment: ir.Assignment, identifier_generator: Iterat
         element = lowir.Typedef(name=lhs.cpp_type, expr=rhs, type=low_ir_type)
 
     return helper_fns, element
+
+def custom_type_defn_to_low_ir(custom_type: ir.CustomType, identifier_generator: Iterator[str]):
+    # For example, from the following custom type:
+    #
+    # class MyType:
+    #    def __init__(self, x: bool, y: Type):
+    #        self.x
+    #        self.y
+    #
+    # We'll generate:
+    #
+    # template <bool x1, typename y1>
+    # struct MyTypeHolder {
+    #     static constexpr bool x = x1;
+    #     using y = y1;
+    # };
+    #
+    # template <bool x1, typename y1>
+    # struct MyType {
+    #     using type = MyTypeHolder<x1, y1>;
+    # };
+    #
+    # With different names for the helper identifiers, of course. Only MyType, x and y retain their name.
+
+    holder_template_id = next(identifier_generator)
+
+    arg_types = []
+    arg_decls = []
+    holder_template_body = []
+    holder_template_instantiation_args = []
+    template_defns = []
+    for arg in custom_type.arg_types:
+        forwarded_arg_name = next(identifier_generator)
+        arg_type = type_to_low_ir(arg.type)
+        arg_types.append(arg_type)
+        arg_decls.append(lowir.TemplateArgDecl(type=arg_type,
+                                               name=forwarded_arg_name))
+        lhs_var = ir.VarReference(type=arg.type, name=arg.name, is_global_function=False)
+        rhs_var = ir.VarReference(type=arg.type, name=forwarded_arg_name, is_global_function=False)
+        other_template_defns, assignment_elem = assignment_to_low_ir(ir.Assignment(lhs=lhs_var, rhs=rhs_var),
+                                                                     identifier_generator)
+        template_defns += other_template_defns
+        holder_template_body.append(assignment_elem)
+        holder_template_instantiation_args.append(var_reference_to_low_ir(rhs_var))
+
+    holder_template = lowir.TemplateDefn(name=holder_template_id,
+                                         args=arg_decls,
+                                         specializations=[],
+                                         main_definition=lowir.TemplateSpecialization(args=arg_decls,
+                                                                                      patterns=None,
+                                                                                      body=holder_template_body))
+    template_defns.append(holder_template)
+
+    constructor_fn_typedef = lowir.Typedef(name='type',
+                                           type=lowir.TypeType(),
+                                           expr=lowir.TemplateInstantiation(template_expr=lowir.TypeLiteral.for_nonlocal(cpp_type=holder_template_id,
+                                                                                                                         kind=lowir.ExprKind.TEMPLATE),
+                                                                            args=holder_template_instantiation_args,
+                                                                            arg_types=arg_types,
+                                                                            instantiation_might_trigger_static_asserts=False))
+    constructor_fn = lowir.TemplateDefn(name=custom_type.name,
+                                        args=arg_decls,
+                                        specializations=[],
+                                        main_definition=lowir.TemplateSpecialization(args=arg_decls,
+                                                                                     patterns=None,
+                                                                                     body=[constructor_fn_typedef]))
+    template_defns.append(constructor_fn)
+
+    return template_defns
 
 def _create_result_body_element(expr: lowir.Expr, expr_type: lowir.ExprType):
     if expr.kind in (lowir.ExprKind.BOOL, lowir.ExprKind.INT64):
@@ -500,6 +571,8 @@ def module_to_low_ir(module: ir.Module, identifier_generator: Iterator[str]):
             template_defns, elem = assignment_to_low_ir(toplevel_elem, identifier_generator)
             header_content += template_defns
             header_content.append(elem)
+        elif isinstance(toplevel_elem, ir.CustomType):
+            header_content += custom_type_defn_to_low_ir(toplevel_elem, identifier_generator)
         else:
             raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
 

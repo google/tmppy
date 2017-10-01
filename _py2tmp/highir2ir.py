@@ -29,6 +29,10 @@ def type_to_ir(type: highir.ExprType):
         return ir.FunctionType(argtypes=[type_to_ir(arg)
                                          for arg in type.argtypes],
                                returns=type_to_ir(type.returns))
+    elif isinstance(type, highir.CustomType):
+        return ir.CustomType(name=type.name,
+                             arg_types=[ir.CustomTypeArgDecl(name=arg.name, type=type_to_ir(arg.type))
+                                        for arg in type.arg_types])
     else:
         raise NotImplementedError('Unexpected type: %s' % str(type.__class__))
 
@@ -140,7 +144,9 @@ def equality_comparison_to_ir(comparison_expr: highir.EqualityComparison, identi
 
 def attribute_access_expr_to_ir(attribute_access_expr: highir.AttributeAccessExpr, identifier_generator: Iterator[str]):
     stmts, var = expr_to_ir(attribute_access_expr.expr, identifier_generator)
-    return stmts, ir.AttributeAccessExpr(var=var, attribute_name=attribute_access_expr.attribute_name)
+    return stmts, ir.AttributeAccessExpr(var=var,
+                                         attribute_name=attribute_access_expr.attribute_name,
+                                         type=type_to_ir(attribute_access_expr.type))
 
 def and_expr_to_ir(expr: highir.AndExpr, identifier_generator: Iterator[str]):
     lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
@@ -301,4 +307,5 @@ def function_defn_to_ir(function_defn: highir.FunctionDefn, identifier_generator
 def module_to_ir(module: highir.Module, identifier_generator: Iterator[str]):
     function_defns = [function_defn_to_ir(function_defn, identifier_generator)
                       for function_defn in module.function_defns]
-    return ir.Module(body=function_defns + stmts_to_ir(module.assertions, identifier_generator))
+    return ir.Module(body=[type_to_ir(type)
+                           for type in module.custom_types] + function_defns + stmts_to_ir(module.assertions, identifier_generator))

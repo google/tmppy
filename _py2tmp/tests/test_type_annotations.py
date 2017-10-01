@@ -16,7 +16,7 @@ from py2tmp.testing import *
 
 @assert_conversion_fails
 def test_unsupported_type():
-    def f(x: str): # error: Unsupported type: str
+    def f(x: str): # error: Unsupported \(or undefined\) type: str
         return x
 
 @assert_conversion_fails

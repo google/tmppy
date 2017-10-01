@@ -48,41 +48,70 @@ class SymbolTable:
                    name: str,
                    type: highir.ExprType,
                    definition_ast_node: ast.AST,
-                   compilation_context: 'CompilationContext',
-                   is_only_partially_defined: bool = False):
-        """
-        Adds a symbol to the symbol table.
-
-        This throws an error (created by calling `create_already_defined_error(previous_type)`) if a symbol with the
-        same name and different type was already defined in this scope.
-        """
-        previous_symbol, previous_definition_ast_node, previous_symbol_is_only_partially_defined = self.symbols_by_name.get(name, (None, None, None))
-        if previous_symbol:
-            assert isinstance(previous_definition_ast_node, ast.AST)
-            if previous_symbol_is_only_partially_defined:
-                raise CompilationError(compilation_context,
-                                       definition_ast_node,
-                                       '%s could be already initialized at this point.' % name,
-                                       notes=[(previous_definition_ast_node, 'It might have been initialized here (depending on which branch is taken).')])
-            else:
-                raise CompilationError(compilation_context,
-                                       definition_ast_node,
-                                       '%s was already defined in this scope.' % name,
-                                       notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
+                   is_only_partially_defined: bool):
         self.symbols_by_name[name] = (Symbol(name, type), definition_ast_node, is_only_partially_defined)
 
 class CompilationContext:
-    def __init__(self, symbol_table: SymbolTable, filename: str, source_lines: List[str], function_name: Optional[str] = None):
+    def __init__(self,
+                 symbol_table: SymbolTable,
+                 custom_types_symbol_table: SymbolTable,
+                 filename: str,
+                 source_lines: List[str],
+                 function_name: Optional[str] = None):
         self.symbol_table = symbol_table
+        self.custom_types_symbol_table = custom_types_symbol_table
         self.filename = filename
         self.source_lines = source_lines
         self.current_function_name = function_name
 
     def create_child_context(self, function_name=None):
         return CompilationContext(SymbolTable(parent=self.symbol_table),
+                                  self.custom_types_symbol_table,
                                   self.filename,
                                   self.source_lines,
                                   function_name=function_name or self.current_function_name)
+
+    def add_symbol(self,
+                   name: str,
+                   type: highir.ExprType,
+                   definition_ast_node: ast.AST,
+                   is_only_partially_defined: bool):
+        """
+        Adds a symbol to the symbol table.
+
+        This throws an error (created by calling `create_already_defined_error(previous_type)`) if a symbol with the
+        same name and different type was already defined in this scope.
+        """
+        symbol_lookup_result = self.symbol_table.get_symbol_definition(name)
+        if not symbol_lookup_result:
+            symbol_lookup_result = self.custom_types_symbol_table.get_symbol_definition(name)
+        if symbol_lookup_result:
+            if symbol_lookup_result.is_only_partially_defined:
+                raise CompilationError(self, definition_ast_node,
+                                       '%s could be already initialized at this point.' % name,
+                                       notes=[(symbol_lookup_result.ast_node, 'It might have been initialized here (depending on which branch is taken).')])
+            else:
+                raise CompilationError(self, definition_ast_node,
+                                       '%s was already defined in this scope.' % name,
+                                       notes=[(symbol_lookup_result.ast_node, 'The previous declaration was here.')])
+
+        self.symbol_table.add_symbol(name=name,
+                                     type=type,
+                                     definition_ast_node=definition_ast_node,
+                                     is_only_partially_defined=is_only_partially_defined)
+
+    def add_custom_type_symbol(self,
+                               custom_type: highir.CustomType,
+                               definition_ast_node: ast.ClassDef):
+        self.add_symbol(name=custom_type.name,
+                        type=highir.FunctionType(argtypes=[arg.type for arg in custom_type.arg_types],
+                                                 returns=custom_type),
+                        definition_ast_node=definition_ast_node,
+                        is_only_partially_defined=False)
+        self.custom_types_symbol_table.add_symbol(name=custom_type.name,
+                                                  type=custom_type,
+                                                  definition_ast_node=definition_ast_node,
+                                                  is_only_partially_defined=False)
 
 class CompilationError(Exception):
     def __init__(self, compilation_context: CompilationContext, ast_node: ast.AST, error_message: str, notes: List[Tuple[ast.AST, str]] = []):
@@ -114,18 +143,19 @@ class CompilationError(Exception):
 def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: CompilationContext):
     function_defns = []
     toplevel_assertions = []
+    custom_types = []
     for ast_node in module_ast_node.body:
         if isinstance(ast_node, ast.FunctionDef):
             new_function_defn = function_def_ast_to_ir(ast_node, compilation_context)
             function_defns.append(new_function_defn)
 
-            compilation_context.symbol_table.add_symbol(
+            compilation_context.add_symbol(
                 name=ast_node.name,
                 type=highir.FunctionType(argtypes=[arg.type
                                                    for arg in new_function_defn.args],
                                          returns=new_function_defn.return_type),
                 definition_ast_node=ast_node,
-                compilation_context=compilation_context)
+                is_only_partially_defined=False)
         elif isinstance(ast_node, ast.ImportFrom):
             supported_imports_by_module = {
                 'tmppy': ('Type', 'empty_list', 'TypePattern', 'match'),
@@ -147,10 +177,17 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
                                    'TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".')
         elif isinstance(ast_node, ast.Assert):
             toplevel_assertions.append(assert_ast_to_ir(ast_node, compilation_context))
+        elif isinstance(ast_node, ast.ClassDef):
+            custom_type = class_definition_ast_to_ir(ast_node, compilation_context)
+            compilation_context.add_custom_type_symbol(custom_type=custom_type,
+                                                       definition_ast_node=ast_node)
+            custom_types.append(custom_type)
         else:
+            # raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy:\n%s' % ast_to_string(ast_node))
             raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy')
     return highir.Module(function_defns=function_defns,
-                         assertions=toplevel_assertions)
+                         assertions=toplevel_assertions,
+                         custom_types=custom_types)
 
 def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     assert isinstance(ast_node.func, ast.Call)
@@ -205,10 +242,10 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
         lambda_arguments = []
         for arg in value_expr_ast.args.args:
             lambda_arguments.append(arg.arg)
-            lambda_body_compilation_context.symbol_table.add_symbol(name=arg.arg,
-                                                                    type=highir.TypeType(),
-                                                                    definition_ast_node=arg,
-                                                                    compilation_context=lambda_body_compilation_context)
+            lambda_body_compilation_context.add_symbol(name=arg.arg,
+                                                       type=highir.TypeType(),
+                                                       definition_ast_node=arg,
+                                                       is_only_partially_defined=False)
         lambda_body = expression_ast_to_ir(value_expr_ast.body, lambda_body_compilation_context)
         if last_lambda_body_type and lambda_body.type != last_lambda_body_type:
             raise CompilationError(compilation_context, value_expr_ast.body,
@@ -325,11 +362,10 @@ def if_stmt_ast_to_ir(ast_node: ast.If,
         else:
             continue
 
-        compilation_context.symbol_table.add_symbol(name=symbol.name,
-                                                    type=symbol.type,
-                                                    definition_ast_node=definition_ast_node,
-                                                    compilation_context=compilation_context,
-                                                    is_only_partially_defined=is_only_partially_defined)
+        compilation_context.add_symbol(name=symbol.name,
+                                       type=symbol.type,
+                                       definition_ast_node=definition_ast_node,
+                                       is_only_partially_defined=is_only_partially_defined)
 
     return highir.IfStmt(cond_expr=cond_expr, if_stmts=if_stmts, else_stmts=else_stmts), previous_return_stmt
 
@@ -349,10 +385,10 @@ def statements_ast_to_ir(ast_nodes: List[ast.AST],
             statements.append(assert_ast_to_ir(statement_node, compilation_context))
         elif isinstance(statement_node, ast.Assign) or isinstance(statement_node, ast.AnnAssign) or isinstance(statement_node, ast.AugAssign):
             assignment_ir = assignment_ast_to_ir(statement_node, compilation_context)
-            compilation_context.symbol_table.add_symbol(name=assignment_ir.lhs.name,
-                                                        type=assignment_ir.lhs.type,
-                                                        definition_ast_node=statement_node,
-                                                        compilation_context=compilation_context)
+            compilation_context.add_symbol(name=assignment_ir.lhs.name,
+                                           type=assignment_ir.lhs.type,
+                                           definition_ast_node=statement_node,
+                                           is_only_partially_defined=False)
             statements.append(assignment_ir)
         elif isinstance(statement_node, ast.Return):
             return_stmt = return_stmt_ast_to_ir(statement_node, compilation_context)
@@ -391,11 +427,10 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
             else:
                 raise CompilationError(compilation_context, arg, 'All function arguments must have a type annotation.')
         arg_type = type_declaration_ast_to_ir_expression_type(arg.annotation, compilation_context)
-        function_body_compilation_context.symbol_table.add_symbol(
-            name=arg.arg,
-            type=arg_type,
-            definition_ast_node=arg,
-            compilation_context=compilation_context)
+        function_body_compilation_context.add_symbol(name=arg.arg,
+                                                     type=arg_type,
+                                                     definition_ast_node=arg,
+                                                     is_only_partially_defined=False)
         args.append(highir.FunctionArgDecl(type=arg_type, name=arg.arg))
     if not args:
         raise CompilationError(compilation_context, ast_node, 'Functions with no arguments are not supported.')
@@ -513,10 +548,24 @@ def compare_ast_to_ir(ast_node: ast.Compare, compilation_context: CompilationCon
 
 def attribute_expression_ast_to_ir(ast_node: ast.Attribute, compilation_context: CompilationContext):
     value_expr = expression_ast_to_ir(ast_node.value, compilation_context)
-    if not isinstance(value_expr.type, highir.TypeType):
+    if isinstance(value_expr.type, highir.TypeType):
+        return highir.AttributeAccessExpr(expr=value_expr,
+                                          attribute_name=ast_node.attr,
+                                          type=highir.TypeType())
+    elif isinstance(value_expr.type, highir.CustomType):
+        for arg in value_expr.type.arg_types:
+            if arg.name == ast_node.attr:
+                return highir.AttributeAccessExpr(expr=value_expr,
+                                                  attribute_name=ast_node.attr,
+                                                  type=arg.type)
+        else:
+            raise CompilationError(compilation_context, ast_node.value,
+                                   'Values of type "%s" don\'t have the attribute "%s". The available attributes for this type are: {"%s"}.' % (
+                                       str(value_expr.type), ast_node.attr, '", "'.join(sorted(arg.name
+                                                                                               for arg in value_expr.type.arg_types))))
+    else:
         raise CompilationError(compilation_context, ast_node.value,
                                'Attribute access is not supported for values of type %s.' % str(value_expr.type))
-    return highir.AttributeAccessExpr(expr=value_expr, attribute_name=ast_node.attr)
 
 def number_literal_expression_ast_to_ir(ast_node: ast.Num, compilation_context: CompilationContext, positive: bool):
     n = ast_node.n
@@ -707,6 +756,17 @@ def not_eq_ast_to_ir(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: 
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.type))
     return highir.NotExpr(expr=highir.EqualityComparison(lhs=lhs, rhs=rhs))
 
+def _construct_note_diagnostic_for_function_signature(function_lookup_result: SymbolLookupResult):
+    if isinstance(function_lookup_result.ast_node, ast.ClassDef):
+        # The __init__ method.
+        [fun_definition_ast_node] = function_lookup_result.ast_node.body
+        return fun_definition_ast_node, 'The definition of %s.__init__ was here' % function_lookup_result.symbol.name
+    else:
+        return function_lookup_result.ast_node, 'The definition of %s was here' % function_lookup_result.symbol.name
+
+def _construct_note_diagnostic_for_function_arg(function_arg_ast_node: ast.arg):
+    return function_arg_ast_node, 'The definition of %s was here' % function_arg_ast_node.arg
+
 def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     fun_expr = expression_ast_to_ir(ast_node.func, compilation_context)
     if not isinstance(fun_expr.type, highir.FunctionType):
@@ -719,44 +779,62 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
     if ast_node.keywords:
         if not isinstance(fun_expr, highir.VarReference):
             raise CompilationError(compilation_context, ast_node,
-                                   'Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.')
+                                   'Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable expressions. Please switch to non-keyword arguments.')
         lookup_result = compilation_context.symbol_table.get_symbol_definition(fun_expr.name)
         assert lookup_result
         assert not lookup_result.is_only_partially_defined
-        fun_definition_ast_node = lookup_result.ast_node
+        if isinstance(lookup_result.ast_node, ast.ClassDef):
+            is_constructor_call = True
+            # The __init__ method.
+            [fun_definition_ast_node] = lookup_result.ast_node.body
+        else:
+            # It might still end up being a constructor call, e.g. if the custom type is assigned to a var and then used
+            # as a function.
+            is_constructor_call = False
+            fun_definition_ast_node = lookup_result.ast_node
 
-        function_definition_note = (fun_definition_ast_node, 'The definition of %s was here' % ast_node.func.id)
         if not isinstance(fun_definition_ast_node, ast.FunctionDef):
             raise CompilationError(compilation_context, ast_node,
-                                   'Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.',
-                                   notes=[function_definition_note])
+                                   'Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable expressions. Please switch to non-keyword arguments.',
+                                   notes=[(fun_definition_ast_node, 'The definition of %s was here' % ast_node.func.id)])
+
+        if is_constructor_call:
+            # We skip the 'self' parameter.
+            fun_definition_ast_node_args = fun_definition_ast_node.args.args[1:]
+        else:
+            fun_definition_ast_node_args = fun_definition_ast_node.args.args
 
         arg_expr_by_name = {keyword_arg.arg: expression_ast_to_ir(keyword_arg.value, compilation_context)
                             for keyword_arg in ast_node.keywords}
-        formal_arg_names = {arg.arg for arg in fun_definition_ast_node.args.args}
+        formal_arg_names = {arg.arg for arg in fun_definition_ast_node_args}
         specified_nonexisting_args = arg_expr_by_name.keys() - formal_arg_names
         missing_args = formal_arg_names - arg_expr_by_name.keys()
         if specified_nonexisting_args and missing_args:
             raise CompilationError(compilation_context, ast_node,
                                    'Incorrect arguments in call to %s. Missing arguments: {%s}. Specified arguments that don\'t exist: {%s}' % (
                                        fun_expr.name, ', '.join(sorted(missing_args)), ', '.join(sorted(specified_nonexisting_args))),
-                                   notes=[function_definition_note])
+                                   notes=[_construct_note_diagnostic_for_function_signature(lookup_result)]
+                                         + [_construct_note_diagnostic_for_function_arg(arg)
+                                            for arg in sorted(fun_definition_ast_node_args, key=lambda arg: arg.arg)
+                                            if arg.arg in missing_args])
         elif specified_nonexisting_args:
             raise CompilationError(compilation_context, ast_node,
                                    'Incorrect arguments in call to %s. Specified arguments that don\'t exist: {%s}' % (
                                        fun_expr.name, ', '.join(sorted(specified_nonexisting_args))),
-                                   notes=[function_definition_note])
+                                   notes=[_construct_note_diagnostic_for_function_signature(lookup_result)])
         elif missing_args:
             raise CompilationError(compilation_context, ast_node,
                                    'Incorrect arguments in call to %s. Missing arguments: {%s}' % (
                                        fun_expr.name, ', '.join(sorted(missing_args))),
-                                   notes=[function_definition_note])
+                                   notes=[_construct_note_diagnostic_for_function_arg(arg)
+                                          for arg in sorted(fun_definition_ast_node_args, key=lambda arg: arg.arg)
+                                          if arg.arg in missing_args])
 
-        args = [arg_expr_by_name[arg.arg] for arg in fun_definition_ast_node.args.args]
+        args = [arg_expr_by_name[arg.arg] for arg in fun_definition_ast_node_args]
 
-        for expr, keyword_arg, arg_type in zip(args, ast_node.keywords, fun_expr.type.argtypes):
+        for expr, keyword_arg, arg_type, arg_decl_ast_node in zip(args, ast_node.keywords, fun_expr.type.argtypes, fun_definition_ast_node_args):
             if expr.type != arg_type:
-                notes = [function_definition_note]
+                notes = [_construct_note_diagnostic_for_function_arg(arg_decl_ast_node)]
 
                 if isinstance(keyword_arg.value, ast.Name):
                     lookup_result = compilation_context.symbol_table.get_symbol_definition(keyword_arg.value.id)
@@ -778,7 +856,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
                 raise CompilationError(compilation_context, ast_node,
                                        'Argument number mismatch in function call to %s: got %s arguments, expected %s' % (
                                            ast_node.func.id, len(args), len(fun_expr.type.argtypes)),
-                                       notes=[(lookup_result.ast_node, 'The definition of %s was here' % ast_node.func.id)])
+                                       notes=[_construct_note_diagnostic_for_function_signature(lookup_result)])
             else:
                 raise CompilationError(compilation_context, ast_node,
                                        'Argument number mismatch in function call: got %s arguments, expected %s' % (
@@ -787,16 +865,35 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
         for arg_index, (expr, expr_ast_node, arg_type) in enumerate(zip(args, ast_node_args, fun_expr.type.argtypes)):
             if expr.type != arg_type:
                 notes = []
+
                 if isinstance(ast_node.func, ast.Name):
                     lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
                     assert lookup_result
-                    assert not lookup_result.is_only_partially_defined
-                    notes.append((lookup_result.ast_node, 'The definition of %s was here' % ast_node.func.id))
+
+                    if isinstance(lookup_result.ast_node, ast.ClassDef):
+                        is_constructor_call = True
+                        # The __init__ method.
+                        [fun_definition_ast_node] = lookup_result.ast_node.body
+                    else:
+                        # It might still end up being a constructor call, e.g. if the custom type is assigned to a var and then used
+                        # as a function.
+                        is_constructor_call = False
+                        fun_definition_ast_node = lookup_result.ast_node
+
+                    if not isinstance(fun_definition_ast_node, ast.FunctionDef):
+                        notes.append(_construct_note_diagnostic_for_function_signature(lookup_result))
+                    else:
+                        if is_constructor_call:
+                            # We skip the 'self' parameter.
+                            fun_definition_ast_node_args = fun_definition_ast_node.args.args[1:]
+                        else:
+                            fun_definition_ast_node_args = fun_definition_ast_node.args.args
+                        notes.append(_construct_note_diagnostic_for_function_arg(fun_definition_ast_node_args[arg_index]))
 
                 if isinstance(expr_ast_node, ast.Name):
                     lookup_result = compilation_context.symbol_table.get_symbol_definition(expr_ast_node.id)
                     assert lookup_result
-                    assert not lookup_result.is_only_partially_defined
+
                     notes.append((lookup_result.ast_node, 'The definition of %s was here' % expr_ast_node.id))
 
                 raise CompilationError(compilation_context, expr_ast_node,
@@ -845,7 +942,11 @@ def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_co
         elif ast_node.id == 'Type':
             return highir.TypeType()
         else:
-            raise CompilationError(compilation_context, ast_node, 'Unsupported type: ' + ast_node.id)
+            lookup_result = compilation_context.custom_types_symbol_table.get_symbol_definition(ast_node.id)
+            if lookup_result:
+                return lookup_result.symbol.type
+            else:
+                raise CompilationError(compilation_context, ast_node, 'Unsupported (or undefined) type: ' + ast_node.id)
 
     if (isinstance(ast_node, ast.Subscript)
         and isinstance(ast_node.value, ast.Name)
@@ -867,3 +968,108 @@ def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_co
                 returns=type_declaration_ast_to_ir_expression_type(ast_node.slice.value.elts[1], compilation_context))
 
     raise CompilationError(compilation_context, ast_node, 'Unsupported type declaration.')
+
+def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: CompilationContext):
+    if ast_node.bases:
+        raise CompilationError(compilation_context, ast_node.bases[0],
+                               'Base classes are not supported.')
+    if ast_node.keywords:
+        raise CompilationError(compilation_context, ast_node.keywords[0],
+                               'Keyword class arguments are not supported.')
+    if ast_node.decorator_list:
+        raise CompilationError(compilation_context, ast_node.decorator_list[0],
+                               'Class decorators are not supported.')
+
+    if len(ast_node.body) != 1 or not isinstance(ast_node.body[0], ast.FunctionDef) or ast_node.body[0].name != '__init__':
+        raise CompilationError(compilation_context, ast_node,
+                               'Custom classes must contain an __init__ method (and nothing else).')
+
+    [init_defn_ast_node] = ast_node.body
+
+    init_args_ast_node = init_defn_ast_node.args
+
+    if init_args_ast_node.vararg:
+        raise CompilationError(compilation_context, init_args_ast_node.vararg,
+                               'Vararg arguments are not supported in __init__.')
+    if init_args_ast_node.kwonlyargs:
+        raise CompilationError(compilation_context, init_args_ast_node.kwonlyargs[0],
+                               'Keyword-only arguments are not supported in __init__.')
+    if init_args_ast_node.kw_defaults:
+        raise CompilationError(compilation_context, init_args_ast_node.kw_defaults[0],
+                               'Default arguments are not supported in __init__.')
+    if init_args_ast_node.defaults:
+        raise CompilationError(compilation_context, init_args_ast_node.defaults[0],
+                               'Default arguments are not supported in __init__.')
+    if init_args_ast_node.kwarg:
+        raise CompilationError(compilation_context, ast_node.kwarg,
+                               'Keyword arguments are not supported in __init__.')
+
+    init_args_ast_nodes = init_args_ast_node.args
+
+    if not init_args_ast_nodes or init_args_ast_nodes[0].arg != 'self':
+        raise CompilationError(compilation_context, init_defn_ast_node,
+                               'Expected "self" as first argument of __init__.')
+
+    if init_args_ast_nodes[0].annotation:
+        raise CompilationError(compilation_context, init_args_ast_nodes[0].annotation,
+                               'Type annotations on the "self" argument are not supported.')
+
+    for arg in init_args_ast_nodes:
+        if init_args_ast_nodes[0].type_comment:
+            raise CompilationError(compilation_context, init_args_ast_nodes[0].type_comment,
+                                   'Type comments on arguments are not supported.')
+
+    init_args_ast_nodes = init_args_ast_nodes[1:]
+    arg_decl_nodes_by_name = dict()
+    arg_types = []
+    for arg in init_args_ast_nodes:
+        if not init_args_ast_nodes[0].annotation:
+            raise CompilationError(compilation_context, arg,
+                                   'All arguments of __init__ (except "self") must have a type annotation.')
+        if arg.arg in arg_decl_nodes_by_name:
+            previous_arg_node = arg_decl_nodes_by_name[arg.arg]
+            raise CompilationError(compilation_context, arg,
+                                   'Found multiple arguments with name "%s".' % arg.arg,
+                                   notes=[(previous_arg_node, 'A previous argument with name "%s" was declared here.' % arg.arg)])
+
+        arg_decl_nodes_by_name[arg.arg] = arg
+        arg_types.append(highir.CustomTypeArgDecl(name=arg.arg,
+                                                  type = type_declaration_ast_to_ir_expression_type(arg.annotation, compilation_context)))
+
+    arg_assign_nodes_by_name = dict()
+    for stmt_ast_node in init_defn_ast_node.body:
+        if not (isinstance(stmt_ast_node, ast.Assign)
+                and not stmt_ast_node.type_comment
+                and isinstance(stmt_ast_node.value, ast.Name)
+                and isinstance(stmt_ast_node.value.ctx, ast.Load)
+                and len(stmt_ast_node.targets) == 1
+                and isinstance(stmt_ast_node.targets[0], ast.Attribute)
+                and isinstance(stmt_ast_node.targets[0].ctx, ast.Store)
+                and isinstance(stmt_ast_node.targets[0].value, ast.Name)
+                and isinstance(stmt_ast_node.targets[0].value.ctx, ast.Load)):
+            raise CompilationError(compilation_context, stmt_ast_node,
+                                   'Unsupported statement. All statements in __init__ methods must be of the form "self.some_var = some_var".')
+
+        if stmt_ast_node.value.id in arg_assign_nodes_by_name:
+            previous_assign_node = arg_assign_nodes_by_name[stmt_ast_node.value.id]
+            raise CompilationError(compilation_context, stmt_ast_node,
+                                   'Found multiple assignments to the field "%s".' % stmt_ast_node.value.id,
+                                   notes=[(previous_assign_node, 'A previous assignment to "self.%s" was declared here.' % stmt_ast_node.value.id)])
+
+        if stmt_ast_node.targets[0].attr != stmt_ast_node.value.id:
+            raise CompilationError(compilation_context, stmt_ast_node,
+                                   '__init__ arguments must be assigned to a field of the same name, but "%s" was assigned to "%s".' % (stmt_ast_node.value.id, stmt_ast_node.targets[0].attr))
+
+        if stmt_ast_node.value.id not in arg_decl_nodes_by_name:
+            raise CompilationError(compilation_context, stmt_ast_node,
+                                   'Unsupported assignment. All assigments in __init__ methods must assign a parameter to a field with the same name.')
+
+        arg_assign_nodes_by_name[stmt_ast_node.value.id] = stmt_ast_node
+
+    for arg_name, decl_ast_node in arg_decl_nodes_by_name.items():
+        if arg_name not in arg_assign_nodes_by_name:
+            raise CompilationError(compilation_context, decl_ast_node,
+                                   'All __init__ arguments must be assigned to fields, but "%s" was never assigned.' % arg_name)
+
+    return highir.CustomType(name=ast_node.name,
+                             arg_types=arg_types)

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Optional, Union
+from typing import List, Iterable, Optional, Union, Dict
 
 class ExprType:
     def __str__(self) -> str: ...  # pragma: no cover
@@ -64,6 +64,25 @@ class ListType(ExprType):
 
     def __eq__(self, other):
         return isinstance(other, ListType) and self.__dict__ == other.__dict__
+
+class CustomTypeArgDecl:
+    def __init__(self, name: str, type: ExprType):
+        self.name = name
+        self.type = type
+
+    def __eq__(self, other):
+        return isinstance(other, CustomTypeArgDecl) and self.__dict__ == other.__dict__
+
+class CustomType(ExprType):
+    def __init__(self, name: str, arg_types: List[CustomTypeArgDecl]):
+        self.name = name
+        self.arg_types = arg_types
+
+    def __str__(self):
+        return self.name
+
+    def __eq__(self, other):
+        return isinstance(other, CustomType) and self.__dict__ == other.__dict__
 
 class Expr:
     def __init__(self, type: ExprType):
@@ -187,11 +206,12 @@ class EqualityComparison(Expr):
                 yield var
 
 class AttributeAccessExpr(Expr):
-    def __init__(self, var: VarReference, attribute_name: str):
-        super().__init__(type=TypeType())
-        assert isinstance(var.type, TypeType)
+    def __init__(self, var: VarReference, attribute_name: str, type: ExprType):
+        super().__init__(type=type)
+        assert isinstance(var.type, (TypeType, CustomType))
         self.var = var
         self.attribute_name = attribute_name
+        self.type = type
 
     def get_free_variables(self):
         for var in self.var.get_free_variables():
@@ -351,7 +371,7 @@ class FunctionDefn:
         self.return_type = return_type
 
 class Module:
-    def __init__(self, body: List[Union[FunctionDefn, Assignment, Assert]]):
+    def __init__(self, body: List[Union[FunctionDefn, Assignment, Assert, CustomType]]):
         self.body = body
 
 def get_free_variables_in_stmts(stmts: List[Stmt]):

@@ -169,7 +169,7 @@ def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
                                   enclosing_function_defn_args=specialization.args,
                                   identifier_generator=identifier_generator)
         else:
-            raise NotImplementedError('Unsupported element: ' + str(x.__class__))
+            raise NotImplementedError('Unsupported element: ' + str(x))
 
     asserts_and_assignments_str = ''.join(_template_body_element_to_cpp(x) + '\n'
                                           for x in specialization.body)

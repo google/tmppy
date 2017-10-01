@@ -96,11 +96,11 @@ def test_function_redefined_with_different_type_error():
     def f(x: bool, y:bool):  # error: f was already defined in this scope.
         return x
 
-@assert_compilation_succeeds
-def test_function_param_shadows_function_ok():
-    def f(x: bool):
+@assert_conversion_fails
+def test_function_param_shadows_function_error():
+    def f(x: bool):  # note: The previous declaration was here.
         return x
-    def g(f: bool):
+    def g(f: bool):  # error: f was already defined in this scope.
         return f
     assert g(True) == True
 
@@ -203,30 +203,32 @@ def test_function_call_wrong_number_of_arguments():
     def f(x: bool):  # note: The definition of f was here
         return x
     def g(x: bool):
-        return f(x, x) # error: Argument number mismatch in function call to f: got 2 arguments, expected 1
+        return f(x, x)  # error: Argument number mismatch in function call to f: got 2 arguments, expected 1
 
 @assert_conversion_fails
 def test_function_call_wrong_argument_type():
     from tmppy import Type
-    def f(x: bool): # note: The definition of f was here
+    def f(
+            x: bool):  # note: The definition of x was here
         return x
     def g(x: Type):  # note: The definition of x was here
-        return f(x) # error: Type mismatch for argument 0: expected type bool but was: Type
+        return f(x)  # error: Type mismatch for argument 0: expected type bool but was: Type
 
 @assert_conversion_fails
 def test_function_call_wrong_argument_type_expression():
     from tmppy import Type
-    def f(x: bool): # note: The definition of f was here
+    def f(
+            x: bool):  # note: The definition of x was here
         return x
     def g(x: Type):
-        return f([x]) # error: Type mismatch for argument 0: expected type bool but was: List\[Type\]
+        return f([x])  # error: Type mismatch for argument 0: expected type bool but was: List\[Type\]
 
 @assert_conversion_fails
 def test_function_argument_call_wrong_number_of_arguments():
     from typing import Callable
     def g(f: Callable[[bool], bool],  # note: The definition of f was here
           x: bool):
-        return f(x, x) # error: Argument number mismatch in function call to f: got 2 arguments, expected 1
+        return f(x, x)  # error: Argument number mismatch in function call to f: got 2 arguments, expected 1
 
 @assert_conversion_fails
 def test_function_argument_call_wrong_argument_type():
@@ -234,14 +236,14 @@ def test_function_argument_call_wrong_argument_type():
     from typing import Callable
     def g(f: Callable[[bool], bool],  # note: The definition of f was here
           x: Type):  # note: The definition of x was here
-        return f(x) # error: Type mismatch for argument 0: expected type bool but was: Type
+        return f(x)  # error: Type mismatch for argument 0: expected type bool but was: Type
 
 @assert_conversion_fails
 def test_function_expression_call_wrong_number_of_arguments():
     from typing import Callable
     def g(f: Callable[[bool], Callable[[bool], bool]],
           x: bool):
-        return f(True)(x, x) # error: Argument number mismatch in function call: got 2 arguments, expected 1
+        return f(True)(x, x)  # error: Argument number mismatch in function call: got 2 arguments, expected 1
 
 @assert_conversion_fails
 def test_function_expression_call_wrong_argument_type():
@@ -249,11 +251,12 @@ def test_function_expression_call_wrong_argument_type():
     from typing import Callable
     def g(f: Callable[[bool], Callable[[bool], bool]],
           x: Type):  # note: The definition of x was here
-        return f(True)(x) # error: Type mismatch for argument 0: expected type bool but was: Type
+        return f(True)(x)  # error: Type mismatch for argument 0: expected type bool but was: Type
 
 @assert_conversion_fails
 def test_function_call_additional_and_missing_keyword_arguments():
-    def f(foo: bool, bar: bool):  # note: The definition of f was here
+    def f(foo: bool,  # note: The definition of foo was here
+          bar: bool):  # note: The definition of bar was here
         return foo
     def g(x: bool):
         return f(fooz=x, barz=x) # error: Incorrect arguments in call to f. Missing arguments: {bar, foo}. Specified arguments that don't exist: {barz, fooz}
@@ -267,7 +270,9 @@ def test_function_call_additional_keyword_arguments():
 
 @assert_conversion_fails
 def test_function_call_missing_keyword_arguments():
-    def f(foo: bool, bar: bool, baz: bool):  # note: The definition of f was here
+    def f(foo: bool,  # note: The definition of foo was here
+          bar: bool,
+          baz: bool):  # note: The definition of baz was here
         return foo
     def g(x: bool):
         return f(bar=x) # error: Incorrect arguments in call to f. Missing arguments: {baz, foo}
@@ -275,7 +280,8 @@ def test_function_call_missing_keyword_arguments():
 @assert_conversion_fails
 def test_function_call_wrong_keyword_argument_type():
     from tmppy import Type
-    def f(x: bool): # note: The definition of f was here
+    def f(
+            x: bool): # note: The definition of x was here
         return x
     def g(x: Type):  # note: The definition of x was here
         return f(x=x) # error: Type mismatch for argument x: expected type bool but was: Type
@@ -283,7 +289,8 @@ def test_function_call_wrong_keyword_argument_type():
 @assert_conversion_fails
 def test_function_call_wrong_keyword_argument_type_expression():
     from tmppy import Type
-    def f(x: bool): # note: The definition of f was here
+    def f(
+            x: bool): # note: The definition of x was here
         return x
     def g(x: Type):
         return f(x=[x]) # error: Type mismatch for argument x: expected type bool but was: List\[Type\]
@@ -293,14 +300,14 @@ def test_function_argument_call_keyword_argument_error():
     from typing import Callable
     def g(f: Callable[[bool], bool], # note: The definition of f was here
           x: bool):
-        return f(foo=x)  # error: Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.
+        return f(foo=x)  # error: Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable expressions. Please switch to non-keyword arguments.
 
 @assert_conversion_fails
 def test_function_expression_call_keyword_argument_error():
     from typing import Callable
     def g(f: Callable[[bool], Callable[[bool], bool]],
           x: bool):
-        return f(True)(x=x) # error: Keyword arguments can only be used when calling a specific function, not when calling other callable expressions. Please switch to non-keyword arguments.
+        return f(True)(x=x) # error: Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable expressions. Please switch to non-keyword arguments.
 
 @assert_compilation_succeeds
 def test_function_call_keyword_argument_success():
