@@ -352,15 +352,14 @@ def if_stmt_ast_to_ir(ast_node: ast.If,
                 is_only_partially_defined = if_branch_is_only_partially_defined
             else:
                 is_only_partially_defined = True
-        elif else_branch_symbol:
+        else:
+            assert else_branch_symbol
             symbol = else_branch_symbol
             definition_ast_node = else_branch_definition_ast_node
             if if_branch_return_info.always_returns:
                 is_only_partially_defined = else_branch_is_only_partially_defined
             else:
                 is_only_partially_defined = True
-        else:
-            continue
 
         compilation_context.add_symbol(name=symbol.name,
                                        type=symbol.type,
