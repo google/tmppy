@@ -12,43 +12,78 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterator, Tuple
+from typing import List, Iterator, Tuple, Union
 import _py2tmp.lowir as lowir
+
+class Writer:
+    def new_id(self) -> str: ... # pragma: no cover
+
+    def write_toplevel_elem(self, s: str): ... # pragma: no cover
+
+    def write_template_body_elem(self, s: str): ... # pragma: no cover
+
+class ToplevelWriter(Writer):
+    def __init__(self, identifier_generator: Iterator[str]):
+        self.identifier_generator = identifier_generator
+        self.strings = []
+
+    def new_id(self):
+        return next(self.identifier_generator)
+
+    def write_toplevel_elem(self, s: str):
+        self.strings.append(s)
+
+    def write_template_body_elem(self, s: str):
+        self.write_toplevel_elem(s)
+
+class TemplateElemWriter(Writer):
+    def __init__(self, toplevel_writer: ToplevelWriter):
+        self.toplevel_writer = toplevel_writer
+        self.strings = []
+
+    def new_id(self):
+        return self.toplevel_writer.new_id()
+
+    def write_toplevel_elem(self, s: str):
+        self.toplevel_writer.write_toplevel_elem(s)
+
+    def write_template_body_elem(self, s: str):
+        self.strings.append(s)
 
 def expr_to_cpp(expr: lowir.Expr,
                 enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                identifier_generator: Iterator[str]) -> Tuple[str, str]:
+                writer: Writer) -> str:
     if isinstance(expr, lowir.Literal):
-        return '', literal_to_cpp(expr)
+        return literal_to_cpp(expr)
     elif isinstance(expr, lowir.TypeLiteral):
-        return '', type_literal_to_cpp(expr)
+        return type_literal_to_cpp(expr)
     elif isinstance(expr, lowir.ComparisonExpr):
-        return comparison_expr_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+        return comparison_expr_to_cpp(expr, enclosing_function_defn_args, writer)
     elif isinstance(expr, lowir.TemplateInstantiation):
-        return template_instantiation_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+        return template_instantiation_to_cpp(expr, enclosing_function_defn_args, writer)
     elif isinstance(expr, lowir.ClassMemberAccess):
-        return class_member_access_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+        return class_member_access_to_cpp(expr, enclosing_function_defn_args, writer)
     elif isinstance(expr, lowir.NotExpr):
-        return not_expr_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+        return not_expr_to_cpp(expr, enclosing_function_defn_args, writer)
     elif isinstance(expr, lowir.UnaryMinusExpr):
-        return unary_minus_expr_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+        return unary_minus_expr_to_cpp(expr, enclosing_function_defn_args, writer)
     elif isinstance(expr, lowir.Int64BinaryOpExpr):
-        return int64_binary_op_expr_to_cpp(expr, enclosing_function_defn_args, identifier_generator)
+        return int64_binary_op_expr_to_cpp(expr, enclosing_function_defn_args, writer)
     else:
         raise NotImplementedError('Unexpected expr: %s' % str(expr.__class__))
 
 def static_assert_to_cpp(assert_stmt: lowir.StaticAssert,
                          enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                         identifier_generator: Iterator[str]):
+                         writer: Writer):
     if enclosing_function_defn_args:
         bound_variables = {arg_decl.name
                            for arg_decl in enclosing_function_defn_args}
         assert bound_variables
 
-    helper_decls, cpp_meta_expr = expr_to_cpp(assert_stmt.expr, enclosing_function_defn_args, identifier_generator)
+    cpp_meta_expr = expr_to_cpp(assert_stmt.expr, enclosing_function_defn_args, writer)
     message = assert_stmt.message
     if not enclosing_function_defn_args or assert_stmt.expr.references_any_of(bound_variables):
-        return 'static_assert({cpp_meta_expr}, "{message}");'.format(**locals())
+        writer.write_template_body_elem('static_assert({cpp_meta_expr}, "{message}");'.format(**locals()))
     else:
         # The expression is constant, we need to add a reference to a variable bound in this function to prevent the
         # static_assert from being evaluated before the template is instantiated.
@@ -59,30 +94,33 @@ def static_assert_to_cpp(assert_stmt: lowir.StaticAssert,
         for arg_decl in enclosing_function_defn_args:
             if arg_decl.type.kind == lowir.ExprKind.BOOL:
                 bound_var = arg_decl.name
-                return 'static_assert(AlwaysTrueFromBool<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(**locals())
-            if arg_decl.type.kind == lowir.ExprKind.INT64:
+                writer.write_template_body_elem('static_assert(AlwaysTrueFromBool<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(**locals()))
+                return
+            elif arg_decl.type.kind == lowir.ExprKind.INT64:
                 bound_var = arg_decl.name
-                return 'static_assert(AlwaysTrueFromInt64<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(**locals())
+                writer.write_template_body_elem('static_assert(AlwaysTrueFromInt64<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(**locals()))
+                return
             elif arg_decl.type.kind == lowir.ExprKind.TYPE:
                 bound_var = arg_decl.name
-                return 'static_assert(AlwaysTrueFromType<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(**locals())
+                writer.write_template_body_elem('static_assert(AlwaysTrueFromType<{bound_var}>::value && {cpp_meta_expr}, "{message}");'.format(**locals()))
+                return
 
         # All of this function's params are functions, we can't use any of the predefined AlwaysTrue* templates.
         # We need to define a new AlwaysTrueFromType variant for this specific function type.
-        always_true_id = next(identifier_generator)
+        always_true_id = writer.new_id()
         template_param_decl = _type_to_template_param_declaration(type=enclosing_function_defn_args[0].type)
         template_param = enclosing_function_defn_args[0].name
-        return helper_decls + '''\
+        writer.write_template_body_elem('''\
             template <{template_param_decl}>
             struct {always_true_id} {{
               static constexpr bool value = true;
             }};
             static_assert({always_true_id}<{template_param}>::value && {cpp_meta_expr}, "{message}");
-            '''.format(**locals())
+            '''.format(**locals()))
 
 def constant_def_to_cpp(constant_def: lowir.ConstantDef,
                         enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                        identifier_generator: Iterator[str]):
+                        writer: Writer):
     if isinstance(constant_def.type, lowir.BoolType):
         type_cpp = 'bool'
     elif isinstance(constant_def.type, lowir.Int64Type):
@@ -91,24 +129,24 @@ def constant_def_to_cpp(constant_def: lowir.ConstantDef,
         raise NotImplementedError('Unexpected expression type: %s' % constant_def.type)
 
     name = constant_def.name
-    helper_decls, cpp_meta_expr = expr_to_cpp(constant_def.expr, enclosing_function_defn_args, identifier_generator)
-    return helper_decls + '''\
+    cpp_meta_expr = expr_to_cpp(constant_def.expr, enclosing_function_defn_args, writer)
+    writer.write_template_body_elem('''\
         static constexpr {type_cpp} {name} = {cpp_meta_expr};
-        '''.format(**locals())
+        '''.format(**locals()))
 
 def typedef_to_cpp(typedef: lowir.Typedef,
                    enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                   identifier_generator: Iterator[str]):
+                   writer: Writer):
     name = typedef.name
     if typedef.type.kind == lowir.ExprKind.TYPE:
-        helper_decls, cpp_meta_expr = expr_to_cpp(typedef.expr, enclosing_function_defn_args, identifier_generator)
-        return helper_decls + '''\
+        cpp_meta_expr = expr_to_cpp(typedef.expr, enclosing_function_defn_args, writer)
+        writer.write_template_body_elem('''\
             using {name} = {cpp_meta_expr};
-            '''.format(**locals())
+            '''.format(**locals()))
     elif typedef.type.kind == lowir.ExprKind.TEMPLATE:
         assert isinstance(typedef.type, lowir.TemplateType)
 
-        template_args = [lowir.TemplateArgDecl(type=arg_type, name=next(identifier_generator))
+        template_args = [lowir.TemplateArgDecl(type=arg_type, name=writer.new_id())
                          for arg_type in typedef.type.argtypes]
         template_args_decl = ', '.join(template_arg_decl_to_cpp(arg)
                                        for arg in template_args)
@@ -123,12 +161,12 @@ def typedef_to_cpp(typedef: lowir.Typedef,
                                                                   # safe to set this to False.
                                                                   instantiation_might_trigger_static_asserts=True)
 
-        helper_decls, cpp_meta_expr = template_instantiation_to_cpp(template_instantiation_expr, enclosing_function_defn_args, identifier_generator)
+        cpp_meta_expr = template_instantiation_to_cpp(template_instantiation_expr, enclosing_function_defn_args, writer)
 
-        return helper_decls + '''\
+        writer.write_template_body_elem('''\
             template <{template_args_decl}>
             using {name} = {cpp_meta_expr};
-            '''.format(**locals())
+            '''.format(**locals()))
     else:
         raise NotImplementedError('Unexpected expression type kind: %s' % typedef.type.kind)
 
@@ -154,66 +192,66 @@ def template_arg_decl_to_cpp(arg_decl: lowir.TemplateArgDecl):
 def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
                                    cxx_name: str,
                                    enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                                   identifier_generator: Iterator[str]):
-    def _template_body_element_to_cpp(x):
-        if isinstance(x, lowir.StaticAssert):
-            return static_assert_to_cpp(x,
-                                        enclosing_function_defn_args=specialization.args,
-                                        identifier_generator=identifier_generator)
-        elif isinstance(x, lowir.ConstantDef):
-            return constant_def_to_cpp(x,
-                                       enclosing_function_defn_args=specialization.args,
-                                       identifier_generator=identifier_generator)
-        elif isinstance(x, lowir.Typedef):
-            return typedef_to_cpp(x,
-                                  enclosing_function_defn_args=specialization.args,
-                                  identifier_generator=identifier_generator)
+                                   writer: ToplevelWriter):
+    template_elem_writer = TemplateElemWriter(writer)
+    for elem in specialization.body:
+        if isinstance(elem, lowir.StaticAssert):
+            static_assert_to_cpp(elem,
+                                 enclosing_function_defn_args=specialization.args,
+                                 writer=template_elem_writer)
+        elif isinstance(elem, lowir.ConstantDef):
+            constant_def_to_cpp(elem,
+                                enclosing_function_defn_args=specialization.args,
+                                writer=template_elem_writer)
+        elif isinstance(elem, lowir.Typedef):
+            typedef_to_cpp(elem,
+                           enclosing_function_defn_args=specialization.args,
+                           writer=template_elem_writer)
         else:
-            raise NotImplementedError('Unsupported element: ' + str(x))
+            raise NotImplementedError('Unsupported element: ' + str(elem))
 
-    asserts_and_assignments_str = ''.join(_template_body_element_to_cpp(x) + '\n'
-                                          for x in specialization.body)
+    asserts_and_assignments_str = ''.join(template_elem_writer.strings)
     template_args = ', '.join(template_arg_decl_to_cpp(arg)
                               for arg in specialization.args)
     if specialization.patterns is not None:
         patterns_str = ', '.join(type_pattern_literal_to_cpp(pattern)
                                  for pattern in specialization.patterns)
-        return '''\
+        writer.write_toplevel_elem('''\
             template <{template_args}>
             struct {cxx_name}<{patterns_str}> {{
-              {asserts_and_assignments_str}  
+              {asserts_and_assignments_str}
             }};
-            '''.format(**locals())
+            '''.format(**locals()))
     else:
-        return '''\
+        writer.write_toplevel_elem('''\
             template <{template_args}>
             struct {cxx_name} {{
-              {asserts_and_assignments_str}  
+              {asserts_and_assignments_str}
             }};
-            '''.format(**locals())
+            '''.format(**locals()))
 
 def template_defn_to_cpp(template_defn: lowir.TemplateDefn,
                          enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                         identifier_generator: Iterator[str]):
+                         writer: ToplevelWriter):
     template_name = template_defn.name
     if template_defn.main_definition:
-        main_definition_str = template_specialization_to_cpp(template_defn.main_definition,
-                                                             cxx_name=template_name,
-                                                             enclosing_function_defn_args=enclosing_function_defn_args,
-                                                             identifier_generator=identifier_generator)
+        template_specialization_to_cpp(template_defn.main_definition,
+                                       cxx_name=template_name,
+                                       enclosing_function_defn_args=enclosing_function_defn_args,
+                                       writer=writer)
     else:
         template_args = ', '.join(template_arg_decl_to_cpp(arg)
                                   for arg in template_defn.args)
-        main_definition_str = '''\
+        writer.write_toplevel_elem('''\
             template <{template_args}>
             struct {template_name};
-            '''.format(**locals())
-    specializations_str = ''.join(template_specialization_to_cpp(specialization,
-                                                                 cxx_name=template_name,
-                                                                 enclosing_function_defn_args=enclosing_function_defn_args,
-                                                                 identifier_generator=identifier_generator)
-                                  for specialization in template_defn.specializations)
-    return main_definition_str + specializations_str
+            '''.format(**locals()))
+
+    for specialization in template_defn.specializations:
+        template_specialization_to_cpp(specialization,
+                                       cxx_name=template_name,
+                                       enclosing_function_defn_args=enclosing_function_defn_args,
+                                       writer=writer)
 
 def literal_to_cpp(literal: lowir.Literal):
     if isinstance(literal.value, bool):
@@ -234,19 +272,19 @@ def type_pattern_literal_to_cpp(pattern: lowir.TemplateArgPatternLiteral):
 
 def comparison_expr_to_cpp(comparison: lowir.ComparisonExpr,
                            enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                           identifier_generator: Iterator[str]):
-    lhs_helper_decls, lhs_cpp_meta_expr = expr_to_cpp(comparison.lhs, enclosing_function_defn_args, identifier_generator)
-    rhs_helper_decls, rhs_cpp_meta_expr = expr_to_cpp(comparison.rhs, enclosing_function_defn_args, identifier_generator)
-    op = comparison.op
-    return lhs_helper_decls + rhs_helper_decls, '({lhs_cpp_meta_expr}) {op} ({rhs_cpp_meta_expr})'.format(**locals())
+                           writer: Writer):
+    return '(%s) %s (%s)' % (
+        expr_to_cpp(comparison.lhs, enclosing_function_defn_args, writer),
+        comparison.op,
+        expr_to_cpp(comparison.rhs, enclosing_function_defn_args, writer))
 
 def int64_binary_op_expr_to_cpp(expr: lowir.Int64BinaryOpExpr,
                                 enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                                identifier_generator: Iterator[str]):
-    lhs_helper_decls, lhs_cpp_meta_expr = expr_to_cpp(expr.lhs, enclosing_function_defn_args, identifier_generator)
-    rhs_helper_decls, rhs_cpp_meta_expr = expr_to_cpp(expr.rhs, enclosing_function_defn_args, identifier_generator)
-    op = expr.op
-    return lhs_helper_decls + rhs_helper_decls, '({lhs_cpp_meta_expr}) {op} ({rhs_cpp_meta_expr})'.format(**locals())
+                                writer: Writer):
+    return '(%s) %s (%s)' % (
+        expr_to_cpp(expr.lhs, enclosing_function_defn_args, writer),
+        expr.op,
+        expr_to_cpp(expr.rhs, enclosing_function_defn_args, writer))
 
 def _select_best_arg_decl_for_select1st(args: List[lowir.TemplateArgDecl]):
     for arg in args:
@@ -263,11 +301,10 @@ def _select_best_arg_expr_index_for_select1st(args: List[lowir.Expr]):
 
 def template_instantiation_to_cpp(instantiation_expr: lowir.TemplateInstantiation,
                                   enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                                  identifier_generator: Iterator[str],
+                                  writer: Writer,
                                   omit_typename=False):
     args = instantiation_expr.args
 
-    helper_decls = []
     if instantiation_expr.instantiation_might_trigger_static_asserts and enclosing_function_defn_args:
         bound_variables = {arg_decl.name
                            for arg_decl in enclosing_function_defn_args}
@@ -284,6 +321,7 @@ def template_instantiation_to_cpp(instantiation_expr: lowir.TemplateInstantiatio
             arg_index = _select_best_arg_expr_index_for_select1st(args)
             arg_to_replace = args[arg_index]
             arg_to_replace_type = instantiation_expr.arg_types[arg_index]
+            assert arg_to_replace.kind == arg_to_replace_type.kind
 
             if arg_decl.type.kind != lowir.ExprKind.TEMPLATE and arg_to_replace.kind != lowir.ExprKind.TEMPLATE:
                 # We use lambdas here just to make sure we collect code coverage of each "branch". They are not necessary.
@@ -300,16 +338,33 @@ def template_instantiation_to_cpp(instantiation_expr: lowir.TemplateInstantiatio
                 }[(arg_to_replace.kind, arg_decl.type.kind)]()
             else:
                 # We need to define a new Select1st variant for the desired function type.
-                select1st_variant = next(identifier_generator)
-                forwarded_param_id = next(identifier_generator)
+                select1st_variant = writer.new_id()
+                forwarded_param_id = writer.new_id()
                 template_param_decl1 = _type_to_template_param_declaration(type=arg_to_replace_type)
                 template_param_decl2 = _type_to_template_param_declaration(type=arg_decl.type)
-                select1st_variant_body = lowir.Typedef(name='value',
-                                                       expr=lowir.TypeLiteral.for_local(cpp_type=forwarded_param_id,
-                                                                                        type=arg_to_replace_type),
-                                                       type=arg_to_replace_type)
-                select1st_variant_body_str = typedef_to_cpp(select1st_variant_body, enclosing_function_defn_args, identifier_generator)
-                helper_decls.append('''
+
+                if isinstance(writer, ToplevelWriter):
+                    select1st_variant_body_writer = TemplateElemWriter(writer)
+                else:
+                    assert isinstance(writer, TemplateElemWriter)
+                    select1st_variant_body_writer = TemplateElemWriter(writer.toplevel_writer)
+                if arg_to_replace.kind in (lowir.ExprKind.BOOL, lowir.ExprKind.INT64):
+                    select1st_variant_body = lowir.ConstantDef(name='value',
+                                                               expr=lowir.TypeLiteral.for_local(cpp_type=forwarded_param_id,
+                                                                                                type=arg_to_replace_type),
+                                                               type=arg_to_replace_type)
+                    constant_def_to_cpp(select1st_variant_body, enclosing_function_defn_args, select1st_variant_body_writer)
+                else:
+                    assert arg_to_replace.kind in (lowir.ExprKind.TYPE, lowir.ExprKind.TEMPLATE)
+                    select1st_variant_body = lowir.Typedef(name='value',
+                                                           expr=lowir.TypeLiteral.for_local(cpp_type=forwarded_param_id,
+                                                                                            type=arg_to_replace_type),
+                                                           type=arg_to_replace_type)
+                    typedef_to_cpp(select1st_variant_body, enclosing_function_defn_args, select1st_variant_body_writer)
+
+                select1st_variant_body_str = ''.join(select1st_variant_body_writer.strings)
+
+                writer.write_template_body_elem('''
                     template <{template_param_decl1} {forwarded_param_id}, {template_param_decl2}>
                     struct {select1st_variant} {{
                       {select1st_variant_body_str}
@@ -330,47 +385,40 @@ def template_instantiation_to_cpp(instantiation_expr: lowir.TemplateInstantiatio
 
             args = args[:arg_index] + [new_arg] + args[arg_index + 1:]
 
-    template_params = []
-    for arg in args:
-        other_helper_decls, template_param = expr_to_cpp(arg, enclosing_function_defn_args, identifier_generator)
-        helper_decls.append(other_helper_decls)
-        template_params.append(template_param)
-
-    template_params = ', '.join(template_params)
+    template_params = ', '.join(expr_to_cpp(arg, enclosing_function_defn_args, writer)
+                                for arg in args)
 
     if isinstance(instantiation_expr.template_expr, lowir.ClassMemberAccess):
-        other_helper_decls, cpp_fun = class_member_access_to_cpp(instantiation_expr.template_expr,
-                                                                 enclosing_function_defn_args,
-                                                                 identifier_generator,
-                                                                 omit_typename=omit_typename,
-                                                                 parent_expr_is_template_instantiation=True)
-        helper_decls.append(other_helper_decls)
+        cpp_fun = class_member_access_to_cpp(instantiation_expr.template_expr,
+                                             enclosing_function_defn_args,
+                                             writer,
+                                             omit_typename=omit_typename,
+                                             parent_expr_is_template_instantiation=True)
     else:
-        other_helper_decls, cpp_fun = expr_to_cpp(instantiation_expr.template_expr, enclosing_function_defn_args, identifier_generator)
-        helper_decls.append(other_helper_decls)
+        cpp_fun = expr_to_cpp(instantiation_expr.template_expr, enclosing_function_defn_args, writer)
 
-    return ''.join(helper_decls), '{cpp_fun}<{template_params}>'.format(**locals())
+    return '{cpp_fun}<{template_params}>'.format(**locals())
 
 def class_member_access_to_cpp(expr: lowir.ClassMemberAccess,
                                enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                               identifier_generator: Iterator[str],
+                               writer: Writer,
                                omit_typename: bool = False,
                                parent_expr_is_template_instantiation: bool = False):
     if isinstance(expr.class_type_expr, lowir.TemplateInstantiation):
-        helper_decls, cpp_fun = template_instantiation_to_cpp(expr.class_type_expr, enclosing_function_defn_args, identifier_generator, omit_typename=True)
+        cpp_fun = template_instantiation_to_cpp(expr.class_type_expr, enclosing_function_defn_args, writer, omit_typename=True)
     elif isinstance(expr.class_type_expr, lowir.ClassMemberAccess):
-        helper_decls, cpp_fun = class_member_access_to_cpp(expr.class_type_expr, enclosing_function_defn_args, identifier_generator, omit_typename=True)
+        cpp_fun = class_member_access_to_cpp(expr.class_type_expr, enclosing_function_defn_args, writer, omit_typename=True)
     else:
-        helper_decls, cpp_fun = expr_to_cpp(expr.class_type_expr, enclosing_function_defn_args, identifier_generator)
+        cpp_fun = expr_to_cpp(expr.class_type_expr, enclosing_function_defn_args, writer)
     member_name = expr.member_name
     if expr.member_kind in (lowir.ExprKind.BOOL, lowir.ExprKind.INT64):
         cpp_str_template = '{cpp_fun}::{member_name}'
     elif expr.member_kind in (lowir.ExprKind.TYPE, lowir.ExprKind.TEMPLATE):
-        if omit_typename:
+        if omit_typename or (expr.member_kind == lowir.ExprKind.TEMPLATE and not parent_expr_is_template_instantiation):
             maybe_typename = ''
         else:
             maybe_typename = 'typename '
-        if parent_expr_is_template_instantiation:
+        if expr.member_kind == lowir.ExprKind.TEMPLATE:
             maybe_template = 'template '
         else:
             maybe_template = ''
@@ -378,42 +426,43 @@ def class_member_access_to_cpp(expr: lowir.ClassMemberAccess,
         cpp_str_template = '{maybe_typename}{cpp_fun}::{maybe_template}{member_name}'
     else:
         raise NotImplementedError('Member kind: %s' % expr.member_kind)
-    return helper_decls, cpp_str_template.format(**locals())
+    return cpp_str_template.format(**locals())
 
 def not_expr_to_cpp(expr: lowir.NotExpr,
                     enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                    identifier_generator: Iterator[str]):
-    helper_decls, inner_expr = expr_to_cpp(expr.expr, enclosing_function_defn_args, identifier_generator)
-    return helper_decls, '!({inner_expr})'.format(**locals())
+                    writer: Writer):
+    inner_expr = expr_to_cpp(expr.expr, enclosing_function_defn_args, writer)
+    return '!({inner_expr})'.format(**locals())
 
 def unary_minus_expr_to_cpp(expr: lowir.UnaryMinusExpr,
                             enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                            identifier_generator: Iterator[str]):
-    helper_decls, inner_expr = expr_to_cpp(expr.expr, enclosing_function_defn_args, identifier_generator)
-    return helper_decls, '-({inner_expr})'.format(**locals())
+                            writer: Writer):
+    inner_expr = expr_to_cpp(expr.expr, enclosing_function_defn_args, writer)
+    return '-({inner_expr})'.format(**locals())
 
 def header_to_cpp(header: lowir.Header, identifier_generator: Iterator[str]):
-    header_chunks = ['''\
+    writer = ToplevelWriter(identifier_generator)
+    writer.write_toplevel_elem('''\
         #include <tmppy/tmppy.h>
         #include <type_traits>
-        ''']
+        ''')
     for elem in header.content:
         if isinstance(elem, lowir.TemplateDefn):
-            header_chunks.append(template_defn_to_cpp(elem,
-                                                      enclosing_function_defn_args=[],
-                                                      identifier_generator=identifier_generator))
+            template_defn_to_cpp(elem,
+                                 enclosing_function_defn_args=[],
+                                 writer=writer)
         elif isinstance(elem, lowir.StaticAssert):
-            header_chunks.append(static_assert_to_cpp(elem,
-                                                      enclosing_function_defn_args=[],
-                                                      identifier_generator=identifier_generator))
+            static_assert_to_cpp(elem,
+                                 enclosing_function_defn_args=[],
+                                 writer=writer)
         elif isinstance(elem, lowir.ConstantDef):
-            header_chunks.append(constant_def_to_cpp(elem,
-                                                     enclosing_function_defn_args=[],
-                                                     identifier_generator=identifier_generator))
+            constant_def_to_cpp(elem,
+                                enclosing_function_defn_args=[],
+                                writer=writer)
         elif isinstance(elem, lowir.Typedef):
-            header_chunks.append(typedef_to_cpp(elem,
-                                                enclosing_function_defn_args=[],
-                                                identifier_generator=identifier_generator))
+            typedef_to_cpp(elem,
+                           enclosing_function_defn_args=[],
+                           writer=writer)
         else:
             raise NotImplementedError('Unexpected toplevel element: %s' % str(elem.__class__))
-    return ''.join(header_chunks)
+    return ''.join(writer.strings)

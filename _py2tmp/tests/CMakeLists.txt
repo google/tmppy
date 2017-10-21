@@ -13,7 +13,7 @@ file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/pytest.ini"
      CONTENT "
 [pytest]
 testpaths = \"${CMAKE_CURRENT_SOURCE_DIR}\"
-addopts = -r a
+addopts = -r a --tb=short
 ")
 
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/conftest.py"

@@ -71,7 +71,7 @@ class ConstantDef(TemplateBodyElement):
 
 class Typedef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr, type: ExprType):
-        assert type.kind == expr.kind
+        assert type.kind == expr.kind, '%s vs %s' % (type.kind, expr.kind)
         assert type.kind in (ExprKind.TYPE, ExprKind.TEMPLATE)
         self.name = name
         self.expr = expr
@@ -118,24 +118,49 @@ class Literal(Expr):
             yield
 
 class TypeLiteral(Expr):
-    def __init__(self, cpp_type: str, is_local: bool, kind: Optional[ExprKind] = None, type: Optional[ExprType] = None):
+    def __init__(self,
+                 cpp_type: str,
+                 is_local: bool,
+                 is_metafunction_that_may_return_error: bool,
+                 kind: Optional[ExprKind] = None,
+                 type: Optional[ExprType] = None):
         if is_local:
             assert type
         assert not (type and kind)
         if type:
             kind = type.kind
+        assert not (is_metafunction_that_may_return_error and kind != ExprKind.TEMPLATE)
         super().__init__(kind=kind)
         self.cpp_type = cpp_type
         self.is_local = is_local
         self.type = type
+        self.is_metafunction_that_may_return_error = is_metafunction_that_may_return_error
 
     @staticmethod
     def for_local(cpp_type: str, type: ExprType):
-        return TypeLiteral(cpp_type=cpp_type, is_local=True, type=type)
+        return TypeLiteral(cpp_type=cpp_type,
+                           is_local=True,
+                           type=type,
+                           is_metafunction_that_may_return_error=(type.kind == ExprKind.TEMPLATE))
 
     @staticmethod
-    def for_nonlocal(cpp_type: str, kind: ExprKind):
-        return TypeLiteral(cpp_type=cpp_type, is_local=False, kind=kind)
+    def for_nonlocal(cpp_type: str, kind: ExprKind, is_metafunction_that_may_return_error: bool):
+        return TypeLiteral(cpp_type=cpp_type,
+                           is_local=False,
+                           kind=kind,
+                           is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
+
+    @staticmethod
+    def for_nonlocal_type(cpp_type: str):
+        return TypeLiteral.for_nonlocal(cpp_type=cpp_type,
+                                        kind=ExprKind.TYPE,
+                                        is_metafunction_that_may_return_error=False)
+
+    @staticmethod
+    def for_nonlocal_template(cpp_type: str, is_metafunction_that_may_return_error: bool):
+        return TypeLiteral.for_nonlocal(cpp_type=cpp_type,
+                                        kind=ExprKind.TEMPLATE,
+                                        is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
 
     def references_any_of(self, variables: Set[str]):
         return False

@@ -106,6 +106,7 @@ def test_if_else_assert_in_continuation_never_executed_ok():
             return Type('int')
         b = False
         assert b
+        return Type('void')
     assert f(True) == Type('int')
 
 @assert_compilation_succeeds

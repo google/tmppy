@@ -22,7 +22,7 @@
 template <typename...>
 struct List;
 
-template <int64_t...>
+template <long...>
 struct Int64List;
 
 template <bool...>
@@ -33,9 +33,9 @@ struct AlwaysTrueFromBool {
   static constexpr bool value = true;
 };
 
-template <int64_t>
+template <long>
 struct AlwaysTrueFromInt64 {
-  static constexpr int64_t value = true;
+  static constexpr long value = true;
 };
 
 template <typename>
@@ -48,7 +48,7 @@ struct Select1stBoolBool {
   static constexpr bool value = b;
 };
 
-template <bool b, int64_t>
+template <bool b, long>
 struct Select1stBoolInt64 {
   static constexpr bool value = b;
 };
@@ -58,19 +58,19 @@ struct Select1stBoolType {
   static constexpr bool value = b;
 };
 
-template <int64_t n, bool>
+template <long n, bool>
 struct Select1stInt64Bool {
-  static constexpr int64_t value = n;
+  static constexpr long value = n;
 };
 
-template <int64_t n, int64_t>
+template <long n, long>
 struct Select1stInt64Int64 {
-  static constexpr int64_t value = n;
+  static constexpr long value = n;
 };
 
-template <int64_t n, typename>
+template <long n, typename>
 struct Select1stInt64Type {
-  static constexpr int64_t value = n;
+  static constexpr long value = n;
 };
 
 template <typename T, bool>
@@ -79,7 +79,7 @@ struct Select1stTypeBool {
   using value = T;
 };
 
-template <typename T, int64_t>
+template <typename T, long>
 struct Select1stTypeInt64 {
   // We intentionally use `value` instead of `type`, for simplicity of the implementation.
   using value = T;

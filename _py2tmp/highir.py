@@ -26,6 +26,14 @@ class BoolType(ExprType):
     def __eq__(self, other):
         return isinstance(other, BoolType)
 
+# A type with no values. This is the return type of functions that never return.
+class BottomType(ExprType):
+    def __str__(self):
+        return 'BottomType'
+
+    def __eq__(self, other):
+        return isinstance(other, BottomType)
+
 class IntType(ExprType):
     def __str__(self):
         return 'int'
@@ -74,9 +82,16 @@ class CustomTypeArgDecl:
         return isinstance(other, CustomTypeArgDecl) and self.__dict__ == other.__dict__
 
 class CustomType(ExprType):
-    def __init__(self, name: str, arg_types: List[CustomTypeArgDecl]):
+    def __init__(self,
+                 name: str,
+                 arg_types: List[CustomTypeArgDecl],
+                 is_exception_class: bool,
+                 exception_message: Optional[str]):
+        assert (exception_message is not None) == is_exception_class
         self.name = name
         self.arg_types = arg_types
+        self.is_exception_class = is_exception_class
+        self.exception_message = exception_message
 
     def __str__(self):
         return self.name
@@ -98,11 +113,12 @@ class FunctionArgDecl:
         self.name = name
 
 class VarReference(Expr):
-    def __init__(self, type: ExprType, name: str, is_global_function: bool):
+    def __init__(self, type: ExprType, name: str, is_global_function: bool, is_function_that_may_throw: bool):
         super().__init__(type=type)
         assert name
         self.name = name
         self.is_global_function = is_global_function
+        self.is_function_that_may_throw = is_function_that_may_throw
 
     def get_free_variables(self):
         if not self.is_global_function:
@@ -173,12 +189,16 @@ class ListExpr(Expr):
                 yield var
 
 class FunctionCall(Expr):
-    def __init__(self, fun_expr: Expr, args: List[Expr]):
+    def __init__(self,
+                 fun_expr: Expr,
+                 args: List[Expr],
+                 may_throw: bool):
         assert isinstance(fun_expr.type, FunctionType)
         assert len(fun_expr.type.argtypes) == len(args)
         super().__init__(type=fun_expr.type.returns)
         self.fun_expr = fun_expr
         self.args = args
+        self.may_throw = may_throw
 
     def get_free_variables(self):
         for var in self.fun_expr.get_free_variables():
@@ -330,6 +350,23 @@ class ReturnStmt(Stmt):
     def get_return_type(self):
         return ReturnTypeInfo(type=self.expr.type, always_returns=True)
 
+def _combine_return_type_of_branches(branch1_stmts: List[Stmt], branch2_stmts: List[Stmt]):
+    branch1_return_type_info = branch1_stmts[-1].get_return_type()
+    if branch2_stmts:
+        branch2_return_type_info = branch2_stmts[-1].get_return_type()
+    else:
+        branch2_return_type_info = ReturnTypeInfo(type=None, always_returns=False)
+
+    if branch1_return_type_info.type:
+        assert not branch2_return_type_info.type or branch1_return_type_info.type == branch2_return_type_info.type
+        type = branch1_return_type_info.type
+    elif branch2_return_type_info.type:
+        type = branch2_return_type_info.type
+    else:
+        type = None
+    return ReturnTypeInfo(type=type,
+                          always_returns=branch1_return_type_info.always_returns and branch2_return_type_info.always_returns)
+
 class IfStmt(Stmt):
     def __init__(self, cond_expr: Expr, if_stmts: List[Stmt], else_stmts: List[Stmt]):
         assert cond_expr.type == BoolType()
@@ -339,21 +376,16 @@ class IfStmt(Stmt):
         self.else_stmts = else_stmts
 
     def get_return_type(self):
-        if_return_type_info = self.if_stmts[-1].get_return_type()
-        if self.else_stmts:
-            else_return_type_info = self.else_stmts[-1].get_return_type()
-        else:
-            else_return_type_info = ReturnTypeInfo(type=None, always_returns=False)
+        return _combine_return_type_of_branches(self.if_stmts, self.else_stmts)
 
-        if if_return_type_info.type:
-            assert not else_return_type_info.type or if_return_type_info.type == else_return_type_info.type
-            type = if_return_type_info.type
-        elif else_return_type_info.type:
-            type = else_return_type_info.type
-        else:
-            type = None
-        return ReturnTypeInfo(type=type,
-                              always_returns=if_return_type_info.always_returns and else_return_type_info.always_returns)
+class RaiseStmt(Stmt):
+    def __init__(self, expr: Expr):
+        assert isinstance(expr.type, CustomType)
+        assert expr.type.is_exception_class
+        self.expr = expr
+
+    def get_return_type(self):
+        return ReturnTypeInfo(type=None, always_returns=True)
 
 class FunctionDefn:
     def __init__(self,

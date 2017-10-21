@@ -262,7 +262,7 @@ def test_custom_class_access_to_undefined_field_error():
 @assert_conversion_fails
 def test_custom_class_with_base_class_error():
     class MyType(
-        int):  # error: Base classes are not supported.
+        int):  # error: "Exception" is the only supported base class.
         def __init__(self, x: bool, y: int):
             self.x = x
             self.y = y

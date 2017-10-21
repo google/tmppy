@@ -12,22 +12,74 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Optional, Union, Dict
+from typing import List, Iterable, Optional, Union, Dict, Tuple
+from contextlib import contextmanager
+
+class Writer:
+    def __init__(self):
+        self.strings = []
+        self.current_indent = ''
+        self.needs_indent = False
+
+    def write(self, s: str):
+        assert '\n' not in s
+        if self.needs_indent:
+            self.strings.append(self.current_indent)
+            self.needs_indent = False
+        self.strings.append(s)
+
+    def writeln(self, s: str):
+        self.write(s)
+        self.strings.append('\n')
+        self.needs_indent = True
+
+    @contextmanager
+    def indent(self):
+        old_indent = self.current_indent
+        self.current_indent = self.current_indent + '  '
+        yield
+        self.current_indent = old_indent
 
 class ExprType:
     def __eq__(self, other) -> bool: ...  # pragma: no cover
+
+    def __str__(self) -> str: ...  # pragma: no cover
 
 class BoolType(ExprType):
     def __eq__(self, other):
         return isinstance(other, BoolType)
 
+    def __str__(self):
+        return 'bool'
+
+# A type with no values. This is the return type of functions that never return.
+class BottomType(ExprType):
+    def __eq__(self, other):
+        return isinstance(other, BottomType)
+
+    def __str__(self):
+        return 'BottomType'
+
 class IntType(ExprType):
     def __eq__(self, other):
         return isinstance(other, IntType)
 
+    def __str__(self):
+        return 'int'
+
 class TypeType(ExprType):
     def __eq__(self, other):
         return isinstance(other, TypeType)
+
+    def __str__(self):
+        return 'Type'
+
+class ErrorOrVoidType(ExprType):
+    def __eq__(self, other):
+        return isinstance(other, ErrorOrVoidType)
+
+    def __str__(self):
+        return 'ErrorOrVoid'
 
 class FunctionType(ExprType):
     def __init__(self, argtypes: List[ExprType], returns: ExprType):
@@ -37,6 +89,12 @@ class FunctionType(ExprType):
     def __eq__(self, other):
         return isinstance(other, FunctionType) and self.__dict__ == other.__dict__
 
+    def __str__(self):
+        return 'Callable[[%s], %s]' % (
+            ', '.join(str(arg)
+                      for arg in self.argtypes),
+            str(self.returns))
+
 class ListType(ExprType):
     def __init__(self, elem_type: ExprType):
         assert not isinstance(elem_type, FunctionType)
@@ -44,6 +102,9 @@ class ListType(ExprType):
 
     def __eq__(self, other):
         return isinstance(other, ListType) and self.__dict__ == other.__dict__
+
+    def __str__(self):
+        return 'List[%s]' % str(self.elem_type)
 
 class CustomTypeArgDecl:
     def __init__(self, name: str, type: ExprType):
@@ -53,6 +114,9 @@ class CustomTypeArgDecl:
     def __eq__(self, other):
         return isinstance(other, CustomTypeArgDecl) and self.__dict__ == other.__dict__
 
+    def __str__(self):
+        return '%s: %s' % (self.name, str(self.type))
+
 class CustomType(ExprType):
     def __init__(self, name: str, arg_types: List[CustomTypeArgDecl]):
         self.name = name
@@ -60,6 +124,18 @@ class CustomType(ExprType):
 
     def __eq__(self, other):
         return isinstance(other, CustomType) and self.__dict__ == other.__dict__
+
+    def __str__(self):
+        return self.name
+
+    def write(self, writer: Writer):
+        writer.writeln('class %s:' % self.name)
+        with writer.indent():
+            writer.writeln('def __init__(%s):' % ', '.join(str(arg)
+                                                           for arg in self.arg_types))
+            with writer.indent():
+                for arg in self.arg_types:
+                    writer.writeln('self.%s = %s' % (arg.name, arg.name))
 
 class Expr:
     def __init__(self, type: ExprType):
@@ -69,35 +145,57 @@ class Expr:
     # desired.
     def get_free_variables(self) -> 'Iterable[VarReference]': ...  # pragma: no cover
 
+    def __str__(self) -> str: ...  # pragma: no cover
+
+    def describe_other_fields(self) -> str: ...  # pragma: no cover
+
 class FunctionArgDecl:
     def __init__(self, type: ExprType, name: str = ''):
         self.type = type
         self.name = name
 
+    def __str__(self):
+        return '%s: %s' % (self.name, str(self.type))
+
 class VarReference(Expr):
-    def __init__(self, type: ExprType, name: str, is_global_function: bool):
+    def __init__(self, type: ExprType, name: str, is_global_function: bool, is_function_that_may_throw: bool):
         super().__init__(type=type)
         assert name
         self.name = name
         self.is_global_function = is_global_function
+        self.is_function_that_may_throw = is_function_that_may_throw
 
     def get_free_variables(self):
         if not self.is_global_function:
             yield self
 
+    def __str__(self):
+        return self.name
+
+    def describe_other_fields(self):
+        return 'is_global_function=%s, is_function_that_may_throw=%s' % (
+            self.is_global_function,
+            self.is_function_that_may_throw)
+
 class MatchCase:
     def __init__(self,
                  type_patterns: List[str],
                  matched_var_names: List[str],
-                 stmts: List['Stmt'],
-                 return_type: ExprType):
+                 expr: 'FunctionCall'):
         self.type_patterns = type_patterns
         self.matched_var_names = matched_var_names
-        self.stmts = stmts
-        self.return_type = return_type
+        self.expr = expr
 
     def is_main_definition(self):
         return set(self.type_patterns) == set(self.matched_var_names)
+
+    def write(self, writer: Writer):
+        writer.writeln('TypePattern(\'%s\')' % '\', \''.join(self.type_patterns))
+        with writer.indent():
+            writer.writeln('lambda %s:' % ', '.join(self.matched_var_names))
+            with writer.indent():
+                writer.write(str(self.expr))
+                writer.writeln(',')
 
 class MatchExpr(Expr):
     def __init__(self, matched_vars: List[VarReference], match_cases: List[MatchCase]):
@@ -105,8 +203,7 @@ class MatchExpr(Expr):
         assert match_cases
         for match_case in match_cases:
             assert len(match_case.type_patterns) == len(matched_vars)
-            assert match_case.return_type == match_cases[0].return_type
-        super().__init__(type=match_cases[0].return_type)
+        super().__init__(type=match_cases[0].expr.type)
         self.matched_vars = matched_vars
         self.match_cases = match_cases
 
@@ -120,9 +217,20 @@ class MatchExpr(Expr):
                 yield var
         for match_case in self.match_cases:
             local_vars = set(match_case.matched_var_names)
-            for var in get_free_variables_in_stmts(match_case.stmts):
+            for var in match_case.expr.get_free_variables():
                 if var.name not in local_vars:
                     yield var
+
+    def write(self, writer: Writer):
+        writer.writeln('match(%s)({' % ', '.join(var.name
+                                                 for var in self.matched_vars))
+        with writer.indent():
+            for case in self.match_cases:
+                case.write(writer)
+        writer.writeln('})')
+
+    def describe_other_fields(self):
+        return ''
 
 class BoolLiteral(Expr):
     def __init__(self, value: bool):
@@ -133,6 +241,13 @@ class BoolLiteral(Expr):
         if False:
             yield
 
+    def __str__(self):
+        return repr(self.value)
+
+    def describe_other_fields(self):
+        return ''
+
+
 class TypeLiteral(Expr):
     def __init__(self, cpp_type: str):
         super().__init__(type=TypeType())
@@ -141,6 +256,12 @@ class TypeLiteral(Expr):
     def get_free_variables(self):
         if False:
             yield
+
+    def __str__(self):
+        return 'Type(\'%s\')' % self.cpp_type
+
+    def describe_other_fields(self):
+        return ''
 
 class ListExpr(Expr):
     def __init__(self, elem_type: ExprType, elems: List[VarReference]):
@@ -153,6 +274,13 @@ class ListExpr(Expr):
         for expr in self.elems:
             for var in expr.get_free_variables():
                 yield var
+
+    def __str__(self):
+        return '[%s]' % ', '.join(var.name
+                                  for var in self.elems)
+
+    def describe_other_fields(self):
+        return ''
 
 class FunctionCall(Expr):
     def __init__(self, fun: VarReference, args: List[VarReference]):
@@ -169,10 +297,21 @@ class FunctionCall(Expr):
             for var in expr.get_free_variables():
                 yield var
 
+    def __str__(self):
+        return '%s(%s)' % (
+            self.fun.name,
+            ', '.join(var.name
+                      for var in self.args))
+
+    def describe_other_fields(self):
+        return '; '.join('%s: %s' % (var.name, var.describe_other_fields())
+                         for vars in ([self.fun], self.args)
+                         for var in vars)
+
 class EqualityComparison(Expr):
     def __init__(self, lhs: VarReference, rhs: VarReference):
         super().__init__(type=BoolType())
-        assert lhs.type == rhs.type, '%s vs %s' % (str(lhs.type), str(rhs.type))
+        assert (lhs.type == ErrorOrVoidType() and rhs.type == TypeType()) or (lhs.type == rhs.type), '%s vs %s' % (str(lhs.type), str(rhs.type))
         assert not isinstance(lhs.type, FunctionType)
         self.lhs = lhs
         self.rhs = rhs
@@ -181,6 +320,12 @@ class EqualityComparison(Expr):
         for expr in (self.lhs, self.rhs):
             for var in expr.get_free_variables():
                 yield var
+
+    def __str__(self):
+        return '%s == %s' % (self.lhs.name, self.rhs.name)
+
+    def describe_other_fields(self):
+        return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
 class AttributeAccessExpr(Expr):
     def __init__(self, var: VarReference, attribute_name: str, type: ExprType):
@@ -194,6 +339,12 @@ class AttributeAccessExpr(Expr):
         for var in self.var.get_free_variables():
             yield var
 
+    def __str__(self):
+        return '%s.%s' % (self.var.name, self.attribute_name)
+
+    def describe_other_fields(self):
+        return ''
+
 class IntLiteral(Expr):
     def __init__(self, value: int):
         super().__init__(type=IntType())
@@ -202,6 +353,12 @@ class IntLiteral(Expr):
     def get_free_variables(self):
         if False:
             yield
+
+    def __str__(self):
+        return str(self.value)
+
+    def describe_other_fields(self):
+        return ''
 
 class NotExpr(Expr):
     def __init__(self, var: VarReference):
@@ -213,6 +370,12 @@ class NotExpr(Expr):
         for var in self.var.get_free_variables():
             yield var
 
+    def __str__(self):
+        return 'not %s' % self.var.name
+
+    def describe_other_fields(self):
+        return self.var.describe_other_fields()
+
 class UnaryMinusExpr(Expr):
     def __init__(self, var: VarReference):
         assert var.type == IntType()
@@ -222,6 +385,12 @@ class UnaryMinusExpr(Expr):
     def get_free_variables(self):
         for var in self.var.get_free_variables():
             yield var
+
+    def __str__(self):
+        return '-%s' % self.var.name
+
+    def describe_other_fields(self):
+        return self.var.describe_other_fields()
 
 class IntComparisonExpr(Expr):
     def __init__(self, lhs: VarReference, rhs: VarReference, op: str):
@@ -238,6 +407,12 @@ class IntComparisonExpr(Expr):
             for var in expr.get_free_variables():
                 yield var
 
+    def __str__(self):
+        return '%s %s %s' % (self.lhs.name, self.op, self.rhs.name)
+
+    def describe_other_fields(self):
+        return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
+
 class IntBinaryOpExpr(Expr):
     def __init__(self, lhs: VarReference, rhs: VarReference, op: str):
         assert lhs.type == IntType()
@@ -253,6 +428,12 @@ class IntBinaryOpExpr(Expr):
             for var in expr.get_free_variables():
                 yield var
 
+    def __str__(self):
+        return '%s %s %s' % (self.lhs.name, self.op, self.rhs.name)
+
+    def describe_other_fields(self):
+        return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
+
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
         # When expr_type is None, the statement never returns.
@@ -265,6 +446,8 @@ class Stmt:
     # desired.
     def get_free_variables(self) -> 'Iterable[VarReference]': ...  # pragma: no cover
 
+    def write(self, writer: Writer): ...  # pragma: no cover
+
 class Assert(Stmt):
     def __init__(self, var: VarReference, message: str):
         assert isinstance(var.type, BoolType)
@@ -275,23 +458,60 @@ class Assert(Stmt):
         for var in self.var.get_free_variables():
             yield var
 
+    def write(self, writer: Writer):
+        writer.write('assert ')
+        writer.write(self.var.name)
+        writer.writeln('  # %s' % self.var.describe_other_fields())
+
 class Assignment(Stmt):
-    def __init__(self, lhs: VarReference, rhs: Expr):
+    def __init__(self,
+                 lhs: VarReference,
+                 rhs: Expr,
+                 lhs2: Optional[VarReference] = None):
         assert lhs.type == rhs.type
+        if lhs2:
+            assert isinstance(lhs2.type, ErrorOrVoidType)
+            assert isinstance(rhs, (MatchExpr, FunctionCall))
         self.lhs = lhs
+        self.lhs2 = lhs2
         self.rhs = rhs
 
     def get_free_variables(self):
         for var in self.rhs.get_free_variables():
             yield var
 
+    def write(self, writer: Writer):
+        writer.write(self.lhs.name)
+        if self.lhs2:
+            writer.write(', ')
+            writer.write(self.lhs2.name)
+        writer.write(' = ')
+        if isinstance(self.rhs, MatchExpr):
+            self.rhs.write(writer)
+        else:
+            writer.write(str(self.rhs))
+            writer.writeln('  # lhs: %s; rhs: %s' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields()))
+
 class ReturnStmt(Stmt):
-    def __init__(self, var: VarReference):
-        self.var = var
+    def __init__(self, result: Optional[VarReference], error: Optional[VarReference]):
+        assert (result is None) != (error is None)
+        self.result = result
+        self.error = error
 
     def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
+        for expr in (self.result, self.error):
+            if expr:
+                for var in expr.get_free_variables():
+                    yield var
+
+    def write(self, writer: Writer):
+        writer.write('return ')
+        writer.write(str(self.result))
+        writer.write(', ')
+        writer.write(str(self.error))
+        writer.writeln('  # result: %s, error: %s' % (
+            self.result.describe_other_fields() if self.result else '',
+            self.error.describe_other_fields() if self.error else ''))
 
 class IfStmt(Stmt):
     def __init__(self, cond: VarReference, if_stmts: List[Stmt], else_stmts: List[Stmt]):
@@ -308,6 +528,20 @@ class IfStmt(Stmt):
             for var in get_free_variables_in_stmts(stmts):
                 yield var
 
+    def write(self, writer: Writer):
+        writer.write('if %s:' % self.cond.name)
+        writer.writeln('  # %s' % self.cond.describe_other_fields())
+        with writer.indent():
+            for stmt in self.if_stmts:
+                stmt.write(writer)
+            if not self.if_stmts:
+                writer.writeln('pass')
+        if self.else_stmts:
+            writer.writeln('else:')
+            with writer.indent():
+                for stmt in self.else_stmts:
+                    stmt.write(writer)
+
 class FunctionDefn:
     def __init__(self,
                  name: str,
@@ -319,9 +553,43 @@ class FunctionDefn:
         self.body = body
         self.return_type = return_type
 
+    def write(self, writer: Writer):
+        writer.writeln('def %s(%s) -> %s:' % (
+            self.name,
+            ', '.join('%s: %s' % (arg.name, str(arg.type))
+                      for arg in self.args),
+            str(self.return_type)))
+        with writer.indent():
+            for stmt in self.body:
+                stmt.write(writer)
+            if not self.body:
+                writer.writeln('pass')
+        writer.writeln('')
+
+class CheckIfErrorDefn:
+    def __init__(self, error_types_and_messages: List[Tuple[CustomType, str]]):
+        self.error_types_and_messages = error_types_and_messages
+
+    def write(self, writer: Writer):
+        writer.writeln('def check_if_error(x):')
+        with writer.indent():
+            for error_type, error_message in self.error_types_and_messages:
+                writer.writeln('if isinstance(x, %s):' % error_type.name)
+                with writer.indent():
+                    writer.writeln('... # builtin')
+            if not self.error_types_and_messages:
+                writer.writeln('... # builtin')
+        writer.writeln('')
+
 class Module:
     def __init__(self, body: List[Union[FunctionDefn, Assignment, Assert, CustomType]]):
         self.body = body
+
+    def __str__(self):
+        writer = Writer()
+        for elem in self.body:
+            elem.write(writer)
+        return ''.join(writer.strings)
 
 def get_free_variables_in_stmts(stmts: List[Stmt]):
     local_var_names = set()
@@ -331,3 +599,5 @@ def get_free_variables_in_stmts(stmts: List[Stmt]):
                 yield var
         if isinstance(stmt, Assignment):
             local_var_names.add(stmt.lhs.name)
+            if stmt.lhs2:
+                local_var_names.add(stmt.lhs2.name)

@@ -14,7 +14,92 @@
 
 import _py2tmp.ir as ir
 import _py2tmp.highir as highir
-from typing import List, Tuple, Iterator
+from typing import List, Iterator
+
+class FunWriter:
+    def __init__(self, identifier_generator: Iterator[str]):
+        self.identifier_generator = identifier_generator
+        self.is_error_fun_ref = self.new_var(ir.FunctionType(argtypes=[ir.ErrorOrVoidType()],
+                                                             returns=ir.BoolType()),
+                                             is_global_function=True)
+        self.function_defns = [self._create_is_error_fun_defn()]
+
+    def new_id(self):
+        return next(self.identifier_generator)
+
+    def new_var(self, type: ir.ExprType, is_global_function: bool = False):
+        return ir.VarReference(type=type,
+                               name=self.new_id(),
+                               is_global_function=is_global_function,
+                               is_function_that_may_throw=isinstance(type, ir.FunctionType))
+
+    def write_function(self, fun_defn: ir.FunctionDefn):
+        self.function_defns.append(fun_defn)
+
+    def _create_is_error_fun_defn(self):
+        # def is_error(x: ErrorOrVoid):
+        #   v = Type('void')
+        #   b = (x == v)
+        #   b2 = not b
+        #   return b2
+
+        stmt_writer = StmtWriter(self)
+        x_var = self.new_var(type=ir.ErrorOrVoidType())
+        v_var = stmt_writer.new_var_for_expr(ir.TypeLiteral(cpp_type='void'))
+        b_var = stmt_writer.new_var_for_expr(ir.EqualityComparison(lhs=x_var, rhs=v_var))
+        b2_var = stmt_writer.new_var_for_expr(ir.NotExpr(b_var))
+        stmt_writer.write_stmt(ir.ReturnStmt(result=b2_var, error=None))
+
+        return ir.FunctionDefn(name=self.is_error_fun_ref.name,
+                               args=[ir.FunctionArgDecl(type=x_var.type, name=x_var.name)],
+                               body=stmt_writer.stmts,
+                               return_type=ir.BoolType())
+
+class StmtWriter:
+    def __init__(self, fun_writer: FunWriter, is_at_toplevel: bool = False):
+        self.fun_writer = fun_writer
+        self.is_at_toplevel = is_at_toplevel
+        self.stmts = []  # type: List[ir.Stmt]
+
+    def write_function(self, fun_defn: ir.FunctionDefn):
+        self.fun_writer.write_function(fun_defn)
+
+    def write_stmt(self, stmt: ir.Stmt):
+        self.stmts.append(stmt)
+
+    def new_id(self):
+        return self.fun_writer.new_id()
+
+    def new_var(self, type: ir.ExprType):
+        return self.fun_writer.new_var(type)
+
+    def new_var_for_expr(self, expr: ir.Expr):
+        var = self.fun_writer.new_var(expr.type)
+        self.write_stmt(ir.Assignment(lhs=var, rhs=expr))
+        return var
+
+    def new_var_for_expr_with_error_checking(self, expr: ir.Expr):
+        if self.is_at_toplevel:
+            # x = <expr>
+            x_var = self.fun_writer.new_var(expr.type)
+            self.write_stmt(ir.Assignment(lhs=x_var,
+                                          rhs=expr))
+            return x_var
+        else:
+            # x, err = <expr>
+            # b = is_error(err)
+            # if b:
+            #   return None, err
+
+            x_var = self.fun_writer.new_var(expr.type)
+            error_var = self.fun_writer.new_var(ir.ErrorOrVoidType())
+            self.write_stmt(ir.Assignment(lhs=x_var, lhs2=error_var, rhs=expr))
+            b_var = self.new_var_for_expr(ir.FunctionCall(fun=self.fun_writer.is_error_fun_ref,
+                                                          args=[error_var]))
+            self.write_stmt(ir.IfStmt(cond=b_var,
+                                      if_stmts=[ir.ReturnStmt(result=None, error=error_var)],
+                                      else_stmts=[]))
+            return x_var
 
 def type_to_ir(type: highir.ExprType):
     if isinstance(type, highir.BoolType):
@@ -23,6 +108,8 @@ def type_to_ir(type: highir.ExprType):
         return ir.IntType()
     elif isinstance(type, highir.TypeType):
         return ir.TypeType()
+    elif isinstance(type, highir.BottomType):
+        return ir.BottomType()
     elif isinstance(type, highir.ListType):
         return ir.ListType(elem_type=type_to_ir(type.elem_type))
     elif isinstance(type, highir.FunctionType):
@@ -36,47 +123,39 @@ def type_to_ir(type: highir.ExprType):
     else:
         raise NotImplementedError('Unexpected type: %s' % str(type.__class__))
 
-def expr_to_ir(expr: highir.Expr, identifier_generator: Iterator[str]) \
-        -> Tuple[List[ir.Stmt], ir.VarReference]:
+def expr_to_ir(expr: highir.Expr, writer: StmtWriter) -> ir.VarReference:
     if isinstance(expr, highir.VarReference):
-        return [], var_reference_to_ir(expr)
+        return var_reference_to_ir(expr)
     elif isinstance(expr, highir.MatchExpr):
-        stmts, expr = match_expr_to_ir(expr, identifier_generator)
+        return match_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.BoolLiteral):
-        stmts, expr = bool_literal_to_ir(expr)
+        return bool_literal_to_ir(expr, writer)
     elif isinstance(expr, highir.IntLiteral):
-        stmts, expr = int_literal_to_ir(expr)
+        return int_literal_to_ir(expr, writer)
     elif isinstance(expr, highir.TypeLiteral):
-        stmts, expr = type_literal_to_ir(expr)
+        return type_literal_to_ir(expr, writer)
     elif isinstance(expr, highir.ListExpr):
-        stmts, expr = list_expr_to_ir(expr, identifier_generator)
+        return list_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.FunctionCall):
-        stmts, expr = function_call_to_ir(expr, identifier_generator)
+        return function_call_to_ir(expr, writer)
     elif isinstance(expr, highir.EqualityComparison):
-        stmts, expr = equality_comparison_to_ir(expr, identifier_generator)
+        return equality_comparison_to_ir(expr, writer)
     elif isinstance(expr, highir.AttributeAccessExpr):
-        stmts, expr = attribute_access_expr_to_ir(expr, identifier_generator)
+        return attribute_access_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.AndExpr):
-        stmts, expr = and_expr_to_ir(expr, identifier_generator)
+        return and_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.OrExpr):
-        stmts, expr = or_expr_to_ir(expr, identifier_generator)
+        return or_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.NotExpr):
-        stmts, expr = not_expr_to_ir(expr, identifier_generator)
+        return not_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.IntUnaryMinusExpr):
-        stmts, expr = int_unary_minus_expr_to_ir(expr, identifier_generator)
+        return int_unary_minus_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.IntComparisonExpr):
-        stmts, expr = int_comparison_expr_to_ir(expr, identifier_generator)
+        return int_comparison_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.IntBinaryOpExpr):
-        stmts, expr = int_binary_op_expr_to_ir(expr, identifier_generator)
+        return int_binary_op_expr_to_ir(expr, writer)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
-
-    var = ir.VarReference(type=expr.type,
-                          name=next(identifier_generator),
-                          is_global_function=False)
-    stmts.append(ir.Assignment(lhs=var, rhs=expr))
-
-    return stmts, var
 
 def function_arg_decl_to_ir(decl: highir.FunctionArgDecl):
     return ir.FunctionArgDecl(type=type_to_ir(decl.type),
@@ -85,73 +164,83 @@ def function_arg_decl_to_ir(decl: highir.FunctionArgDecl):
 def var_reference_to_ir(var: highir.VarReference):
     return ir.VarReference(type=type_to_ir(var.type),
                            name=var.name,
-                           is_global_function=var.is_global_function)
+                           is_global_function=var.is_global_function,
+                           is_function_that_may_throw=var.is_function_that_may_throw)
 
-def match_case_to_ir(match_case: highir.MatchCase, identifier_generator: Iterator[str]):
-    stmts, var = expr_to_ir(match_case.expr, identifier_generator)  # type: Tuple[List[ir.Stmt], ir.VarReference]
-    stmts.append(ir.ReturnStmt(var))
-    return ir.MatchCase(type_patterns=match_case.type_patterns,
-                        matched_var_names=match_case.matched_var_names,
-                        stmts=stmts,
-                        return_type=var.type)
+def match_expr_to_ir(match_expr: highir.MatchExpr, writer: StmtWriter):
+    matched_vars = [expr_to_ir(expr, writer)
+                    for expr in match_expr.matched_exprs]
 
-def match_expr_to_ir(match_expr: highir.MatchExpr, identifier_generator: Iterator[str]):
-    stmts = []
-    matched_vars = []
-    for expr in match_expr.matched_exprs:
-        additional_stmts, var = expr_to_ir(expr, identifier_generator)
-        stmts += additional_stmts
-        matched_vars.append(var)
+    match_cases = []
+    for match_case in match_expr.match_cases:
+        match_case_writer = StmtWriter(writer.fun_writer)
+        match_case_var = expr_to_ir(match_case.expr, match_case_writer)
+        match_case_writer.write_stmt(ir.ReturnStmt(result=match_case_var, error=None))
 
-    match_cases = [match_case_to_ir(match_case, identifier_generator)
-                   for match_case in match_expr.match_cases]
+        forwarded_vars = dict()
+        for var in ir.get_free_variables_in_stmts(match_case_writer.stmts):
+            if var.name not in forwarded_vars:
+                forwarded_vars[var.name] = var
+        forwarded_vars = list(sorted((var
+                                      for var in forwarded_vars.values()),
+                                     key=lambda var: var.name))
 
-    return stmts, ir.MatchExpr(matched_vars, match_cases)
+        match_fun_name = writer.new_id()
+        writer.write_function(ir.FunctionDefn(name=match_fun_name,
+                                              args=[ir.FunctionArgDecl(type=var.type, name=var.name)
+                                                    for var in forwarded_vars],
+                                              body=match_case_writer.stmts,
+                                              return_type=match_case_var.type))
+        match_fun_ref = ir.VarReference(type=ir.FunctionType(argtypes=[var.type
+                                                                       for var in forwarded_vars],
+                                                             returns=match_case_var.type),
+                                        name=match_fun_name,
+                                        is_global_function=True,
+                                        is_function_that_may_throw=True)
 
-def bool_literal_to_ir(literal: highir.BoolLiteral):
-    return [], ir.BoolLiteral(value=literal.value)
+        match_cases.append(ir.MatchCase(type_patterns=match_case.type_patterns,
+                                        matched_var_names=match_case.matched_var_names,
+                                        expr=ir.FunctionCall(fun=match_fun_ref,
+                                                             args=forwarded_vars)))
 
-def int_literal_to_ir(literal: highir.IntLiteral):
-    return [], ir.IntLiteral(value=literal.value)
+    return writer.new_var_for_expr_with_error_checking(ir.MatchExpr(matched_vars, match_cases))
 
-def type_literal_to_ir(literal: highir.TypeLiteral):
-    return [], ir.TypeLiteral(cpp_type=literal.cpp_type)
+def bool_literal_to_ir(literal: highir.BoolLiteral, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.BoolLiteral(value=literal.value))
 
-def list_expr_to_ir(list_expr: highir.ListExpr, identifier_generator: Iterator[str]):
-    stmts = []
-    elem_vars = []
-    for elem_expr in list_expr.elem_exprs:
-        other_stmts, var = expr_to_ir(elem_expr, identifier_generator)
-        stmts += other_stmts
-        elem_vars.append(var)
-    return stmts, ir.ListExpr(elem_type=type_to_ir(list_expr.elem_type),
-                              elems=elem_vars)
+def int_literal_to_ir(literal: highir.IntLiteral, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.IntLiteral(value=literal.value))
 
-def function_call_to_ir(call_expr: highir.FunctionCall, identifier_generator: Iterator[str]):
-    stmts, fun = expr_to_ir(call_expr.fun_expr, identifier_generator)
-    args = []
-    for arg_expr in call_expr.args:
-        other_stmts, arg_var = expr_to_ir(arg_expr, identifier_generator)
-        stmts += other_stmts
-        args.append(arg_var)
-    return stmts, ir.FunctionCall(fun=fun, args=args)
+def type_literal_to_ir(literal: highir.TypeLiteral, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.TypeLiteral(cpp_type=literal.cpp_type))
 
-def equality_comparison_to_ir(comparison_expr: highir.EqualityComparison, identifier_generator: Iterator[str]):
-    lhs_stmts, lhs = expr_to_ir(comparison_expr.lhs, identifier_generator)
-    rhs_stmts, rhs = expr_to_ir(comparison_expr.rhs, identifier_generator)
+def list_expr_to_ir(list_expr: highir.ListExpr, writer: StmtWriter):
+    elem_vars = [expr_to_ir(elem_expr, writer)
+                 for elem_expr in list_expr.elem_exprs]
+    return writer.new_var_for_expr(ir.ListExpr(elem_type=type_to_ir(list_expr.elem_type),
+                                               elems=elem_vars))
 
-    return lhs_stmts + rhs_stmts, ir.EqualityComparison(lhs=lhs, rhs=rhs)
+def function_call_to_ir(call_expr: highir.FunctionCall, writer: StmtWriter):
+    fun_var = expr_to_ir(call_expr.fun_expr, writer)
+    arg_vars = [expr_to_ir(arg_expr, writer)
+                for arg_expr in call_expr.args]
+    if fun_var.is_function_that_may_throw:
+        return writer.new_var_for_expr_with_error_checking(ir.FunctionCall(fun=fun_var,
+                                                                           args=arg_vars))
+    else:
+        return writer.new_var_for_expr(ir.FunctionCall(fun=fun_var,
+                                                       args=arg_vars))
 
-def attribute_access_expr_to_ir(attribute_access_expr: highir.AttributeAccessExpr, identifier_generator: Iterator[str]):
-    stmts, var = expr_to_ir(attribute_access_expr.expr, identifier_generator)
-    return stmts, ir.AttributeAccessExpr(var=var,
-                                         attribute_name=attribute_access_expr.attribute_name,
-                                         type=type_to_ir(attribute_access_expr.type))
+def equality_comparison_to_ir(comparison_expr: highir.EqualityComparison, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.EqualityComparison(lhs=expr_to_ir(comparison_expr.lhs, writer),
+                                                         rhs=expr_to_ir(comparison_expr.rhs, writer)))
 
-def and_expr_to_ir(expr: highir.AndExpr, identifier_generator: Iterator[str]):
-    lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
-    rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
+def attribute_access_expr_to_ir(attribute_access_expr: highir.AttributeAccessExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.AttributeAccessExpr(var=expr_to_ir(attribute_access_expr.expr, writer),
+                                                          attribute_name=attribute_access_expr.attribute_name,
+                                                          type=type_to_ir(attribute_access_expr.type)))
 
+def and_expr_to_ir(expr: highir.AndExpr, writer: StmtWriter):
     # y = f() and g()
     #
     # becomes:
@@ -162,23 +251,19 @@ def and_expr_to_ir(expr: highir.AndExpr, identifier_generator: Iterator[str]):
     #   x = False
     # y = x
 
-    var = ir.VarReference(type=ir.BoolType(),
-                          name=next(identifier_generator),
-                          is_global_function=False)
+    lhs_var = expr_to_ir(expr.lhs, writer)
 
-    rhs_stmts.append(ir.Assignment(lhs=var, rhs=rhs_var))
+    if_branch_writer = StmtWriter(writer.fun_writer)
+    rhs_var = expr_to_ir(expr.rhs, if_branch_writer)
 
-    lhs_stmts.append(ir.IfStmt(cond=lhs_var,
-                               if_stmts=rhs_stmts,
-                               else_stmts=[ir.Assignment(lhs=var,
-                                                         rhs=ir.BoolLiteral(value=False))]))
+    writer.write_stmt(ir.IfStmt(cond=lhs_var,
+                                if_stmts=if_branch_writer.stmts,
+                                else_stmts=[ir.Assignment(lhs=rhs_var,
+                                                          rhs=ir.BoolLiteral(value=False))]))
 
-    return lhs_stmts, var
+    return rhs_var
 
-def or_expr_to_ir(expr: highir.OrExpr, identifier_generator: Iterator[str]):
-    lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
-    rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
-
+def or_expr_to_ir(expr: highir.OrExpr, writer: StmtWriter):
     # y = f() or g()
     #
     # becomes:
@@ -189,123 +274,99 @@ def or_expr_to_ir(expr: highir.OrExpr, identifier_generator: Iterator[str]):
     #   x = g()
     # y = x
 
-    var = ir.VarReference(type=ir.BoolType(),
-                          name=next(identifier_generator),
-                          is_global_function=False)
+    lhs_var = expr_to_ir(expr.lhs, writer)
 
-    rhs_stmts.append(ir.Assignment(lhs=var, rhs=rhs_var))
+    else_branch_writer = StmtWriter(writer.fun_writer)
+    rhs_var = expr_to_ir(expr.rhs, else_branch_writer)
 
-    lhs_stmts.append(ir.IfStmt(cond=lhs_var,
-                               if_stmts=[ir.Assignment(lhs=var,
-                                                       rhs=ir.BoolLiteral(value=True))],
-                               else_stmts=rhs_stmts))
+    writer.write_stmt(ir.IfStmt(cond=lhs_var,
+                                if_stmts=[ir.Assignment(lhs=rhs_var,
+                                                        rhs=ir.BoolLiteral(value=True))],
+                                else_stmts=else_branch_writer.stmts))
 
-    return lhs_stmts, var
+    return rhs_var
 
-def not_expr_to_ir(expr: highir.NotExpr, identifier_generator: Iterator[str]):
-    stmts, var = expr_to_ir(expr.expr, identifier_generator)
+def not_expr_to_ir(expr: highir.NotExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.NotExpr(expr_to_ir(expr.expr, writer)))
 
-    var2 = ir.VarReference(type=ir.BoolType(),
-                           name=next(identifier_generator),
-                           is_global_function=False)
+def int_unary_minus_expr_to_ir(expr: highir.IntUnaryMinusExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.UnaryMinusExpr(expr_to_ir(expr.expr, writer)))
 
-    stmts.append(ir.Assignment(lhs=var2,
-                               rhs=ir.NotExpr(var=var)))
-
-    return stmts, var2
-
-def int_unary_minus_expr_to_ir(expr: highir.IntUnaryMinusExpr, identifier_generator: Iterator[str]):
-    stmts, var = expr_to_ir(expr.expr, identifier_generator)
-
-    var2 = ir.VarReference(type=ir.IntType(),
-                           name=next(identifier_generator),
-                           is_global_function=False)
-
-    stmts.append(ir.Assignment(lhs=var2,
-                               rhs=ir.UnaryMinusExpr(var=var)))
-
-    return stmts, var2
-
-def int_comparison_expr_to_ir(expr: highir.IntComparisonExpr, identifier_generator: Iterator[str]):
-    lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
-    rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
-
-    var = ir.VarReference(type=ir.BoolType(),
-                          name=next(identifier_generator),
-                          is_global_function=False)
-
-    assignment = ir.Assignment(lhs=var,
-                               rhs=ir.IntComparisonExpr(lhs=lhs_var,
-                                                        rhs=rhs_var,
+def int_comparison_expr_to_ir(expr: highir.IntComparisonExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.IntComparisonExpr(lhs=expr_to_ir(expr.lhs, writer),
+                                                        rhs=expr_to_ir(expr.rhs, writer),
                                                         op=expr.op))
 
-    return lhs_stmts + rhs_stmts + [assignment], var
-
-def int_binary_op_expr_to_ir(expr: highir.IntBinaryOpExpr, identifier_generator: Iterator[str]):
-    lhs_stmts, lhs_var = expr_to_ir(expr.lhs, identifier_generator)
-    rhs_stmts, rhs_var = expr_to_ir(expr.rhs, identifier_generator)
-
-    var = ir.VarReference(type=ir.IntType(),
-                          name=next(identifier_generator),
-                          is_global_function=False)
-
-    assignment = ir.Assignment(lhs=var,
-                               rhs=ir.IntBinaryOpExpr(lhs=lhs_var,
-                                                      rhs=rhs_var,
+def int_binary_op_expr_to_ir(expr: highir.IntBinaryOpExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.IntBinaryOpExpr(lhs=expr_to_ir(expr.lhs, writer),
+                                                      rhs=expr_to_ir(expr.rhs, writer),
                                                       op=expr.op))
 
-    return lhs_stmts + rhs_stmts + [assignment], var
+def assert_to_ir(assert_stmt: highir.Assert, writer: StmtWriter):
+    writer.write_stmt(ir.Assert(var=expr_to_ir(assert_stmt.expr, writer),
+                                message=assert_stmt.message))
 
-def assert_to_ir(assert_stmt: highir.Assert, identifier_generator: Iterator[str]):
-    stmts, var = expr_to_ir(assert_stmt.expr, identifier_generator)
-    return stmts, ir.Assert(var=var, message=assert_stmt.message)
+def assignment_to_ir(assignment: highir.Assignment, writer: StmtWriter):
+    writer.write_stmt(ir.Assignment(lhs=var_reference_to_ir(assignment.lhs),
+                                    rhs=expr_to_ir(assignment.rhs, writer)))
 
-def assignment_to_ir(assignment: highir.Assignment, identifier_generator: Iterator[str]):
-    stmts, var = expr_to_ir(assignment.rhs, identifier_generator)
-    return stmts, ir.Assignment(lhs=var_reference_to_ir(assignment.lhs),
-                                rhs=var)
+def return_stmt_to_ir(return_stmt: highir.ReturnStmt, writer: StmtWriter):
+    writer.write_stmt(ir.ReturnStmt(result=expr_to_ir(return_stmt.expr, writer),
+                                    error=None))
 
-def return_stmt_to_ir(return_stmt: highir.ReturnStmt, identifier_generator: Iterator[str]):
-    stmts, var = expr_to_ir(return_stmt.expr, identifier_generator)
-    return stmts, ir.ReturnStmt(var=var)
+def raise_stmt_to_ir(raise_stmt: highir.RaiseStmt, writer: StmtWriter):
+    writer.write_stmt(ir.ReturnStmt(result=None,
+                                    error=expr_to_ir(raise_stmt.expr, writer)))
 
-def if_stmt_to_ir(if_stmt: highir.IfStmt,
-                  identifier_generator: Iterator[str]):
-    cond_stmts, cond = expr_to_ir(if_stmt.cond_expr, identifier_generator)
-    if_stmts = stmts_to_ir(if_stmt.if_stmts, identifier_generator)
-    else_stmts = stmts_to_ir(if_stmt.else_stmts, identifier_generator)
-    return cond_stmts, ir.IfStmt(cond=cond, if_stmts=if_stmts, else_stmts=else_stmts)
+def if_stmt_to_ir(if_stmt: highir.IfStmt, writer: StmtWriter):
+    cond_var = expr_to_ir(if_stmt.cond_expr, writer)
 
-def stmts_to_ir(stmts: List[highir.Stmt],
-                identifier_generator: Iterator[str]):
-    expanded_stmts = []
+    if_branch_writer = StmtWriter(writer.fun_writer)
+    stmts_to_ir(if_stmt.if_stmts, if_branch_writer)
+
+    else_branch_writer = StmtWriter(writer.fun_writer)
+    stmts_to_ir(if_stmt.else_stmts, else_branch_writer)
+
+    writer.write_stmt(ir.IfStmt(cond=cond_var,
+                                if_stmts=if_branch_writer.stmts,
+                                else_stmts=else_branch_writer.stmts))
+
+def stmts_to_ir(stmts: List[highir.Stmt], writer: StmtWriter):
     for stmt in stmts:
         if isinstance(stmt, highir.IfStmt):
-            stmts, stmt = if_stmt_to_ir(stmt, identifier_generator)
+            if_stmt_to_ir(stmt, writer)
         elif isinstance(stmt, highir.Assignment):
-            stmts, stmt = assignment_to_ir(stmt, identifier_generator)
+            assignment_to_ir(stmt, writer)
         elif isinstance(stmt, highir.ReturnStmt):
-            stmts, stmt = return_stmt_to_ir(stmt, identifier_generator)
+            return_stmt_to_ir(stmt, writer)
+        elif isinstance(stmt, highir.RaiseStmt):
+            raise_stmt_to_ir(stmt, writer)
         elif isinstance(stmt, highir.Assert):
-            stmts, stmt = assert_to_ir(stmt, identifier_generator)
+            assert_to_ir(stmt, writer)
         else:
             raise NotImplementedError('Unexpected statement: %s' % str(stmt.__class__))
 
-        expanded_stmts += stmts
-        expanded_stmts.append(stmt)
+def function_defn_to_ir(function_defn: highir.FunctionDefn, writer: FunWriter):
+    stmt_writer = StmtWriter(writer)
+    stmts_to_ir(function_defn.body, stmt_writer)
 
-    return expanded_stmts
-
-def function_defn_to_ir(function_defn: highir.FunctionDefn, identifier_generator: Iterator[str]):
-    body = stmts_to_ir(function_defn.body, identifier_generator)
-    return ir.FunctionDefn(name=function_defn.name,
-                           args=[function_arg_decl_to_ir(arg) for arg in function_defn.args],
-                           body=body,
-                           return_type=type_to_ir(function_defn.return_type))
-
+    writer.write_function(ir.FunctionDefn(name=function_defn.name,
+                                          args=[function_arg_decl_to_ir(arg)
+                                                for arg in function_defn.args],
+                                          body=stmt_writer.stmts,
+                                          return_type=type_to_ir(function_defn.return_type)))
 
 def module_to_ir(module: highir.Module, identifier_generator: Iterator[str]):
-    function_defns = [function_defn_to_ir(function_defn, identifier_generator)
-                      for function_defn in module.function_defns]
-    return ir.Module(body=[type_to_ir(type)
-                           for type in module.custom_types] + function_defns + stmts_to_ir(module.assertions, identifier_generator))
+    writer = FunWriter(identifier_generator)
+    for function_defn in module.function_defns:
+        function_defn_to_ir(function_defn, writer)
+
+    stmt_writer = StmtWriter(writer, is_at_toplevel=True)
+    for assertion in module.assertions:
+        assert_to_ir(assertion, stmt_writer)
+
+    custom_types_defns = [type_to_ir(type) for type in module.custom_types]
+    check_if_error_defn = ir.CheckIfErrorDefn([(type_to_ir(type), type.exception_message)
+                                               for type in module.custom_types
+                                               if type.is_exception_class])
+    return ir.Module(body=custom_types_defns + [check_if_error_defn] + writer.function_defns + stmt_writer.stmts)

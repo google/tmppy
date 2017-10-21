@@ -32,6 +32,12 @@ import _py2tmp.lowir
 import py2tmp
 
 import py2tmp_test_config as config
+import typed_ast.ast3 as ast
+import _py2tmp.ast2highir as ast2highir
+import _py2tmp.highir2ir as highir2ir
+import _py2tmp.ir2lowir as ir2lowir
+import _py2tmp.lowir2cpp as lowir2cpp
+import _py2tmp.utils as utils
 
 
 def pretty_print_command(command):
@@ -221,7 +227,7 @@ def expect_cpp_code_compile_error_helper(check_error_fun, tmppy_source, cxx_sour
 
     try_remove_temporary_file(source_file_name)
 
-def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, cxx_source):
+def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, module_ir, cxx_source):
     """
     Tests that the given source produces the expected error during compilation.
 
@@ -245,11 +251,16 @@ def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, cx
 
                 TMPPy source:
                 {tmppy_source}
+                    
+                TMPPy IR:
+                {tmppy_ir}
+                
                 C++ source:
                 {cxx_source}
                 ''').format(expected_error = expected_error_regex,
                             compiler_command=e.command,
                             tmppy_source = add_line_numbers(tmppy_source),
+                            tmppy_ir = str(module_ir),
                             cxx_source = add_line_numbers(cxx_source),
                             error_message = error_message_head),
             pytrace=False)
@@ -261,6 +272,7 @@ def expect_cpp_code_compile_error(
         expected_py2tmp_error_regex,
         expected_py2tmp_error_desc_regex,
         tmppy_source,
+        module_ir,
         cxx_source):
     """
     Tests that the given source produces the expected error during compilation.
@@ -325,11 +337,16 @@ def expect_cpp_code_compile_error(
 
                     TMPPy source:
                     {tmppy_source}
+                    
+                    TMPPy IR:
+                    {tmppy_ir}
+                    
                     C++ source code:
                     {cxx_source}
                     ''').format(expected_error = expected_py2tmp_error_regex,
                                 compiler_command = e.command,
                                 tmppy_source = add_line_numbers(tmppy_source),
+                                tmppy_ir = str(module_ir),
                                 cxx_source = add_line_numbers(cxx_source),
                                 error_message = error_message_head),
                 pytrace=False)
@@ -350,11 +367,16 @@ def expect_cpp_code_compile_error(
                     
                     TMPPy source:
                     {tmppy_source}
+                    
+                    TMPPy IR:
+                    {tmppy_ir}
+                    
                     C++ source code:
                     {cxx_source}
                     ''').format(expected_error = expected_py2tmp_error_regex,
                                 compiler_command=e.command,
                                 tmppy_source = add_line_numbers(tmppy_source),
+                                tmppy_ir = str(module_ir),
                                 cxx_source = add_line_numbers(cxx_source),
                                 error_message = error_message_head),
                 pytrace=False)
@@ -377,6 +399,10 @@ def expect_cpp_code_compile_error(
                     
                     TMPPy source:
                     {tmppy_source}
+                    
+                    TMPPy IR:
+                    {tmppy_ir}
+                    
                     C++ source code:
                     {cxx_source}
                     '''.format(expected_py2tmp_error_regex = expected_py2tmp_error_regex,
@@ -384,6 +410,7 @@ def expect_cpp_code_compile_error(
                                expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
                                actual_static_assert_error = actual_static_assert_error,
                                tmppy_source = add_line_numbers(tmppy_source),
+                               tmppy_ir = str(module_ir),
                                cxx_source = add_line_numbers(cxx_source),
                                error_message = error_message_head)),
                 pytrace=False)
@@ -405,6 +432,10 @@ def expect_cpp_code_compile_error(
                     
                     TMPPy source:
                     {tmppy_source}
+                    
+                    TMPPy IR:
+                    {tmppy_ir}
+                    
                     C++ source code:
                     {cxx_source}
                     '''.format(expected_py2tmp_error_regex = expected_py2tmp_error_regex,
@@ -412,6 +443,7 @@ def expect_cpp_code_compile_error(
                                expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
                                actual_static_assert_error = actual_static_assert_error,
                                tmppy_source = add_line_numbers(tmppy_source),
+                               tmppy_ir = str(module_ir),
                                cxx_source = add_line_numbers(cxx_source),
                                error_message = error_message_head)),
                 pytrace=False)
@@ -429,11 +461,16 @@ def expect_cpp_code_compile_error(
 
                     TMPPy source:
                     {tmppy_source}
+                    
+                    TMPPy IR:
+                    {tmppy_ir}
+                    
                     C++ source code:
                     {cxx_source}
                     '''.format(actual_py2tmp_error_line_number = actual_py2tmp_error_line_number,
                                actual_static_assert_error_line_number = actual_static_assert_error_line_number,
                                tmppy_source = add_line_numbers(tmppy_source),
+                               tmppy_ir = str(module_ir),
                                cxx_source = add_line_numbers(cxx_source),
                                error_message = error_message_head)),
                 pytrace=False)
@@ -446,7 +483,7 @@ def expect_cpp_code_compile_error(
 
     expect_cpp_code_compile_error_helper(check_error, tmppy_source, cxx_source)
 
-def expect_cpp_code_success(tmppy_source, cxx_source):
+def expect_cpp_code_success(tmppy_source, module_ir, cxx_source):
     """
     Tests that the given source compiles and runs successfully.
 
@@ -484,10 +521,15 @@ def expect_cpp_code_success(tmppy_source, cxx_source):
                 
                 TMPPy source:
                 {tmppy_source}
+                
+                TMPPy IR:
+                {tmppy_ir}
+                
                 C++ source:
                 {cxx_source}
                 ''').format(compiler_command=e.command,
                             tmppy_source = add_line_numbers(tmppy_source),
+                            tmppy_ir = str(module_ir),
                             cxx_source = add_line_numbers(cxx_source),
                             error_message = _cap_to_lines(e.stderr, 40)),
             pytrace=False)
@@ -506,6 +548,7 @@ def expect_cpp_code_success(tmppy_source, cxx_source):
 
                 TMPPy source:
                 {tmppy_source}
+                
                 C++ source:
                 {cxx_source}
                 ''').format(tmppy_source = add_line_numbers(tmppy_source),
@@ -528,29 +571,79 @@ def _get_function_body(f):
         source_code = source_code[1:-1]
     return textwrap.dedent(''.join(source_code))
 
+def create_identifier_generator():
+    def identifier_generator_fun():
+        for i in itertools.count():
+            yield 'TmppyInternal_%s' % i
+    return iter(identifier_generator_fun())
+
+def _convert_tmpy_source_to_ir(python_source, identifier_generator):
+    filename='<unknown>'
+    source_ast = ast.parse(python_source, filename)
+    compilation_context = ast2highir.CompilationContext(ast2highir.SymbolTable(),
+                                                        ast2highir.SymbolTable(),
+                                                        filename,
+                                                        python_source.splitlines())
+
+    module_high_ir = ast2highir.module_ast_to_ir(source_ast, compilation_context)
+
+    return highir2ir.module_to_ir(module_high_ir, identifier_generator)
+
+def _convert_ir_to_cpp(module_ir, identifier_generator):
+    header = ir2lowir.module_to_low_ir(module_ir, identifier_generator)
+
+    result = lowir2cpp.header_to_cpp(header, identifier_generator)
+    result = utils.clang_format(result)
+
+    return result
+
 def _convert_to_cpp_expecting_success(tmppy_source):
+    identifier_generator = create_identifier_generator()
     try:
-        return py2tmp.convert_to_cpp(tmppy_source)
+        module_ir = _convert_tmpy_source_to_ir(tmppy_source, identifier_generator)
+        e = None
     except _py2tmp.ast2highir.CompilationError as e1:
         e = e1
-    pytest.fail(
-        textwrap.dedent('''\
-            The conversion from TMPPy to C++ failed.
-            stderr was:
-            {error_message}
-            
-            TMPPy source:
-            {tmppy_source}
-            ''').format(tmppy_source = add_line_numbers(tmppy_source),
-                        error_message = e.args[0]),
-        pytrace=False)
+    if e:
+        pytest.fail(
+            textwrap.dedent('''\
+                The conversion from TMPPy to C++ failed.
+                stderr was:
+                {error_message}
+                
+                TMPPy source:
+                {tmppy_source}
+                ''').format(tmppy_source = add_line_numbers(tmppy_source),
+                            error_message = e.args[0]),
+            pytrace=False)
+
+    try:
+        return module_ir, _convert_ir_to_cpp(module_ir, identifier_generator)
+    except _py2tmp.ast2highir.CompilationError as e1:
+        e = e1
+    if e:
+        pytest.fail(
+            textwrap.dedent('''\
+                The conversion from TMPPy to C++ failed.
+                stderr was:
+                {error_message}
+                
+                TMPPy source:
+                {tmppy_source}
+                
+                TMPPy IR:
+                {tmppy_ir}
+                ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                            tmppy_ir=str(module_ir),
+                            error_message=e.args[0]),
+            pytrace=False)
 
 def assert_compilation_succeeds(f):
     @wraps(f)
     def wrapper():
         tmppy_source = _get_function_body(f)
-        cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-        expect_cpp_code_success(tmppy_source, cpp_source)
+        module_ir, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+        expect_cpp_code_success(tmppy_source, module_ir, cpp_source)
     return wrapper
 
 def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_error_desc_regex: str):
@@ -558,11 +651,12 @@ def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_e
         @wraps(f)
         def wrapper():
             tmppy_source = _get_function_body(f)
-            cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+            module_ir, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
             expect_cpp_code_compile_error(
                 expected_py2tmp_error_regex,
                 expected_py2tmp_error_desc_regex,
                 tmppy_source,
+                module_ir,
                 cpp_source)
         return wrapper
     return eval
@@ -573,10 +667,11 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str):
         @wraps(f)
         def wrapper():
             tmppy_source = _get_function_body(f)
-            cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+            module_ir, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
             expect_cpp_code_generic_compile_error(
                 expected_error_regex,
                 tmppy_source,
+                module_ir,
                 cpp_source)
         return wrapper
     return eval
@@ -621,7 +716,7 @@ def assert_conversion_fails(f):
                 pytrace=False)
 
         try:
-            py2tmp.convert_to_cpp('\n'.join(actual_source_lines))
+            module_ir = _convert_tmpy_source_to_ir('\n'.join(actual_source_lines), create_identifier_generator())
             e = None
         except _py2tmp.ast2highir.CompilationError as e1:
             e = e1
@@ -632,7 +727,11 @@ def assert_conversion_fails(f):
                     Expected an exception, but the _py2tmp conversion completed successfully.
                     TMPPy source:
                     {tmppy_source}
-                    ''').format(tmppy_source = add_line_numbers(tmppy_source)),
+
+                    TMPPy IR:
+                    {tmppy_ir}
+                    ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                                tmppy_ir=str(module_ir)),
             pytrace=False)
 
         # py2tmp diagnostics take up 3 lines each, e.g.:
@@ -711,8 +810,8 @@ def assert_conversion_fails(f):
                         TMPPy source:
                         {tmppy_source}
                         ''').format(actual_note = '\n'.join(actual_note),
-                                    tmppy_source = add_line_numbers(tmppy_source)),
-                    pytrace=False)
+                                    tmppy_source = add_line_numbers(tmppy_source),
+                                    pytrace=False))
 
 
     return wrapper
@@ -723,7 +822,7 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
         def wrapper():
             tmppy_source = _get_function_body(f)
             try:
-                cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                module_ir, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
                 e = None
             except _py2tmp.lowir.CodegenError as e1:
                 e = e1
@@ -734,7 +833,15 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
                         Expected a codegen error, but the _py2tmp conversion completed successfully.
                         TMPPy source:
                         {tmppy_source}
-                        ''').format(tmppy_source = add_line_numbers(tmppy_source)),
+                        
+                        TMPPy IR:
+                        {tmppy_ir}
+                        
+                        C++ source:
+                        {cpp_source}
+                        ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                                    tmppy_ir=str(module_ir),
+                                    cpp_source=add_line_numbers(cpp_source)),
                 pytrace=False)
 
             if not re.match(expected_error_regex, e.args[0]):
@@ -747,9 +854,17 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
                         
                         TMPPy source:
                         {tmppy_source}
+
+                        TMPPy IR:
+                        {tmppy_ir}
+                        
+                        C++ source:
+                        {cpp_source}
                         ''').format(expected_error_regex = expected_error_regex,
                                     actual_error = e.args[0],
-                                    tmppy_source = add_line_numbers(tmppy_source)),
+                                    tmppy_source = add_line_numbers(tmppy_source),
+                                    tmppy_ir=str(module_ir),
+                                    cpp_source=add_line_numbers(cpp_source)),
                     pytrace=False)
         return wrapper
     return eval

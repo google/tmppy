@@ -19,9 +19,12 @@ from typing import List, Tuple, Dict, Optional, Union
 from _py2tmp.utils import ast_to_string
 
 class Symbol:
-    def __init__(self, name: str, type: highir.ExprType):
+    def __init__(self, name: str, type: highir.ExprType, is_function_that_may_throw: bool):
+        if is_function_that_may_throw:
+            assert isinstance(type, highir.FunctionType)
         self.type = type
         self.name = name
+        self.is_function_that_may_throw = is_function_that_may_throw
 
 class SymbolLookupResult:
     def __init__(self, symbol: Symbol, ast_node: ast.AST, is_only_partially_defined: bool, symbol_table: 'SymbolTable'):
@@ -48,8 +51,13 @@ class SymbolTable:
                    name: str,
                    type: highir.ExprType,
                    definition_ast_node: ast.AST,
-                   is_only_partially_defined: bool):
-        self.symbols_by_name[name] = (Symbol(name, type), definition_ast_node, is_only_partially_defined)
+                   is_only_partially_defined: bool,
+                   is_function_that_may_throw: bool):
+        if is_function_that_may_throw:
+            assert isinstance(type, highir.FunctionType)
+        self.symbols_by_name[name] = (Symbol(name, type, is_function_that_may_throw),
+                                      definition_ast_node,
+                                      is_only_partially_defined)
 
 class CompilationContext:
     def __init__(self,
@@ -75,13 +83,16 @@ class CompilationContext:
                    name: str,
                    type: highir.ExprType,
                    definition_ast_node: ast.AST,
-                   is_only_partially_defined: bool):
+                   is_only_partially_defined: bool,
+                   is_function_that_may_throw: bool):
         """
         Adds a symbol to the symbol table.
 
         This throws an error (created by calling `create_already_defined_error(previous_type)`) if a symbol with the
         same name and different type was already defined in this scope.
         """
+        if is_function_that_may_throw:
+            assert isinstance(type, highir.FunctionType)
         symbol_lookup_result = self.symbol_table.get_symbol_definition(name)
         if not symbol_lookup_result:
             symbol_lookup_result = self.custom_types_symbol_table.get_symbol_definition(name)
@@ -98,7 +109,8 @@ class CompilationContext:
         self.symbol_table.add_symbol(name=name,
                                      type=type,
                                      definition_ast_node=definition_ast_node,
-                                     is_only_partially_defined=is_only_partially_defined)
+                                     is_only_partially_defined=is_only_partially_defined,
+                                     is_function_that_may_throw=is_function_that_may_throw)
 
     def add_custom_type_symbol(self,
                                custom_type: highir.CustomType,
@@ -107,11 +119,13 @@ class CompilationContext:
                         type=highir.FunctionType(argtypes=[arg.type for arg in custom_type.arg_types],
                                                  returns=custom_type),
                         definition_ast_node=definition_ast_node,
-                        is_only_partially_defined=False)
+                        is_only_partially_defined=False,
+                        is_function_that_may_throw=False)
         self.custom_types_symbol_table.add_symbol(name=custom_type.name,
                                                   type=custom_type,
                                                   definition_ast_node=definition_ast_node,
-                                                  is_only_partially_defined=False)
+                                                  is_only_partially_defined=False,
+                                                  is_function_that_may_throw=False)
 
 class CompilationError(Exception):
     def __init__(self, compilation_context: CompilationContext, ast_node: ast.AST, error_message: str, notes: List[Tuple[ast.AST, str]] = []):
@@ -155,7 +169,8 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
                                                    for arg in new_function_defn.args],
                                          returns=new_function_defn.return_type),
                 definition_ast_node=ast_node,
-                is_only_partially_defined=False)
+                is_only_partially_defined=False,
+                is_function_that_may_throw=True)
         elif isinstance(ast_node, ast.ImportFrom):
             supported_imports_by_module = {
                 'tmppy': ('Type', 'empty_list', 'TypePattern', 'match'),
@@ -245,7 +260,8 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
             lambda_body_compilation_context.add_symbol(name=arg.arg,
                                                        type=highir.TypeType(),
                                                        definition_ast_node=arg,
-                                                       is_only_partially_defined=False)
+                                                       is_only_partially_defined=False,
+                                                       is_function_that_may_throw=False)
         lambda_body = expression_ast_to_ir(value_expr_ast.body, lambda_body_compilation_context)
         if last_lambda_body_type and lambda_body.type != last_lambda_body_type:
             raise CompilationError(compilation_context, value_expr_ast.body,
@@ -294,7 +310,6 @@ def if_stmt_ast_to_ir(ast_node: ast.If,
 
     if_branch_compilation_context = compilation_context.create_child_context()
     if_stmts, first_return_stmt = statements_ast_to_ir(ast_node.body, if_branch_compilation_context, previous_return_stmt, check_always_returns)
-    if_branch_return_info = if_stmts[-1].get_return_type()
 
     if not previous_return_stmt and first_return_stmt:
         previous_return_stmt = first_return_stmt
@@ -303,75 +318,106 @@ def if_stmt_ast_to_ir(ast_node: ast.If,
 
     if ast_node.orelse:
         else_stmts, first_return_stmt = statements_ast_to_ir(ast_node.orelse, else_branch_compilation_context, previous_return_stmt, check_always_returns)
-        else_branch_return_info = else_stmts[-1].get_return_type()
 
         if not previous_return_stmt and first_return_stmt:
             previous_return_stmt = first_return_stmt
     else:
-        else_branch_return_info = highir.ReturnTypeInfo(type=None, always_returns=False)
-
         else_stmts = []
         if check_always_returns:
             raise CompilationError(compilation_context, ast_node,
                                    'Missing return statement. You should add an else branch that returns, or a return after the if.')
 
-    symbol_names = set()
-    if not if_branch_return_info.always_returns:
-        symbol_names = symbol_names.union(if_branch_compilation_context.symbol_table.symbols_by_name.keys())
-    if not else_branch_return_info.always_returns:
-        symbol_names = symbol_names.union(else_branch_compilation_context.symbol_table.symbols_by_name.keys())
-
-    for symbol_name in symbol_names:
-        if if_branch_return_info.always_returns or symbol_name not in if_branch_compilation_context.symbol_table.symbols_by_name:
-            if_branch_symbol = None
-            if_branch_definition_ast_node = None
-            if_branch_is_only_partially_defined = None
-        else:
-            if_branch_symbol, if_branch_definition_ast_node, if_branch_is_only_partially_defined = if_branch_compilation_context.symbol_table.symbols_by_name[symbol_name]
-
-        if else_branch_return_info.always_returns or symbol_name not in else_branch_compilation_context.symbol_table.symbols_by_name:
-            else_branch_symbol = None
-            else_branch_definition_ast_node = None
-            else_branch_is_only_partially_defined = None
-        else:
-            else_branch_symbol, else_branch_definition_ast_node, else_branch_is_only_partially_defined = else_branch_compilation_context.symbol_table.symbols_by_name[symbol_name]
-
-        if if_branch_symbol and else_branch_symbol:
-            if if_branch_symbol.type != else_branch_symbol.type:
-                raise CompilationError(compilation_context, else_branch_definition_ast_node,
-                                       'The variable %s is defined with type %s here, but it was previously defined with type %s in another branch.' % (
-                                           symbol_name, str(else_branch_symbol.type), str(if_branch_symbol.type)),
-                                       notes=[(if_branch_definition_ast_node, 'A previous definition with type %s was here.' % str(if_branch_symbol.type))])
-            symbol = if_branch_symbol
-            definition_ast_node = if_branch_definition_ast_node
-            is_only_partially_defined = if_branch_is_only_partially_defined or else_branch_is_only_partially_defined
-        elif if_branch_symbol:
-            symbol = if_branch_symbol
-            definition_ast_node = if_branch_definition_ast_node
-            if else_branch_return_info.always_returns:
-                is_only_partially_defined = if_branch_is_only_partially_defined
-            else:
-                is_only_partially_defined = True
-        else:
-            assert else_branch_symbol
-            symbol = else_branch_symbol
-            definition_ast_node = else_branch_definition_ast_node
-            if if_branch_return_info.always_returns:
-                is_only_partially_defined = else_branch_is_only_partially_defined
-            else:
-                is_only_partially_defined = True
-
-        compilation_context.add_symbol(name=symbol.name,
-                                       type=symbol.type,
-                                       definition_ast_node=definition_ast_node,
-                                       is_only_partially_defined=is_only_partially_defined)
+    _join_definitions_in_branches(compilation_context,
+                                  if_branch_compilation_context,
+                                  if_stmts,
+                                  else_branch_compilation_context,
+                                  else_stmts)
 
     return highir.IfStmt(cond_expr=cond_expr, if_stmts=if_stmts, else_stmts=else_stmts), previous_return_stmt
+
+def _join_definitions_in_branches(parent_context: CompilationContext,
+                                  branch1_context: CompilationContext,
+                                  branch1_stmts: List[highir.Stmt],
+                                  branch2_context: CompilationContext,
+                                  branch2_stmts: List[highir.Stmt]):
+    branch1_return_info = branch1_stmts[-1].get_return_type()
+    if branch2_stmts:
+        branch2_return_info = branch2_stmts[-1].get_return_type()
+    else:
+        branch2_return_info = highir.ReturnTypeInfo(type=None, always_returns=False)
+
+    symbol_names = set()
+    if not branch1_return_info.always_returns:
+        symbol_names = symbol_names.union(branch1_context.symbol_table.symbols_by_name.keys())
+    if not branch2_return_info.always_returns:
+        symbol_names = symbol_names.union(branch2_context.symbol_table.symbols_by_name.keys())
+
+    for symbol_name in symbol_names:
+        if branch1_return_info.always_returns or symbol_name not in branch1_context.symbol_table.symbols_by_name:
+            branch1_symbol = None
+            branch1_definition_ast_node = None
+            branch1_symbol_is_only_partially_defined = None
+        else:
+            branch1_symbol, branch1_definition_ast_node, branch1_symbol_is_only_partially_defined = branch1_context.symbol_table.symbols_by_name[symbol_name]
+
+        if branch2_return_info.always_returns or symbol_name not in branch2_context.symbol_table.symbols_by_name:
+            branch2_symbol = None
+            branch2_definition_ast_node = None
+            branch2_symbol_is_only_partially_defined = None
+        else:
+            branch2_symbol, branch2_definition_ast_node, branch2_symbol_is_only_partially_defined = branch2_context.symbol_table.symbols_by_name[symbol_name]
+
+        if branch1_symbol and branch2_symbol:
+            if branch1_symbol.type != branch2_symbol.type:
+                raise CompilationError(parent_context, branch2_definition_ast_node,
+                                       'The variable %s is defined with type %s here, but it was previously defined with type %s in another branch.' % (
+                                           symbol_name, str(branch2_symbol.type), str(branch1_symbol.type)),
+                                       notes=[(branch1_definition_ast_node, 'A previous definition with type %s was here.' % str(branch1_symbol.type))])
+            symbol = branch1_symbol
+            definition_ast_node = branch1_definition_ast_node
+            is_only_partially_defined = branch1_symbol_is_only_partially_defined or branch2_symbol_is_only_partially_defined
+        elif branch1_symbol:
+            symbol = branch1_symbol
+            definition_ast_node = branch1_definition_ast_node
+            if branch2_return_info.always_returns:
+                is_only_partially_defined = branch1_symbol_is_only_partially_defined
+            else:
+                is_only_partially_defined = True
+        else:
+            assert branch2_symbol
+            symbol = branch2_symbol
+            definition_ast_node = branch2_definition_ast_node
+            if branch1_return_info.always_returns:
+                is_only_partially_defined = branch2_symbol_is_only_partially_defined
+            else:
+                is_only_partially_defined = True
+
+        parent_context.add_symbol(name=symbol.name,
+                                  type=symbol.type,
+                                  definition_ast_node=definition_ast_node,
+                                  is_only_partially_defined=is_only_partially_defined,
+                                  is_function_that_may_throw=isinstance(symbol.type, highir.FunctionType))
+
+def raise_stmt_ast_to_ir(ast_node: ast.Raise, compilation_context: CompilationContext):
+    if ast_node.cause:
+        raise CompilationError(compilation_context, ast_node.cause,
+                               '"raise ... from ..." is not supported. Use a plain "raise ..." instead.')
+    exception_expr = expression_ast_to_ir(ast_node.exc, compilation_context)
+    if not (isinstance(exception_expr.type, highir.CustomType) and exception_expr.type.is_exception_class):
+        if isinstance(exception_expr.type, highir.CustomType):
+            custom_type_defn = compilation_context.custom_types_symbol_table.get_symbol_definition(exception_expr.type.name).ast_node
+            notes = [(custom_type_defn, 'The type %s was defined here.' % exception_expr.type.name)]
+        else:
+            notes = []
+        raise CompilationError(compilation_context, ast_node.exc,
+                               'Can\'t raise an exception of type "%s", because it\'s not a subclass of Exception.' % str(exception_expr.type),
+                               notes=notes)
+    return highir.RaiseStmt(expr=exception_expr)
 
 def statements_ast_to_ir(ast_nodes: List[ast.AST],
                          compilation_context: CompilationContext,
                          previous_return_stmt: Optional[Tuple[highir.ExprType, ast.Return]],
-                         check_always_returns: bool):
+                         check_block_always_returns: bool):
     assert ast_nodes
 
     statements = []
@@ -380,6 +426,8 @@ def statements_ast_to_ir(ast_nodes: List[ast.AST],
         if statements and statements[-1].get_return_type().always_returns:
             raise CompilationError(compilation_context, statement_node, 'Unreachable statement.')
 
+        check_stmt_always_returns = check_block_always_returns and statement_node is ast_nodes[-1]
+
         if isinstance(statement_node, ast.Assert):
             statements.append(assert_ast_to_ir(statement_node, compilation_context))
         elif isinstance(statement_node, ast.Assign) or isinstance(statement_node, ast.AnnAssign) or isinstance(statement_node, ast.AugAssign):
@@ -387,7 +435,8 @@ def statements_ast_to_ir(ast_nodes: List[ast.AST],
             compilation_context.add_symbol(name=assignment_ir.lhs.name,
                                            type=assignment_ir.lhs.type,
                                            definition_ast_node=statement_node,
-                                           is_only_partially_defined=False)
+                                           is_only_partially_defined=False,
+                                           is_function_that_may_throw=isinstance(assignment_ir.lhs.type, highir.FunctionType))
             statements.append(assignment_ir)
         elif isinstance(statement_node, ast.Return):
             return_stmt = return_stmt_ast_to_ir(statement_node, compilation_context)
@@ -403,14 +452,19 @@ def statements_ast_to_ir(ast_nodes: List[ast.AST],
                 first_return_stmt = (return_stmt.expr.type, statement_node)
             statements.append(return_stmt)
         elif isinstance(statement_node, ast.If):
-            if_stmt, first_return_stmt_in_if = if_stmt_ast_to_ir(statement_node, compilation_context, previous_return_stmt, check_always_returns and statement_node is ast_nodes[-1])
+            if_stmt, first_return_stmt_in_if = if_stmt_ast_to_ir(statement_node,
+                                                                 compilation_context,
+                                                                 previous_return_stmt,
+                                                                 check_stmt_always_returns)
             if not first_return_stmt:
                 first_return_stmt = first_return_stmt_in_if
             statements.append(if_stmt)
+        elif isinstance(statement_node, ast.Raise):
+            statements.append(raise_stmt_ast_to_ir(statement_node, compilation_context))
         else:
             raise CompilationError(compilation_context, statement_node, 'Unsupported statement.')
 
-    if check_always_returns and not first_return_stmt:
+    if check_block_always_returns and not statements[-1].get_return_type().always_returns:
         raise CompilationError(compilation_context, ast_nodes[-1],
                                'Missing return statement.')
 
@@ -429,7 +483,8 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
         function_body_compilation_context.add_symbol(name=arg.arg,
                                                      type=arg_type,
                                                      definition_ast_node=arg,
-                                                     is_only_partially_defined=False)
+                                                     is_only_partially_defined=False,
+                                                     is_function_that_may_throw=isinstance(arg_type, highir.FunctionType))
         args.append(highir.FunctionArgDecl(type=arg_type, name=arg.arg))
     if not args:
         raise CompilationError(compilation_context, ast_node, 'Functions with no arguments are not supported.')
@@ -447,17 +502,26 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
 
     statements, first_return_stmt = statements_ast_to_ir(ast_node.body, function_body_compilation_context,
                                                          previous_return_stmt=None,
-                                                         check_always_returns=True)
+                                                         check_block_always_returns=True)
 
-    return_type, first_return_stmt_ast_node = first_return_stmt
+    if first_return_stmt:
+        return_type, first_return_stmt_ast_node = first_return_stmt
 
     if ast_node.returns:
         declared_return_type = type_declaration_ast_to_ir_expression_type(ast_node.returns, compilation_context)
-        if declared_return_type != return_type:
-            raise CompilationError(compilation_context, ast_node.returns,
-                                   '%s declared %s as return type, but the actual return type was %s.' % (
-                                       ast_node.name, str(declared_return_type), str(return_type)),
-                                   notes=[(first_return_stmt_ast_node, 'A %s was returned here' % str(return_type))])
+
+        # first_return_stmt can be None if the function raises an exception instead of returning in all branches.
+        if first_return_stmt:
+            if declared_return_type != return_type:
+                raise CompilationError(compilation_context, ast_node.returns,
+                                       '%s declared %s as return type, but the actual return type was %s.' % (
+                                           ast_node.name, str(declared_return_type), str(return_type)),
+                                       notes=[(first_return_stmt_ast_node, 'A %s was returned here' % str(return_type))])
+
+        return_type = declared_return_type
+
+    if not first_return_stmt and not ast_node.returns:
+        return_type = highir.BottomType()
 
     return highir.FunctionDefn(name=ast_node.name,
                                args=args,
@@ -503,7 +567,10 @@ def assignment_ast_to_ir(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssig
 
     expr = expression_ast_to_ir(ast_node.value, compilation_context)
 
-    return highir.Assignment(lhs=highir.VarReference(type=expr.type, name=target.id, is_global_function=False),
+    return highir.Assignment(lhs=highir.VarReference(type=expr.type,
+                                                     name=target.id,
+                                                     is_global_function=False,
+                                                     is_function_that_may_throw=isinstance(expr.type, highir.FunctionType)),
                              rhs=expr)
 
 def int_comparison_ast_to_ir(lhs_ast_node: ast.AST,
@@ -903,7 +970,10 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
                                            arg_index, str(arg_type), str(expr.type)),
                                        notes=notes)
 
-    return highir.FunctionCall(fun_expr=fun_expr, args=args)
+    return highir.FunctionCall(fun_expr=fun_expr,
+                               args=args,
+                               may_throw=not isinstance(fun_expr, highir.VarReference)
+                                         or fun_expr.is_function_that_may_throw)
 
 def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: CompilationContext):
     assert isinstance(ast_node.ctx, ast.Load)
@@ -916,7 +986,9 @@ def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: Compilation
                                notes=[(lookup_result.ast_node, '%s might have been initialized here' % ast_node.id)])
     return highir.VarReference(type=lookup_result.symbol.type,
                                name=lookup_result.symbol.name,
-                               is_global_function=lookup_result.symbol_table.parent is None)
+                               is_global_function=lookup_result.symbol_table.parent is None,
+                               is_function_that_may_throw=isinstance(lookup_result.symbol.type, highir.FunctionType)
+                                                          and lookup_result.symbol.is_function_that_may_throw)
 
 def list_expression_ast_to_ir(ast_node: ast.List, compilation_context: CompilationContext):
     elem_exprs = [expression_ast_to_ir(elem_expr_node, compilation_context) for elem_expr_node in ast_node.elts]
@@ -971,10 +1043,31 @@ def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_co
 
     raise CompilationError(compilation_context, ast_node, 'Unsupported type declaration.')
 
+# Checks if the statement is of the form:
+# self.some_field = <expr>
+def _is_class_field_initialization(ast_node: ast.AST):
+    return (isinstance(ast_node, ast.Assign)
+            and not ast_node.type_comment
+            and len(ast_node.targets) == 1
+            and isinstance(ast_node.targets[0], ast.Attribute)
+            and isinstance(ast_node.targets[0].ctx, ast.Store)
+            and isinstance(ast_node.targets[0].value, ast.Name)
+            and ast_node.targets[0].value.id == 'self'
+            and isinstance(ast_node.targets[0].value.ctx, ast.Load))
+
 def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: CompilationContext):
     if ast_node.bases:
-        raise CompilationError(compilation_context, ast_node.bases[0],
-                               'Base classes are not supported.')
+        if len(ast_node.bases) > 1:
+            raise CompilationError(compilation_context, ast_node.bases[1],
+                                   'Multiple base classes are not supported.')
+        [base] = ast_node.bases
+        if not (isinstance(base, ast.Name) and isinstance(base.ctx, ast.Load) and base.id == 'Exception'):
+            raise CompilationError(compilation_context, base,
+                                   '"Exception" is the only supported base class.')
+        is_exception_class = True
+    else:
+        is_exception_class = False
+
     if ast_node.keywords:
         raise CompilationError(compilation_context, ast_node,
                                'Keyword class arguments are not supported.')
@@ -1020,7 +1113,7 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
 
     init_args_ast_nodes = init_args_ast_nodes[1:]
 
-    if not init_args_ast_nodes:
+    if not init_args_ast_nodes and not is_exception_class:
         raise CompilationError(compilation_context, init_defn_ast_node,
                                'Custom types must have at least 1 constructor argument (and field).')
 
@@ -1040,17 +1133,25 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
         arg_types.append(highir.CustomTypeArgDecl(name=arg.arg,
                                                   type = type_declaration_ast_to_ir_expression_type(arg.annotation, compilation_context)))
 
+    init_body_ast_nodes = init_defn_ast_node.body
+    if is_exception_class:
+        if not init_body_ast_nodes:
+            raise CompilationError(compilation_context, init_defn_ast_node,
+                                   'The constructor of custom exception classes must start with: self.message = \'...\'')
+        first_stmt = init_body_ast_nodes[0]
+        if not (_is_class_field_initialization(first_stmt)
+                and isinstance(first_stmt.value, ast.Str)
+                and first_stmt.targets[0].attr == 'message'):
+            raise CompilationError(compilation_context, first_stmt,
+                                   'Unsupported statement. The first statement in the constructor of an exception class must be of the form: self.message = \'...\'.')
+        exception_message = first_stmt.value.s
+        init_body_ast_nodes = init_body_ast_nodes[1:]
+
     arg_assign_nodes_by_name = dict()
-    for stmt_ast_node in init_defn_ast_node.body:
-        if not (isinstance(stmt_ast_node, ast.Assign)
-                and not stmt_ast_node.type_comment
+    for stmt_ast_node in init_body_ast_nodes:
+        if not (_is_class_field_initialization(stmt_ast_node)
                 and isinstance(stmt_ast_node.value, ast.Name)
-                and isinstance(stmt_ast_node.value.ctx, ast.Load)
-                and len(stmt_ast_node.targets) == 1
-                and isinstance(stmt_ast_node.targets[0], ast.Attribute)
-                and isinstance(stmt_ast_node.targets[0].ctx, ast.Store)
-                and isinstance(stmt_ast_node.targets[0].value, ast.Name)
-                and isinstance(stmt_ast_node.targets[0].value.ctx, ast.Load)):
+                and isinstance(stmt_ast_node.value.ctx, ast.Load)):
             raise CompilationError(compilation_context, stmt_ast_node,
                                    'Unsupported statement. All statements in __init__ methods must be of the form "self.some_var = some_var".')
 
@@ -1076,4 +1177,6 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
                                    'All __init__ arguments must be assigned to fields, but "%s" was never assigned.' % arg_name)
 
     return highir.CustomType(name=ast_node.name,
-                             arg_types=arg_types)
+                             arg_types=arg_types,
+                             is_exception_class=is_exception_class,
+                             exception_message=exception_message if is_exception_class else None)
