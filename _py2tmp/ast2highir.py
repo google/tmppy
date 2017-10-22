@@ -444,7 +444,7 @@ def try_stmt_ast_to_ir(ast_node: ast.Try,
                                '"try" blocks must have an "except" clause.')
     # TODO: consider supporting this case too.
     if len(ast_node.handlers) > 1:
-        raise CompilationError(compilation_context, ast_node,
+        raise CompilationError(compilation_context, ast_node.handlers[1],
                                '"try" blocks with multiple "except" clauses are not currently supported.')
     [handler] = ast_node.handlers
     if not (isinstance(handler, ast.ExceptHandler)
@@ -465,7 +465,7 @@ def try_stmt_ast_to_ir(ast_node: ast.Try,
         raise CompilationError(compilation_context, ast_node.orelse[0], '"else" clauses are not supported in try-except.')
 
     if ast_node.finalbody:
-        raise CompilationError(compilation_context, ast_node.finalbody[0], '"final" clauses are not supported.')
+        raise CompilationError(compilation_context, ast_node.finalbody[0], '"finally" clauses are not supported.')
 
     except_body_compilation_context = compilation_context.create_child_context()
     except_body_compilation_context.add_symbol(name=handler.name,
@@ -531,6 +531,8 @@ def statements_ast_to_ir(ast_nodes: List[ast.AST],
                                                str(previous_return_stmt_type),))])
             if not first_return_stmt:
                 first_return_stmt = (return_stmt.expr.type, statement_node)
+            if not previous_return_stmt:
+                previous_return_stmt = first_return_stmt
             statements.append(return_stmt)
         elif isinstance(statement_node, ast.If):
             if_stmt, first_return_stmt_in_if = if_stmt_ast_to_ir(statement_node,
@@ -539,6 +541,8 @@ def statements_ast_to_ir(ast_nodes: List[ast.AST],
                                                                  check_stmt_always_returns)
             if not first_return_stmt:
                 first_return_stmt = first_return_stmt_in_if
+            if not previous_return_stmt:
+                previous_return_stmt = first_return_stmt
             statements.append(if_stmt)
         elif isinstance(statement_node, ast.Raise):
             statements.append(raise_stmt_ast_to_ir(statement_node, compilation_context))
@@ -549,7 +553,9 @@ def statements_ast_to_ir(ast_nodes: List[ast.AST],
                                                                                   check_always_returns=check_stmt_always_returns,
                                                                                   is_toplevel_in_function=stmts_are_toplevel_in_function)
             if not first_return_stmt:
-                first_return_stmt =  first_return_stmt_in_try_except
+                first_return_stmt = first_return_stmt_in_try_except
+            if not previous_return_stmt:
+                previous_return_stmt = first_return_stmt
             statements.append(try_except_stmt)
         else:
             raise CompilationError(compilation_context, statement_node, 'Unsupported statement.')
@@ -1204,7 +1210,7 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
 
     init_args_ast_nodes = init_args_ast_nodes[1:]
 
-    if not init_args_ast_nodes and not is_exception_class:
+    if not init_args_ast_nodes:
         raise CompilationError(compilation_context, init_defn_ast_node,
                                'Custom types must have at least 1 constructor argument (and field).')
 
@@ -1226,15 +1232,12 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
 
     init_body_ast_nodes = init_defn_ast_node.body
     if is_exception_class:
-        if not init_body_ast_nodes:
-            raise CompilationError(compilation_context, init_defn_ast_node,
-                                   'The constructor of custom exception classes must start with: self.message = \'...\'')
         first_stmt = init_body_ast_nodes[0]
         if not (_is_class_field_initialization(first_stmt)
                 and isinstance(first_stmt.value, ast.Str)
                 and first_stmt.targets[0].attr == 'message'):
             raise CompilationError(compilation_context, first_stmt,
-                                   'Unsupported statement. The first statement in the constructor of an exception class must be of the form: self.message = \'...\'.')
+                                   'Unexpected statement. The first statement in the constructor of an exception class must be of the form: self.message = \'...\'.')
         exception_message = first_stmt.value.s
         init_body_ast_nodes = init_body_ast_nodes[1:]
 
@@ -1244,7 +1247,7 @@ def class_definition_ast_to_ir(ast_node: ast.ClassDef, compilation_context: Comp
                 and isinstance(stmt_ast_node.value, ast.Name)
                 and isinstance(stmt_ast_node.value.ctx, ast.Load)):
             raise CompilationError(compilation_context, stmt_ast_node,
-                                   'Unsupported statement. All statements in __init__ methods must be of the form "self.some_var = some_var".')
+                                   'Unexpected statement. All statements in __init__ methods must be of the form "self.some_var = some_var".')
 
         if stmt_ast_node.value.id in arg_assign_nodes_by_name:
             previous_assign_node = arg_assign_nodes_by_name[stmt_ast_node.value.id]

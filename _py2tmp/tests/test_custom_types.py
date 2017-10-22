@@ -390,7 +390,7 @@ def test_custom_type_unexpected_statement():
     class MyType:
         def __init__(self, x: bool):
             self.x = x
-            y = 1  # error: Unsupported statement. All statements in __init__ methods must be of the form "self.some_var = some_var".
+            y = 1  # error: Unexpected statement. All statements in __init__ methods must be of the form "self.some_var = some_var".
 
 @assert_conversion_fails
 def test_custom_type_multiple_assignments_for_field_error():

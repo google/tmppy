@@ -432,7 +432,8 @@ def try_except_stmt_to_ir(try_except_stmt: highir.TryExcept,
 
     except_stmts_writer = StmtWriter(writer.fun_writer, writer.current_fun_return_type)
     stmts_to_ir(try_except_stmt.except_body, except_stmts_writer)
-    if then_fun_call_expr:
+    if then_fun_call_expr and not (try_except_stmt.except_body
+                                   and try_except_stmt.except_body[-1].get_return_type().always_returns):
         except_stmts_writer.write_stmt(ir.ReturnStmt(result=except_stmts_writer.new_var_for_expr_with_error_checking(then_fun_call_expr),
                                                      error=None))
 
@@ -457,7 +458,8 @@ def try_except_stmt_to_ir(try_except_stmt: highir.TryExcept,
                                                           except_fun_call_expr)):
         stmts_to_ir(try_except_stmt.try_body, writer)
 
-    if then_fun_call_expr:
+    if then_fun_call_expr and not (try_except_stmt.try_body
+                                   and try_except_stmt.try_body[-1].get_return_type().always_returns):
         writer.write_stmt(ir.ReturnStmt(result=writer.new_var_for_expr_with_error_checking(then_fun_call_expr),
                                         error=None))
 
