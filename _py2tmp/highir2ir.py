@@ -212,6 +212,8 @@ def expr_to_ir(expr: highir.Expr, writer: StmtWriter) -> ir.VarReference:
         return int_comparison_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.IntBinaryOpExpr):
         return int_binary_op_expr_to_ir(expr, writer)
+    elif isinstance(expr, highir.ListConcatExpr):
+        return list_concat_expr_to_ir(expr, writer)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -353,6 +355,10 @@ def int_binary_op_expr_to_ir(expr: highir.IntBinaryOpExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir.IntBinaryOpExpr(lhs=expr_to_ir(expr.lhs, writer),
                                                       rhs=expr_to_ir(expr.rhs, writer),
                                                       op=expr.op))
+
+def list_concat_expr_to_ir(expr: highir.ListConcatExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir.ListConcatExpr(lhs=expr_to_ir(expr.lhs, writer),
+                                                     rhs=expr_to_ir(expr.rhs, writer)))
 
 def assert_to_ir(assert_stmt: highir.Assert, writer: StmtWriter):
     writer.write_stmt(ir.Assert(var=expr_to_ir(assert_stmt.expr, writer),

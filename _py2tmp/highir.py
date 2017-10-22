@@ -315,6 +315,19 @@ class IntBinaryOpExpr(Expr):
             for var in expr.get_free_variables():
                 yield var
 
+class ListConcatExpr(Expr):
+    def __init__(self, lhs: Expr, rhs: Expr):
+        assert isinstance(lhs.type, ListType)
+        assert lhs.type == rhs.type
+        super().__init__(type=lhs.type)
+        self.lhs = lhs
+        self.rhs = rhs
+
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
         # When expr_type is None, the statement never returns.

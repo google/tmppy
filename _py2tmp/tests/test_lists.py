@@ -74,3 +74,92 @@ def test_list_of_bools_ok():
 @assert_compilation_succeeds
 def test_list_of_ints_ok():
     assert [1, 2, 5] == [1, 2, 5]
+
+@assert_compilation_succeeds
+def test_int_list_concat_ok():
+    assert [1] + [2, 3] == [1, 2, 3]
+
+@assert_compilation_succeeds
+def test_int_list_concat_lhs_empty_ok():
+    from tmppy import empty_list
+    assert empty_list(int) + [2, 3] == [2, 3]
+
+@assert_compilation_succeeds
+def test_int_list_concat_rhs_empty_ok():
+    from tmppy import empty_list
+    assert [2, 3] + empty_list(int) == [2, 3]
+
+@assert_compilation_succeeds
+def test_int_list_concat_both_empty_ok():
+    from tmppy import empty_list
+    assert empty_list(int) + empty_list(int) == empty_list(int)
+
+@assert_compilation_succeeds
+def test_bool_list_concat_ok():
+    assert [True] + [False, True] == [True, False, True]
+
+@assert_compilation_succeeds
+def test_bool_list_concat_lhs_empty_ok():
+    from tmppy import empty_list
+    assert empty_list(bool) + [False, True] == [False, True]
+
+@assert_compilation_succeeds
+def test_bool_list_concat_rhs_empty_ok():
+    from tmppy import empty_list
+    assert [False, True] + empty_list(bool) == [False, True]
+
+@assert_compilation_succeeds
+def test_bool_list_concat_both_empty_ok():
+    from tmppy import empty_list
+    assert empty_list(bool) + empty_list(bool) == empty_list(bool)
+
+@assert_compilation_succeeds
+def test_type_list_concat_ok():
+    from tmppy import Type
+    assert [Type('int')] + [Type('float'), Type('double')] == [Type('int'), Type('float'), Type('double')]
+
+@assert_compilation_succeeds
+def test_type_list_concat_lhs_empty_ok():
+    from tmppy import Type, empty_list
+    assert empty_list(Type) + [Type('float'), Type('double')] == [Type('float'), Type('double')]
+
+@assert_compilation_succeeds
+def test_type_list_concat_rhs_empty_ok():
+    from tmppy import Type, empty_list
+    assert [Type('float'), Type('double')] + empty_list(Type) == [Type('float'), Type('double')]
+
+@assert_compilation_succeeds
+def test_type_list_concat_both_empty_ok():
+    from tmppy import Type, empty_list
+    assert empty_list(Type) + empty_list(Type) == empty_list(Type)
+
+@assert_compilation_succeeds
+def test_custom_type_list_concat_ok():
+    class Int:
+        def __init__(self, n: int):
+            self.n = n
+    assert [Int(1)] + [Int(2), Int(3)] == [Int(1), Int(2), Int(3)]
+
+@assert_compilation_succeeds
+def test_custom_type_list_concat_lhs_empty_ok():
+    from tmppy import empty_list
+    class Int:
+        def __init__(self, n: int):
+            self.n = n
+    assert empty_list(Int) + [Int(2), Int(3)] == [Int(2), Int(3)]
+
+@assert_compilation_succeeds
+def test_custom_type_list_concat_rhs_empty_ok():
+    from tmppy import empty_list
+    class Int:
+        def __init__(self, n: int):
+            self.n = n
+    assert [Int(2), Int(3)] + empty_list(Int) == [Int(2), Int(3)]
+
+@assert_compilation_succeeds
+def test_custom_type_list_concat_both_empty_ok():
+    from tmppy import empty_list
+    class Int:
+        def __init__(self, n: int):
+            self.n = n
+    assert empty_list(Int) + empty_list(Int) == empty_list(Int)

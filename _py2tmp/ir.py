@@ -434,6 +434,25 @@ class IntBinaryOpExpr(Expr):
     def describe_other_fields(self):
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
+class ListConcatExpr(Expr):
+    def __init__(self, lhs: VarReference, rhs: VarReference):
+        assert isinstance(lhs.type, ListType)
+        assert lhs.type == rhs.type
+        super().__init__(type=lhs.type)
+        self.lhs = lhs
+        self.rhs = rhs
+
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
+    def __str__(self):
+        return '%s + %s' % (self.lhs.name, self.rhs.name)
+
+    def describe_other_fields(self):
+        return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
+
 class IsInstanceExpr(Expr):
     def __init__(self, var: VarReference, checked_type: CustomType):
         super().__init__(type=BoolType())

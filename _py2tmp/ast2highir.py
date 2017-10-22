@@ -832,6 +832,27 @@ def int_binary_op_expression_ast_to_ir(ast_node: ast.BinOp, op: str, compilation
 
     return highir.IntBinaryOpExpr(lhs=lhs, rhs=rhs, op=op)
 
+def add_expression_ast_to_ir(ast_node: ast.Add, compilation_context: CompilationContext):
+    lhs = expression_ast_to_ir(ast_node.left, compilation_context)
+    rhs = expression_ast_to_ir(ast_node.right, compilation_context)
+
+    if not isinstance(lhs.type, (highir.IntType, highir.ListType)):
+        raise CompilationError(compilation_context, ast_node.left,
+                               'The "+" operator is only supported for ints and lists, but this value has type %s.' % str(lhs.type))
+
+    if not isinstance(rhs.type, (highir.IntType, highir.ListType)):
+        raise CompilationError(compilation_context, ast_node.right,
+                               'The "+" operator is only supported for ints and lists, but this value has type %s.' % str(rhs.type))
+
+    if lhs.type != rhs.type:
+        raise CompilationError(compilation_context, ast_node.left,
+                               'Type mismatch: the LHS of "+" has type %s but the RHS has type %s.' % (str(lhs.type), str(rhs.type)))
+
+    if lhs.type == highir.IntType():
+        return highir.IntBinaryOpExpr(lhs=lhs, rhs=rhs, op='+')
+    else:
+        return highir.ListConcatExpr(lhs=lhs, rhs=rhs)
+
 def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.NameConstant):
         return name_constant_ast_to_ir(ast_node, compilation_context)
@@ -864,7 +885,7 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
     elif isinstance(ast_node, ast.UnaryOp) and isinstance(ast_node.op, ast.USub):
         return unary_minus_expression_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Add):
-        return int_binary_op_expression_ast_to_ir(ast_node, '+', compilation_context)
+        return add_expression_ast_to_ir(ast_node, compilation_context)
     elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Sub):
         return int_binary_op_expression_ast_to_ir(ast_node, '-', compilation_context)
     elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Mult):

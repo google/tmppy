@@ -167,6 +167,8 @@ def expr_to_low_ir(expr: ir.Expr, writer: Writer) -> Tuple[Optional[lowir.Expr],
         return int_comparison_expr_to_low_ir(expr)
     elif isinstance(expr, ir.IntBinaryOpExpr):
         return int_binary_op_expr_to_low_ir(expr)
+    elif isinstance(expr, ir.ListConcatExpr):
+        return list_concat_expr_to_low_ir(expr, writer)
     elif isinstance(expr, ir.IsInstanceExpr):
         return is_instance_expr_to_low_ir(expr, writer)
     elif isinstance(expr, ir.SafeUncheckedCast):
@@ -421,6 +423,24 @@ def int_binary_op_expr_to_low_ir(expr: ir.IntBinaryOpExpr):
         '%': '%',
     }[expr.op]
     return lowir.Int64BinaryOpExpr(lhs=lhs, rhs=rhs, op=cpp_op), None
+
+def list_concat_expr_to_low_ir(expr: ir.ListConcatExpr, writer: Writer):
+    lhs = var_reference_to_low_ir(expr.lhs)
+    rhs = var_reference_to_low_ir(expr.rhs)
+    assert isinstance(expr.type, ir.ListType)
+    elem_kind = type_to_low_ir(expr.type.elem_type).kind
+    type = type_to_low_ir(expr.type)
+    list_concat_cpp_type = {
+        lowir.ExprKind.BOOL: 'BoolListConcat',
+        lowir.ExprKind.INT64: 'Int64ListConcat',
+        lowir.ExprKind.TYPE: 'TypeListConcat',
+    }[elem_kind]
+    return _create_metafunction_call(template_expr=lowir.TypeLiteral.for_nonlocal_template(cpp_type=list_concat_cpp_type,
+                                                                                           is_metafunction_that_may_return_error=False),
+                                     args=[lhs, rhs],
+                                     arg_types=[type, type],
+                                     member_kind=type.kind,
+                                     writer=writer)
 
 def is_instance_expr_to_low_ir(expr: ir.IsInstanceExpr, writer: Writer):
     is_instance_of_type_template = lowir.TypeLiteral.for_nonlocal_template(cpp_type=writer.get_is_instance_template_name_for_error(expr.checked_type.name),

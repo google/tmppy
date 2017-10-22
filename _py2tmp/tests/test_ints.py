@@ -67,12 +67,12 @@ def test_int_plus_success():
 @assert_conversion_fails
 def test_int_plus_bool_error():
     assert (2 +
-            True  # error: The "\+" operator is only supported for ints, but this value has type bool.
+            True  # error: The "\+" operator is only supported for ints and lists, but this value has type bool.
             == 5)
 
 @assert_conversion_fails
 def test_bool_plus_int_error():
-    assert (True  # error: The "\+" operator is only supported for ints, but this value has type bool.
+    assert (True  # error: The "\+" operator is only supported for ints and lists, but this value has type bool.
             + 2 == 5)
 
 @assert_compilation_succeeds
