@@ -309,7 +309,10 @@ def if_stmt_ast_to_ir(ast_node: ast.If,
                                'The condition in an if statement must have type bool, but was: %s' % str(cond_expr.type))
 
     if_branch_compilation_context = compilation_context.create_child_context()
-    if_stmts, first_return_stmt = statements_ast_to_ir(ast_node.body, if_branch_compilation_context, previous_return_stmt, check_always_returns)
+    if_stmts, first_return_stmt = statements_ast_to_ir(ast_node.body, if_branch_compilation_context,
+                                                       previous_return_stmt=previous_return_stmt,
+                                                       check_block_always_returns=check_always_returns,
+                                                       stmts_are_toplevel_in_function=False)
 
     if not previous_return_stmt and first_return_stmt:
         previous_return_stmt = first_return_stmt
@@ -317,7 +320,10 @@ def if_stmt_ast_to_ir(ast_node: ast.If,
     else_branch_compilation_context = compilation_context.create_child_context()
 
     if ast_node.orelse:
-        else_stmts, first_return_stmt = statements_ast_to_ir(ast_node.orelse, else_branch_compilation_context, previous_return_stmt, check_always_returns)
+        else_stmts, first_return_stmt = statements_ast_to_ir(ast_node.orelse, else_branch_compilation_context,
+                                                             previous_return_stmt=previous_return_stmt,
+                                                             check_block_always_returns=check_always_returns,
+                                                             stmts_are_toplevel_in_function=False)
 
         if not previous_return_stmt and first_return_stmt:
             previous_return_stmt = first_return_stmt
@@ -414,10 +420,85 @@ def raise_stmt_ast_to_ir(ast_node: ast.Raise, compilation_context: CompilationCo
                                notes=notes)
     return highir.RaiseStmt(expr=exception_expr)
 
+def try_stmt_ast_to_ir(ast_node: ast.Try,
+                       compilation_context: CompilationContext,
+                       previous_return_stmt: Optional[Tuple[highir.ExprType, ast.Return]],
+                       check_always_returns: bool,
+                       is_toplevel_in_function: bool):
+
+    if not is_toplevel_in_function:
+        raise CompilationError(compilation_context, ast_node,
+                               'try-except blocks are only supported at top-level in functions (not e.g. inside if-else statements).')
+
+    body_compilation_context = compilation_context.create_child_context()
+    body_stmts, body_first_return_stmt = statements_ast_to_ir(ast_node.body,
+                                                              body_compilation_context,
+                                                              check_block_always_returns=check_always_returns,
+                                                              previous_return_stmt=previous_return_stmt,
+                                                              stmts_are_toplevel_in_function=False)
+    if not previous_return_stmt:
+        previous_return_stmt = body_first_return_stmt
+
+    if not ast_node.handlers:
+        raise CompilationError(compilation_context, ast_node,
+                               '"try" blocks must have an "except" clause.')
+    # TODO: consider supporting this case too.
+    if len(ast_node.handlers) > 1:
+        raise CompilationError(compilation_context, ast_node,
+                               '"try" blocks with multiple "except" clauses are not currently supported.')
+    [handler] = ast_node.handlers
+    if not (isinstance(handler, ast.ExceptHandler)
+            and isinstance(handler.type, ast.Name)
+            and isinstance(handler.type.ctx, ast.Load)
+            and handler.name):
+        raise CompilationError(compilation_context, handler,
+                               '"except" clauses must be of the form: except SomeType as some_var')
+
+    # TODO: consider adding support for this.
+    if handler.type.id == 'Exception':
+        raise CompilationError(compilation_context, handler.type,
+                               'Catching all exceptions is not supported, you must catch a specific exception type.')
+
+    caught_exception_type = type_declaration_ast_to_ir_expression_type(handler.type, compilation_context)
+
+    if ast_node.orelse:
+        raise CompilationError(compilation_context, ast_node.orelse[0], '"else" clauses are not supported in try-except.')
+
+    if ast_node.finalbody:
+        raise CompilationError(compilation_context, ast_node.finalbody[0], '"final" clauses are not supported.')
+
+    except_body_compilation_context = compilation_context.create_child_context()
+    except_body_compilation_context.add_symbol(name=handler.name,
+                                               type=caught_exception_type,
+                                               definition_ast_node=handler,
+                                               is_only_partially_defined=False,
+                                               is_function_that_may_throw=False)
+    except_body_stmts, except_body_first_return_stmt = statements_ast_to_ir(handler.body,
+                                                                            except_body_compilation_context,
+                                                                            check_block_always_returns=check_always_returns,
+                                                                            previous_return_stmt=previous_return_stmt,
+                                                                            stmts_are_toplevel_in_function=False)
+    if not previous_return_stmt:
+        previous_return_stmt = except_body_first_return_stmt
+
+    _join_definitions_in_branches(compilation_context,
+                                  body_compilation_context,
+                                  body_stmts,
+                                  except_body_compilation_context,
+                                  except_body_stmts)
+
+    try_except_stmt = highir.TryExcept(try_body=body_stmts,
+                                       caught_exception_type=caught_exception_type,
+                                       caught_exception_name=handler.name,
+                                       except_body=except_body_stmts)
+
+    return try_except_stmt, previous_return_stmt
+
 def statements_ast_to_ir(ast_nodes: List[ast.AST],
                          compilation_context: CompilationContext,
                          previous_return_stmt: Optional[Tuple[highir.ExprType, ast.Return]],
-                         check_block_always_returns: bool):
+                         check_block_always_returns: bool,
+                         stmts_are_toplevel_in_function: bool):
     assert ast_nodes
 
     statements = []
@@ -461,6 +542,15 @@ def statements_ast_to_ir(ast_nodes: List[ast.AST],
             statements.append(if_stmt)
         elif isinstance(statement_node, ast.Raise):
             statements.append(raise_stmt_ast_to_ir(statement_node, compilation_context))
+        elif isinstance(statement_node, ast.Try):
+            try_except_stmt, first_return_stmt_in_try_except = try_stmt_ast_to_ir(statement_node,
+                                                                                  compilation_context,
+                                                                                  previous_return_stmt=previous_return_stmt,
+                                                                                  check_always_returns=check_stmt_always_returns,
+                                                                                  is_toplevel_in_function=stmts_are_toplevel_in_function)
+            if not first_return_stmt:
+                first_return_stmt =  first_return_stmt_in_try_except
+            statements.append(try_except_stmt)
         else:
             raise CompilationError(compilation_context, statement_node, 'Unsupported statement.')
 
@@ -502,7 +592,8 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
 
     statements, first_return_stmt = statements_ast_to_ir(ast_node.body, function_body_compilation_context,
                                                          previous_return_stmt=None,
-                                                         check_block_always_returns=True)
+                                                         check_block_always_returns=True,
+                                                         stmts_are_toplevel_in_function=True)
 
     if first_return_stmt:
         return_type, first_return_stmt_ast_node = first_return_stmt

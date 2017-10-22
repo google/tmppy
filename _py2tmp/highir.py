@@ -387,6 +387,20 @@ class RaiseStmt(Stmt):
     def get_return_type(self):
         return ReturnTypeInfo(type=None, always_returns=True)
 
+class TryExcept(Stmt):
+    def __init__(self,
+                 try_body: List[Stmt],
+                 caught_exception_type: ExprType,
+                 caught_exception_name: str,
+                 except_body: List[Stmt]):
+        self.try_body = try_body
+        self.caught_exception_type = caught_exception_type
+        self.caught_exception_name = caught_exception_name
+        self.except_body = except_body
+
+    def get_return_type(self):
+        return _combine_return_type_of_branches(self.try_body, self.except_body)
+
 class FunctionDefn:
     def __init__(self,
                  name: str,

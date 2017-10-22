@@ -22,11 +22,14 @@ class Writer:
 
     def write(self, elem: Union[lowir.TemplateDefn, lowir.StaticAssert, lowir.ConstantDef, lowir.Typedef]): ...  # pragma: no cover
 
+    def get_is_instance_template_name_for_error(self, error_name: str) -> str: ...  # pragma: no cover
+
 class ToplevelWriter(Writer):
     def __init__(self, identifier_generator: Iterator[str]):
         self.identifier_generator = identifier_generator
         self.elems = []  # type: List[Union[lowir.TemplateDefn, lowir.StaticAssert, lowir.ConstantDef, lowir.Typedef]]
-        self.holder_template_name_for_error = dict() # type: Dict[str, str]
+        self.holder_template_name_for_error = dict()  # type: Dict[str, str]
+        self.is_instance_template_name_for_error = dict()  # type: Dict[str, str]
 
     def new_id(self):
         return next(self.identifier_generator)
@@ -42,6 +45,14 @@ class ToplevelWriter(Writer):
     def get_holder_template_name_for_error(self, error_name: str):
         return self.holder_template_name_for_error[error_name]
 
+    def set_is_instance_template_name_for_error(self,
+                                                error_name: str,
+                                                is_instance_template_name: str):
+        self.is_instance_template_name_for_error[error_name] = is_instance_template_name
+
+    def get_is_instance_template_name_for_error(self, error_name: str):
+        return self.is_instance_template_name_for_error[error_name]
+
 class TemplateBodyWriter(Writer):
     def __init__(self,
                  writer: Writer,
@@ -51,6 +62,7 @@ class TemplateBodyWriter(Writer):
         self.elems = []  # type: List[Union[lowir.StaticAssert, lowir.ConstantDef, lowir.Typedef]]
         self.parent_arbitrary_arg = parent_arbitrary_arg
         self.parent_return_type = parent_return_type
+        self.result_body_elements_written = False
 
     def new_id(self):
         return self.writer.new_id()
@@ -68,6 +80,11 @@ class TemplateBodyWriter(Writer):
         assert result_expr or error_expr
         if error_expr:
             assert error_expr.kind == lowir.ExprKind.TYPE
+
+        if self.result_body_elements_written:
+            # If there are multiple "return statements" in a single specialization only the first one counts.
+            return
+        self.result_body_elements_written = True
 
         if self.parent_return_type.kind == lowir.ExprKind.BOOL:
             self.write(lowir.ConstantDef(name='value',
@@ -95,6 +112,9 @@ class TemplateBodyWriter(Writer):
                                   parent_arbitrary_arg=parent_arbitrary_arg,
                                   parent_return_type=parent_return_type)
 
+    def get_is_instance_template_name_for_error(self, error_name: str):
+        return self.writer.get_is_instance_template_name_for_error(error_name)
+
 def type_to_low_ir(type: ir.ExprType):
     if isinstance(type, ir.BoolType):
         return lowir.BoolType()
@@ -110,6 +130,8 @@ def type_to_low_ir(type: ir.ExprType):
         return lowir.TypeType()
     elif isinstance(type, ir.FunctionType):
         return function_type_to_low_ir(type)
+    elif isinstance(type, ir.BottomType):
+        return lowir.TypeType()
     else:
         raise NotImplementedError('Unexpected type: %s' % str(type.__class__))
 
@@ -145,6 +167,10 @@ def expr_to_low_ir(expr: ir.Expr, writer: Writer) -> Tuple[Optional[lowir.Expr],
         return int_comparison_expr_to_low_ir(expr)
     elif isinstance(expr, ir.IntBinaryOpExpr):
         return int_binary_op_expr_to_low_ir(expr)
+    elif isinstance(expr, ir.IsInstanceExpr):
+        return is_instance_expr_to_low_ir(expr, writer)
+    elif isinstance(expr, ir.SafeUncheckedCast):
+        return safe_unchecked_cast_expr_to_low_ir(expr), None
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -396,6 +422,22 @@ def int_binary_op_expr_to_low_ir(expr: ir.IntBinaryOpExpr):
     }[expr.op]
     return lowir.Int64BinaryOpExpr(lhs=lhs, rhs=rhs, op=cpp_op), None
 
+def is_instance_expr_to_low_ir(expr: ir.IsInstanceExpr, writer: Writer):
+    is_instance_of_type_template = lowir.TypeLiteral.for_nonlocal_template(cpp_type=writer.get_is_instance_template_name_for_error(expr.checked_type.name),
+                                                                           is_metafunction_that_may_return_error=False)
+    return _create_metafunction_call(template_expr=is_instance_of_type_template,
+                                     args=[var_reference_to_low_ir(expr.var)],
+                                     arg_types=[type_to_low_ir(expr.var.type)],
+                                     member_kind=lowir.ExprKind.BOOL,
+                                     writer=writer)
+
+def safe_unchecked_cast_expr_to_low_ir(expr: ir.SafeUncheckedCast):
+    assert type_to_low_ir(expr.var.type).kind == type_to_low_ir(expr.type).kind
+    return var_reference_to_low_ir(ir.VarReference(type=expr.type,
+                                                   name=expr.var.name,
+                                                   is_global_function=expr.var.is_global_function,
+                                                   is_function_that_may_throw=expr.var.is_function_that_may_throw))
+
 def assert_to_low_ir(assert_stmt: ir.Assert, writer: Writer):
     expr = var_reference_to_low_ir(assert_stmt.var)
     writer.write(lowir.StaticAssert(expr=expr, message=assert_stmt.message))
@@ -496,15 +538,38 @@ def custom_type_defn_to_low_ir(custom_type: ir.CustomType, writer: ToplevelWrite
 
     writer.set_holder_template_name_for_error(custom_type.name, holder_template_id)
 
+    is_instance_template = lowir.TemplateDefn(name=writer.new_id(),
+                                              args=[lowir.TemplateArgDecl(type=lowir.TypeType())],
+                                              main_definition=lowir.TemplateSpecialization(args=[lowir.TemplateArgDecl(type=lowir.TypeType())],
+                                                                                           patterns=None,
+                                                                                           body=[lowir.ConstantDef(name='value',
+                                                                                                                   expr=lowir.Literal(value=False, kind=lowir.ExprKind.BOOL),
+                                                                                                                   type=lowir.BoolType())]),
+                                              specializations=[lowir.TemplateSpecialization(args=[lowir.TemplateArgDecl(type=type_to_low_ir(arg.type), name=arg.name)
+                                                                                                  for arg in custom_type.arg_types],
+                                                                                            patterns=[lowir.TemplateArgPatternLiteral('%s<%s>' % (
+                                                                                                holder_template_id,
+                                                                                                ', '.join(arg.name
+                                                                                                          for arg in custom_type.arg_types)))],
+                                                                                            body=[lowir.ConstantDef(name='value',
+                                                                                                                    expr=lowir.Literal(value=True, kind=lowir.ExprKind.BOOL),
+                                                                                                                    type=lowir.BoolType())])])
+
+    writer.write(is_instance_template)
+    writer.set_is_instance_template_name_for_error(custom_type.name, is_instance_template.name)
+
 def return_stmt_to_low_ir(return_stmt: ir.ReturnStmt, writer: TemplateBodyWriter):
     if return_stmt.result:
-        var = var_reference_to_low_ir(return_stmt.result)
-        writer.write_result_body_elements(result_expr=var,
-                                          error_expr=None)
+        result_var = var_reference_to_low_ir(return_stmt.result)
     else:
-        var = var_reference_to_low_ir(return_stmt.error)
-        writer.write_result_body_elements(result_expr=None,
-                                          error_expr=var)
+        result_var = None
+    if return_stmt.error:
+        error_var = var_reference_to_low_ir(return_stmt.error)
+    else:
+        error_var = None
+
+    writer.write_result_body_elements(result_expr=result_var,
+                                      error_expr=error_var)
 
 def _get_free_vars_in_elements(elements: List[lowir.TemplateBodyElement]):
     free_var_names = set()
@@ -572,7 +637,7 @@ def if_stmt_to_low_ir(if_stmt: ir.IfStmt,
         then_function_call_expr = None
         then_function_call_error_expr = None
 
-    if write_continuation_fun_call is None:
+    if write_continuation_fun_call is None and (then_function_call_expr or then_function_call_error_expr):
         write_continuation_fun_call = lambda writer: writer.write_result_body_elements(result_expr=then_function_call_expr,
                                                                                        error_expr=then_function_call_error_expr)
 
@@ -646,10 +711,7 @@ def stmts_to_low_ir(stmts: List[ir.Stmt],
 
     if write_continuation_fun_call:
         assert isinstance(writer, TemplateBodyWriter)
-        if not (writer.elems
-                and isinstance(writer.elems[-1], (lowir.Typedef, lowir.ConstantDef))
-                and writer.elems[-1].name in ('type', 'value', 'error')):
-            write_continuation_fun_call(writer)
+        write_continuation_fun_call(writer)
 
 def _select_arbitrary_parent_arg(args: List[lowir.TemplateArgDecl]) -> lowir.TemplateArgDecl:
     assert args

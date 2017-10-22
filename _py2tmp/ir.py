@@ -128,7 +128,7 @@ class CustomType(ExprType):
     def __str__(self):
         return self.name
 
-    def write(self, writer: Writer):
+    def write(self, writer: Writer, verbose: bool):
         writer.writeln('class %s:' % self.name)
         with writer.indent():
             writer.writeln('def __init__(%s):' % ', '.join(str(arg)
@@ -434,6 +434,39 @@ class IntBinaryOpExpr(Expr):
     def describe_other_fields(self):
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
+class IsInstanceExpr(Expr):
+    def __init__(self, var: VarReference, checked_type: CustomType):
+        super().__init__(type=BoolType())
+        self.var = var
+        self.checked_type = checked_type
+
+    def get_free_variables(self):
+        for var in self.var.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'isinstance(%s, %s)' % (self.var.name, str(self.checked_type))
+
+    def describe_other_fields(self):
+        return ''
+
+class SafeUncheckedCast(Expr):
+    def __init__(self, var: VarReference, type: ExprType):
+        assert isinstance(var.type, ErrorOrVoidType)
+        assert isinstance(type, CustomType)
+        super().__init__(type=type)
+        self.var = var
+
+    def get_free_variables(self):
+        for var in self.var.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return '%s  # type: %s' % (self.var.name, str(self.type))
+
+    def describe_other_fields(self):
+        return ''
+
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
         # When expr_type is None, the statement never returns.
@@ -446,7 +479,7 @@ class Stmt:
     # desired.
     def get_free_variables(self) -> 'Iterable[VarReference]': ...  # pragma: no cover
 
-    def write(self, writer: Writer): ...  # pragma: no cover
+    def write(self, writer: Writer, verbose: bool): ...  # pragma: no cover
 
 class Assert(Stmt):
     def __init__(self, var: VarReference, message: str):
@@ -458,10 +491,13 @@ class Assert(Stmt):
         for var in self.var.get_free_variables():
             yield var
 
-    def write(self, writer: Writer):
+    def write(self, writer: Writer, verbose: bool):
         writer.write('assert ')
         writer.write(self.var.name)
-        writer.writeln('  # %s' % self.var.describe_other_fields())
+        if verbose:
+            writer.writeln('  # %s' % self.var.describe_other_fields())
+        else:
+            writer.writeln('')
 
 class Assignment(Stmt):
     def __init__(self,
@@ -480,7 +516,7 @@ class Assignment(Stmt):
         for var in self.rhs.get_free_variables():
             yield var
 
-    def write(self, writer: Writer):
+    def write(self, writer: Writer, verbose: bool):
         writer.write(self.lhs.name)
         if self.lhs2:
             writer.write(', ')
@@ -490,11 +526,14 @@ class Assignment(Stmt):
             self.rhs.write(writer)
         else:
             writer.write(str(self.rhs))
-            writer.writeln('  # lhs: %s; rhs: %s' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields()))
+            if verbose:
+                writer.writeln('  # lhs: %s; rhs: %s' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields()))
+            else:
+                writer.writeln('')
 
 class ReturnStmt(Stmt):
     def __init__(self, result: Optional[VarReference], error: Optional[VarReference]):
-        assert (result is None) != (error is None)
+        assert result or error
         self.result = result
         self.error = error
 
@@ -504,14 +543,17 @@ class ReturnStmt(Stmt):
                 for var in expr.get_free_variables():
                     yield var
 
-    def write(self, writer: Writer):
+    def write(self, writer: Writer, verbose: bool):
         writer.write('return ')
         writer.write(str(self.result))
         writer.write(', ')
         writer.write(str(self.error))
-        writer.writeln('  # result: %s, error: %s' % (
-            self.result.describe_other_fields() if self.result else '',
-            self.error.describe_other_fields() if self.error else ''))
+        if verbose:
+            writer.writeln('  # result: %s, error: %s' % (
+                self.result.describe_other_fields() if self.result else '',
+                self.error.describe_other_fields() if self.error else ''))
+        else:
+            writer.writeln('')
 
 class IfStmt(Stmt):
     def __init__(self, cond: VarReference, if_stmts: List[Stmt], else_stmts: List[Stmt]):
@@ -528,19 +570,22 @@ class IfStmt(Stmt):
             for var in get_free_variables_in_stmts(stmts):
                 yield var
 
-    def write(self, writer: Writer):
+    def write(self, writer: Writer, verbose: bool):
         writer.write('if %s:' % self.cond.name)
-        writer.writeln('  # %s' % self.cond.describe_other_fields())
+        if verbose:
+            writer.writeln('  # %s' % self.cond.describe_other_fields())
+        else:
+            writer.writeln('')
         with writer.indent():
             for stmt in self.if_stmts:
-                stmt.write(writer)
+                stmt.write(writer, verbose)
             if not self.if_stmts:
                 writer.writeln('pass')
         if self.else_stmts:
             writer.writeln('else:')
             with writer.indent():
                 for stmt in self.else_stmts:
-                    stmt.write(writer)
+                    stmt.write(writer, verbose)
 
 class FunctionDefn:
     def __init__(self,
@@ -548,12 +593,13 @@ class FunctionDefn:
                  args: List[FunctionArgDecl],
                  body: List[Stmt],
                  return_type: ExprType):
+        assert body
         self.name = name
         self.args = args
         self.body = body
         self.return_type = return_type
 
-    def write(self, writer: Writer):
+    def write(self, writer: Writer, verbose: bool):
         writer.writeln('def %s(%s) -> %s:' % (
             self.name,
             ', '.join('%s: %s' % (arg.name, str(arg.type))
@@ -561,16 +607,14 @@ class FunctionDefn:
             str(self.return_type)))
         with writer.indent():
             for stmt in self.body:
-                stmt.write(writer)
-            if not self.body:
-                writer.writeln('pass')
+                stmt.write(writer, verbose)
         writer.writeln('')
 
 class CheckIfErrorDefn:
     def __init__(self, error_types_and_messages: List[Tuple[CustomType, str]]):
         self.error_types_and_messages = error_types_and_messages
 
-    def write(self, writer: Writer):
+    def write(self, writer: Writer, verbose: bool):
         writer.writeln('def check_if_error(x):')
         with writer.indent():
             for error_type, error_message in self.error_types_and_messages:
@@ -588,7 +632,7 @@ class Module:
     def __str__(self):
         writer = Writer()
         for elem in self.body:
-            elem.write(writer)
+            elem.write(writer, verbose=False)
         return ''.join(writer.strings)
 
 def get_free_variables_in_stmts(stmts: List[Stmt]):
@@ -601,3 +645,11 @@ def get_free_variables_in_stmts(stmts: List[Stmt]):
             local_var_names.add(stmt.lhs.name)
             if stmt.lhs2:
                 local_var_names.add(stmt.lhs2.name)
+
+def get_unique_free_variables_in_stmts(stmts: List[Stmt]) -> List[VarReference]:
+    var_by_name = dict()
+    for var in get_free_variables_in_stmts(stmts):
+        if var.name not in var_by_name:
+            var_by_name[var.name] = var
+    return list(sorted(var_by_name.values(),
+                       key=lambda var: var.name))
