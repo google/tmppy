@@ -214,6 +214,8 @@ def expr_to_ir(expr: highir.Expr, writer: StmtWriter) -> ir.VarReference:
         return int_binary_op_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.ListConcatExpr):
         return list_concat_expr_to_ir(expr, writer)
+    elif isinstance(expr, highir.ListComprehension):
+        return list_comprehension_expr_to_ir(expr, writer)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -359,6 +361,44 @@ def int_binary_op_expr_to_ir(expr: highir.IntBinaryOpExpr, writer: StmtWriter):
 def list_concat_expr_to_ir(expr: highir.ListConcatExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir.ListConcatExpr(lhs=expr_to_ir(expr.lhs, writer),
                                                      rhs=expr_to_ir(expr.rhs, writer)))
+
+def list_comprehension_expr_to_ir(expr: highir.ListComprehension, writer: StmtWriter):
+    # [f(x, y) * 2
+    #  for x in l]
+    #
+    # Becomes:
+    #
+    # def g(x, y):
+    #   return f(x, y) * 2  # (in fact, this will be converted further)
+    #
+    # [g(x, y)
+    #  for x in l]
+
+    l_var = expr_to_ir(expr.list_expr, writer)
+
+    result_elem_type = type_to_ir(expr.result_elem_expr.type)
+    helper_fun_writer = StmtWriter(writer.fun_writer,
+                                   current_fun_return_type=result_elem_type)
+    helper_fun_writer.write_stmt(ir.ReturnStmt(result=expr_to_ir(expr.result_elem_expr, helper_fun_writer),
+                                               error=None))
+    forwarded_vars = ir.get_unique_free_variables_in_stmts(helper_fun_writer.stmts)
+    helper_fun_name = writer.new_id()
+    writer.write_function(ir.FunctionDefn(name=helper_fun_name,
+                                          args=[ir.FunctionArgDecl(type=var.type, name=var.name)
+                                                for var in forwarded_vars],
+                                          body=helper_fun_writer.stmts,
+                                          return_type=result_elem_type))
+
+    helper_fun_call = ir.FunctionCall(fun=ir.VarReference(name=helper_fun_name,
+                                                          type=ir.FunctionType(argtypes=[var.type
+                                                                                         for var in forwarded_vars],
+                                                                               returns=result_elem_type),
+                                                          is_global_function=True,
+                                                          is_function_that_may_throw=True),
+                                      args=forwarded_vars)
+    return writer.new_var_for_expr_with_error_checking(ir.ListComprehensionExpr(list_var=l_var,
+                                                                                loop_var=var_reference_to_ir(expr.loop_var),
+                                                                                result_elem_expr=helper_fun_call))
 
 def assert_to_ir(assert_stmt: highir.Assert, writer: StmtWriter):
     writer.write_stmt(ir.Assert(var=expr_to_ir(assert_stmt.expr, writer),

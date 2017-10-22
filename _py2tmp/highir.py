@@ -328,6 +328,23 @@ class ListConcatExpr(Expr):
             for var in expr.get_free_variables():
                 yield var
 
+class ListComprehension(Expr):
+    def __init__(self,
+                 list_expr: Expr,
+                 loop_var: VarReference,
+                 result_elem_expr: Expr):
+        super().__init__(type=ListType(result_elem_expr.type))
+        self.list_expr = list_expr
+        self.loop_var = loop_var
+        self.result_elem_expr = result_elem_expr
+
+    def get_free_variables(self):
+        for var in self.list_expr.get_free_variables():
+            yield var
+        for var in self.result_elem_expr.get_free_variables():
+            if var.name != self.loop_var.name:
+                yield var
+
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
         # When expr_type is None, the statement never returns.

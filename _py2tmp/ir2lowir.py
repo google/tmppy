@@ -173,6 +173,8 @@ def expr_to_low_ir(expr: ir.Expr, writer: Writer) -> Tuple[Optional[lowir.Expr],
         return is_instance_expr_to_low_ir(expr, writer)
     elif isinstance(expr, ir.SafeUncheckedCast):
         return safe_unchecked_cast_expr_to_low_ir(expr), None
+    elif isinstance(expr, ir.ListComprehensionExpr):
+        return list_comprehension_expr_to_low_ir(expr, writer)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -458,6 +460,111 @@ def safe_unchecked_cast_expr_to_low_ir(expr: ir.SafeUncheckedCast):
                                                    is_global_function=expr.var.is_global_function,
                                                    is_function_that_may_throw=expr.var.is_function_that_may_throw))
 
+def list_comprehension_expr_to_low_ir(expr: ir.ListComprehensionExpr, writer: Writer):
+    captured_vars = [var
+                     for var in ir.get_unique_free_variables_in_stmts([ir.ReturnStmt(result=expr.result_elem_expr,
+                                                                                     error=None)])
+                     if var.name != expr.loop_var.name]
+
+    # TODO: introduce unchecked versions of these and use them when we know that the list comprehension can't result in
+    # an error.
+    transform_metafunction_name_for_kinds = {
+        (lowir.ExprKind.BOOL, lowir.ExprKind.BOOL): 'TransformBoolListToBoolList',
+        (lowir.ExprKind.BOOL, lowir.ExprKind.INT64): 'TransformBoolListToInt64List',
+        (lowir.ExprKind.BOOL, lowir.ExprKind.TYPE): 'TransformBoolListToTypeList',
+        (lowir.ExprKind.INT64, lowir.ExprKind.BOOL): 'TransformInt64ListToBoolList',
+        (lowir.ExprKind.INT64, lowir.ExprKind.INT64): 'TransformInt64ListToInt64List',
+        (lowir.ExprKind.INT64, lowir.ExprKind.TYPE): 'TransformInt64ListToTypeList',
+        (lowir.ExprKind.TYPE, lowir.ExprKind.BOOL): 'TransformTypeListToBoolList',
+        (lowir.ExprKind.TYPE, lowir.ExprKind.INT64): 'TransformTypeListToInt64List',
+        (lowir.ExprKind.TYPE, lowir.ExprKind.TYPE): 'TransformTypeListToTypeList',
+    }
+
+    x_type = type_to_low_ir(expr.loop_var.type)
+    result_elem_type = type_to_low_ir(expr.result_elem_expr.type)
+
+    template_arg_decl = lowir.TemplateArgDecl(type=x_type,
+                                              name=expr.loop_var.name)
+    helper_template_body_writer = TemplateBodyWriter(writer,
+                                                     parent_arbitrary_arg=template_arg_decl,
+                                                     parent_return_type=result_elem_type)
+    result_expr, error_expr = function_call_to_low_ir(expr.result_elem_expr, helper_template_body_writer)
+    helper_template_body_writer.write_result_body_elements(result_expr=result_expr, error_expr=error_expr)
+    helper_template_defn = lowir.TemplateDefn(name=writer.new_id(),
+                                              specializations=[],
+                                              args=[template_arg_decl],
+                                              main_definition=lowir.TemplateSpecialization(args=[template_arg_decl],
+                                                                                           patterns=None,
+                                                                                           body=helper_template_body_writer.elems))
+
+    if not captured_vars:
+        # z = [f(x)
+        #      for x in l]
+        #
+        # Becomes:
+        #
+        # template <typename X>
+        # struct Helper {
+        #   using type = typename f<X>::type;
+        # };
+        #
+        # using Z = typename TransformTypeListToTypeList<L, Helper>::type;
+
+        writer.write(helper_template_defn)
+        return _create_metafunction_call(template_expr=lowir.TypeLiteral.for_nonlocal_template(cpp_type=transform_metafunction_name_for_kinds[(x_type.kind, result_elem_type.kind)],
+                                                                                               is_metafunction_that_may_return_error=expr.result_elem_expr.fun.is_function_that_may_throw),
+                                         args=[var_reference_to_low_ir(expr.list_var),
+                                               lowir.TypeLiteral.for_nonlocal_template(cpp_type=helper_template_defn.name,
+                                                                                       is_metafunction_that_may_return_error=expr.result_elem_expr.fun.is_function_that_may_throw)],
+                                         arg_types=[type_to_low_ir(expr.list_var.type),
+                                                    lowir.TemplateType(argtypes=[x_type])],
+                                         member_kind=type_to_low_ir(expr.type).kind,
+                                         writer=writer)
+    else:
+        # z = [f(y, x, z)
+        #      for x in l]
+        #
+        # Becomes:
+        #
+        # template <typename Y, typename Z>
+        # struct HelperWrapper {
+        #   template <typename X>
+        #   struct Helper {
+        #     using type = typename f<Y, X, Z>::type;
+        #   };
+        # };
+        #
+        # using Z = typename TransformTypeList<L, HelperWrapper<Y, Z>::Helper>::type;
+
+        captured_vars_as_template_args = [lowir.TemplateArgDecl(type=type_to_low_ir(var.type),
+                                                                name=var.name)
+                                          for var in captured_vars]
+        helper_wrapper_template_defn = lowir.TemplateDefn(name=writer.new_id(),
+                                                          specializations=[],
+                                                          args=captured_vars_as_template_args,
+                                                          main_definition=lowir.TemplateSpecialization(args=captured_vars_as_template_args,
+                                                                                                       patterns=None,
+                                                                                                       body=[helper_template_defn]))
+
+        writer.write(helper_wrapper_template_defn)
+        helper_template_expr = lowir.ClassMemberAccess(class_type_expr=lowir.TemplateInstantiation(template_expr=lowir.TypeLiteral.for_nonlocal_template(cpp_type=helper_wrapper_template_defn.name,
+                                                                                                                                                         is_metafunction_that_may_return_error=False),
+                                                                                                   args=[var_reference_to_low_ir(var)
+                                                                                                         for var in captured_vars],
+                                                                                                   arg_types=[type_to_low_ir(var.type)
+                                                                                                              for var in captured_vars],
+                                                                                                   instantiation_might_trigger_static_asserts=True),
+                                                       member_name=helper_template_defn.name,
+                                                       member_kind=lowir.ExprKind.TEMPLATE)
+        return _create_metafunction_call(template_expr=lowir.TypeLiteral.for_nonlocal_template(cpp_type=transform_metafunction_name_for_kinds[(x_type.kind, result_elem_type.kind)],
+                                                                                               is_metafunction_that_may_return_error=expr.result_elem_expr.fun.is_function_that_may_throw),
+                                         args=[var_reference_to_low_ir(expr.list_var),
+                                               helper_template_expr],
+                                         arg_types=[type_to_low_ir(expr.list_var.type),
+                                                    lowir.TemplateType(argtypes=[x_type])],
+                                         member_kind=type_to_low_ir(expr.type).kind,
+                                         writer=writer)
+
 def assert_to_low_ir(assert_stmt: ir.Assert, writer: Writer):
     expr = var_reference_to_low_ir(assert_stmt.var)
     writer.write(lowir.StaticAssert(expr=expr, message=assert_stmt.message))
@@ -728,6 +835,8 @@ def stmts_to_low_ir(stmts: List[ir.Stmt],
             assert isinstance(writer, TemplateBodyWriter)
             if_stmt_to_low_ir(stmt, stmts[index + 1:], write_continuation_fun_call, writer)
             break
+        else:
+            raise NotImplementedError('Unexpected statement type: ' + stmt.__class__.__name__)
 
     if write_continuation_fun_call:
         assert isinstance(writer, TemplateBodyWriter)

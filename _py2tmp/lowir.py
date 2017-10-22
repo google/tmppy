@@ -91,7 +91,7 @@ class TemplateSpecialization:
         self.patterns = patterns
         self.body = body
 
-class TemplateDefn:
+class TemplateDefn(TemplateBodyElement):
     def __init__(self,
                  args: List[TemplateArgDecl],
                  main_definition: Optional[TemplateSpecialization],

@@ -832,6 +832,50 @@ def int_binary_op_expression_ast_to_ir(ast_node: ast.BinOp, op: str, compilation
 
     return highir.IntBinaryOpExpr(lhs=lhs, rhs=rhs, op=op)
 
+def list_comprehension_ast_to_ir(ast_node: ast.ListComp, compilation_context: CompilationContext):
+    assert ast_node.generators
+    if len(ast_node.generators) > 1:
+        raise CompilationError(compilation_context, ast_node.generators[1].target,
+                               'List comprehensions with multiple "for" clauses are not currently supported.')
+
+    [generator] = ast_node.generators
+    if generator.ifs:
+        raise CompilationError(compilation_context, generator.ifs[0],
+                               '"if" clauses in list comprehensions are not currently supported.')
+    if not isinstance(generator.target, ast.Name):
+        raise CompilationError(compilation_context, generator.target,
+                               'Only list comprehensions of the form [... for var_name in ...] are supported.')
+
+    list_expr = expression_ast_to_ir(generator.iter, compilation_context)
+    if not isinstance(list_expr.type, highir.ListType):
+        notes = []
+        if isinstance(list_expr, highir.VarReference):
+            lookup_result = compilation_context.symbol_table.get_symbol_definition(list_expr.name)
+            assert lookup_result
+            notes.append((lookup_result.ast_node, '%s was defined here' % list_expr.name))
+        raise CompilationError(compilation_context, ast_node.generators[0].target,
+                               'The RHS of a list comprehension should be a list, but this value has type "%s".' % str(list_expr.type),
+                               notes=notes)
+
+    child_context = compilation_context.create_child_context(function_name=compilation_context.current_function_name)
+    child_context.add_symbol(name=generator.target.id,
+                             type=list_expr.elem_type,
+                             definition_ast_node=generator.target,
+                             is_only_partially_defined=False,
+                             is_function_that_may_throw=False)
+    result_elem_expr = expression_ast_to_ir(ast_node.elt, child_context)
+
+    if isinstance(result_elem_expr.type, highir.FunctionType):
+        raise CompilationError(compilation_context, ast_node,
+                               'Creating lists of functions is not supported. The elements of this list have type: %s' % str(result_elem_expr.type))
+
+    return highir.ListComprehension(list_expr=list_expr,
+                                    loop_var=highir.VarReference(name=generator.target.id,
+                                                                 type=list_expr.elem_type,
+                                                                 is_global_function=False,
+                                                                 is_function_that_may_throw=False),
+                                    result_elem_expr=result_elem_expr)
+
 def add_expression_ast_to_ir(ast_node: ast.Add, compilation_context: CompilationContext):
     lhs = expression_ast_to_ir(ast_node.left, compilation_context)
     rhs = expression_ast_to_ir(ast_node.right, compilation_context)
@@ -894,6 +938,8 @@ def expression_ast_to_ir(ast_node: ast.AST, compilation_context: CompilationCont
         return int_binary_op_expression_ast_to_ir(ast_node, '//', compilation_context)
     elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Mod):
         return int_binary_op_expression_ast_to_ir(ast_node, '%', compilation_context)
+    elif isinstance(ast_node, ast.ListComp):
+        return list_comprehension_ast_to_ir(ast_node, compilation_context)
     else:
         # raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported: %s' % ast_to_string(ast_node))
         raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported.')  # pragma: no cover

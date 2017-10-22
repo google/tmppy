@@ -22,6 +22,8 @@ class Writer:
 
     def write_template_body_elem(self, s: str): ... # pragma: no cover
 
+    def create_child_writer(self) -> 'TemplateElemWriter': ...  # pragma: no cover
+
 class ToplevelWriter(Writer):
     def __init__(self, identifier_generator: Iterator[str]):
         self.identifier_generator = identifier_generator
@@ -36,6 +38,9 @@ class ToplevelWriter(Writer):
     def write_template_body_elem(self, s: str):
         self.write_toplevel_elem(s)
 
+    def create_child_writer(self):
+        return TemplateElemWriter(self)
+
 class TemplateElemWriter(Writer):
     def __init__(self, toplevel_writer: ToplevelWriter):
         self.toplevel_writer = toplevel_writer
@@ -49,6 +54,9 @@ class TemplateElemWriter(Writer):
 
     def write_template_body_elem(self, s: str):
         self.strings.append(s)
+
+    def create_child_writer(self):
+        return TemplateElemWriter(self.toplevel_writer)
 
 def expr_to_cpp(expr: lowir.Expr,
                 enclosing_function_defn_args: List[lowir.TemplateArgDecl],
@@ -192,8 +200,8 @@ def template_arg_decl_to_cpp(arg_decl: lowir.TemplateArgDecl):
 def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
                                    cxx_name: str,
                                    enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                                   writer: ToplevelWriter):
-    template_elem_writer = TemplateElemWriter(writer)
+                                   writer: Writer):
+    template_elem_writer = writer.create_child_writer()
     for elem in specialization.body:
         if isinstance(elem, lowir.StaticAssert):
             static_assert_to_cpp(elem,
@@ -207,6 +215,10 @@ def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
             typedef_to_cpp(elem,
                            enclosing_function_defn_args=specialization.args,
                            writer=template_elem_writer)
+        elif isinstance(elem, lowir.TemplateDefn):
+            template_defn_to_cpp(elem,
+                                 enclosing_function_defn_args=specialization.args,
+                                 writer=template_elem_writer)
         else:
             raise NotImplementedError('Unsupported element: ' + str(elem))
 
@@ -216,14 +228,14 @@ def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
     if specialization.patterns is not None:
         patterns_str = ', '.join(type_pattern_literal_to_cpp(pattern)
                                  for pattern in specialization.patterns)
-        writer.write_toplevel_elem('''\
+        writer.write_template_body_elem('''\
             template <{template_args}>
             struct {cxx_name}<{patterns_str}> {{
               {asserts_and_assignments_str}
             }};
             '''.format(**locals()))
     else:
-        writer.write_toplevel_elem('''\
+        writer.write_template_body_elem('''\
             template <{template_args}>
             struct {cxx_name} {{
               {asserts_and_assignments_str}
@@ -232,7 +244,7 @@ def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
 
 def template_defn_to_cpp(template_defn: lowir.TemplateDefn,
                          enclosing_function_defn_args: List[lowir.TemplateArgDecl],
-                         writer: ToplevelWriter):
+                         writer: Writer):
     template_name = template_defn.name
     if template_defn.main_definition:
         template_specialization_to_cpp(template_defn.main_definition,

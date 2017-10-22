@@ -115,5 +115,101 @@ struct BoolListConcat<BoolList<bs1...>, BoolList<bs2...>> {
   using type = BoolList<bs1..., bs2...>;
 };
 
+template <typename... Ts>
+struct GetFirstError {
+  using type = void;
+};
+
+template <typename... Ts>
+struct GetFirstError<void, Ts...> {
+  using type = typename GetFirstError<Ts...>::type;
+};
+
+template <typename T, typename... Ts>
+struct GetFirstError<T, Ts...> {
+  using type = T;
+};
+
+template <typename L, template <bool> class F>
+struct TransformBoolListToBoolList;
+
+template <bool... bs, template <bool> class F>
+struct TransformBoolListToBoolList<BoolList<bs...>, F> {
+  using error = typename GetFirstError<typename F<bs>::error...>::type;
+  using type = BoolList<F<bs>::value...>;
+};
+
+template <typename L, template <bool> class F>
+struct TransformBoolListToInt64List;
+
+template <bool... bs, template <bool> class F>
+struct TransformBoolListToInt64List<BoolList<bs...>, F> {
+  using error = typename GetFirstError<typename F<bs>::error...>::type;
+  using type = Int64List<F<bs>::value...>;
+};
+
+template <typename L, template <bool> class F>
+struct TransformBoolListToTypeList;
+
+template <bool... bs, template <bool> class F>
+struct TransformBoolListToTypeList<BoolList<bs...>, F> {
+  using error = typename GetFirstError<typename F<bs>::error...>::type;
+  using type = List<typename F<bs>::type...>;
+};
+
+template <typename L, template <int64_t> class F>
+struct TransformInt64ListToBoolList;
+
+template <int64_t... ns, template <int64_t> class F>
+struct TransformInt64ListToBoolList<Int64List<ns...>, F> {
+  using error = typename GetFirstError<typename F<ns>::error...>::type;
+  using type = BoolList<F<ns>::value...>;
+};
+
+template <typename L, template <int64_t> class F>
+struct TransformInt64ListToInt64List;
+
+template <int64_t... ns, template <int64_t> class F>
+struct TransformInt64ListToInt64List<Int64List<ns...>, F> {
+  using error = typename GetFirstError<typename F<ns>::error...>::type;
+  using type = Int64List<F<ns>::value...>;
+};
+
+template <typename L, template <int64_t> class F>
+struct TransformInt64ListToTypeList;
+
+template <int64_t... ns, template <int64_t> class F>
+struct TransformInt64ListToTypeList<Int64List<ns...>, F> {
+  using error = typename GetFirstError<typename F<ns>::error...>::type;
+  using type = List<typename F<ns>::type...>;
+};
+
+template <typename L, template <typename> class F>
+struct TransformTypeListToBoolList;
+
+template <typename... Ts, template <typename> class F>
+struct TransformTypeListToBoolList<List<Ts...>, F> {
+  using error = typename GetFirstError<typename F<Ts>::error...>::type;
+  using type = BoolList<F<Ts>::value...>;
+};
+
+template <typename L, template <typename> class F>
+struct TransformTypeListToInt64List;
+
+template <typename... Ts, template <typename> class F>
+struct TransformTypeListToInt64List<List<Ts...>, F> {
+  using error = typename GetFirstError<typename F<Ts>::error...>::type;
+  using type = Int64List<F<Ts>::value...>;
+};
+
+template <typename L, template <typename> class F>
+struct TransformTypeListToTypeList;
+
+template <typename... Ts, template <typename> class F>
+struct TransformTypeListToTypeList<List<Ts...>, F> {
+  using error = typename GetFirstError<typename F<Ts>::error...>::type;
+  using type = List<typename F<Ts>::type...>;
+};
+
 
 #endif // TMPPY_H

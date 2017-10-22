@@ -486,6 +486,28 @@ class SafeUncheckedCast(Expr):
     def describe_other_fields(self):
         return ''
 
+class ListComprehensionExpr(Expr):
+    def __init__(self, list_var: VarReference, loop_var: VarReference, result_elem_expr: FunctionCall):
+        assert isinstance(list_var.type, ListType)
+        assert list_var.type.elem_type == loop_var.type
+        super().__init__(type=ListType(result_elem_expr.type))
+        self.list_var = list_var
+        self.loop_var = loop_var
+        self.result_elem_expr = result_elem_expr
+
+    def get_free_variables(self):
+        for var in self.list_var.get_free_variables():
+            yield var
+        for var in self.result_elem_expr.get_free_variables():
+            if var.name != self.loop_var.name:
+                yield var
+
+    def __str__(self):
+        return '[%s for %s in %s]' % (str(self.result_elem_expr), self.loop_var.name, self.list_var.name)
+
+    def describe_other_fields(self):
+        return ''
+
 class ReturnTypeInfo:
     def __init__(self, type: Optional[ExprType], always_returns: bool):
         # When expr_type is None, the statement never returns.
@@ -526,7 +548,7 @@ class Assignment(Stmt):
         assert lhs.type == rhs.type
         if lhs2:
             assert isinstance(lhs2.type, ErrorOrVoidType)
-            assert isinstance(rhs, (MatchExpr, FunctionCall))
+            assert isinstance(rhs, (MatchExpr, FunctionCall, ListComprehensionExpr))
         self.lhs = lhs
         self.lhs2 = lhs2
         self.rhs = rhs

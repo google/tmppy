@@ -163,3 +163,330 @@ def test_custom_type_list_concat_both_empty_ok():
         def __init__(self, n: int):
             self.n = n
     assert empty_list(Int) + empty_list(Int) == empty_list(Int)
+
+@assert_conversion_fails
+def test_int_list_concat_error():
+    assert 1 + [1]  # error: Type mismatch: the LHS of "\+" has type int but the RHS has type List\[int\].
+
+@assert_conversion_fails
+def test_list_int_concat_error():
+    assert [1] + 1  # error: Type mismatch: the LHS of "\+" has type List\[int\] but the RHS has type int.
+
+@assert_compilation_succeeds
+def test_list_comprehension_bool_to_bool_ok():
+    assert [not x for x in [True, False, False]] == [False, True, True]
+
+@assert_compilation_succeeds
+def test_list_comprehension_bool_to_const_bool_ok():
+    assert [True for x in [True, False, False]] == [True, True, True]
+
+@assert_compilation_succeeds
+def test_list_comprehension_bool_to_int_ok():
+    def f(b: bool):
+        if b:
+            return 5
+        else:
+            return -1
+    assert [f(x) for x in [True, False]] == [5, -1]
+
+@assert_compilation_succeeds
+def test_list_comprehension_bool_to_const_int_ok():
+    def f(b: bool):
+        if b:
+            return 5
+        else:
+            return -1
+    assert [1 for x in [True, False]] == [1, 1]
+
+@assert_compilation_succeeds
+def test_list_comprehension_bool_to_type_ok():
+    from tmppy import Type
+    def f(b: bool):
+        if b:
+            return Type('int')
+        else:
+            return Type('float')
+    assert [f(x) for x in [True, False]] == [Type('int'), Type('float')]
+
+@assert_compilation_succeeds
+def test_list_comprehension_bool_to_const_type_ok():
+    from tmppy import Type
+    def f(b: bool):
+        if b:
+            return Type('int')
+        else:
+            return Type('float')
+    assert [Type('int') for x in [True, False]] == [Type('int'), Type('int')]
+
+@assert_compilation_succeeds
+def test_list_comprehension_bool_to_custom_type_ok():
+    class Bool:
+        def __init__(self, b: bool):
+            self.b = b
+    assert [Bool(x) for x in [True, False]] == [Bool(True), Bool(False)]
+
+@assert_compilation_succeeds
+def test_list_comprehension_bool_to_const_custom_type_ok():
+    class Bool:
+        def __init__(self, b: bool):
+            self.b = b
+    assert [Bool(True) for x in [True, False]] == [Bool(True), Bool(True)]
+
+@assert_compilation_succeeds
+def test_list_comprehension_int_to_bool_ok():
+    assert [x <= 2 for x in [1, 2, 3]] == [True, True, False]
+
+@assert_compilation_succeeds
+def test_list_comprehension_int_to_const_bool_ok():
+    assert [True for x in [1, 2, 3]] == [True, True, True]
+
+@assert_compilation_succeeds
+def test_list_comprehension_int_to_const_int_ok():
+    assert [5 for x in [1, 2, 3]] == [5, 5, 5]
+
+@assert_compilation_succeeds
+def test_list_comprehension_int_to_const_type_ok():
+    from tmppy import Type
+    assert [Type('float') for x in [1, -1, 0]] == [Type('float'), Type('float'), Type('float')]
+
+@assert_compilation_succeeds
+def test_list_comprehension_int_to_custom_type_ok():
+    class Int:
+        def __init__(self, n: int):
+            self.n = n
+    assert [Int(x) for x in [1, -1, 0, 2]] == [Int(1), Int(-1), Int(0), Int(2)]
+
+@assert_compilation_succeeds
+def test_list_comprehension_int_to_const_custom_type_ok():
+    class Int:
+        def __init__(self, n: int):
+            self.n = n
+    assert [Int(3) for x in [1, -1, 0]] == [Int(3), Int(3), Int(3)]
+
+@assert_compilation_succeeds
+def test_list_comprehension_type_to_bool_ok():
+    from tmppy import Type
+    assert [x == Type('int') for x in [Type('int'), Type('float'), Type('int')]] == [True, False, True]
+
+@assert_compilation_succeeds
+def test_list_comprehension_type_to_const_bool_ok():
+    from tmppy import Type
+    assert [True for x in [Type('int'), Type('float'), Type('int')]] == [True, True, True]
+
+@assert_compilation_succeeds
+def test_list_comprehension_type_to_int_ok():
+    from tmppy import Type
+    def f(x: Type):
+        if x == Type('int'):
+            return 5
+        elif x == Type('float'):
+            return 7
+        else:
+            return -1
+    assert [f(x) for x in [Type('int'), Type('float'), Type('double')]] == [5, 7, -1]
+
+@assert_compilation_succeeds
+def test_list_comprehension_type_to_const_int_ok():
+    from tmppy import Type
+    assert [5 for x in [Type('int'), Type('float'), Type('double')]] == [5, 5, 5]
+
+@assert_compilation_succeeds
+def test_list_comprehension_type_to_type_ok():
+    from tmppy import Type
+    def f(x: Type):
+        if x == Type('int'):
+            return Type('int*')
+        elif x == Type('float'):
+            return Type('float*')
+        else:
+            return Type('void')
+    assert [f(x) for x in [Type('int'), Type('float'), Type('double')]] == [Type('int*'), Type('float*'), Type('void')]
+
+@assert_compilation_succeeds
+def test_list_comprehension_type_to_const_type_ok():
+    from tmppy import Type
+    assert [Type('float') for x in [Type('int'), Type('float'), Type('double')]] == [Type('float'), Type('float'), Type('float')]
+
+@assert_compilation_succeeds
+def test_list_comprehension_type_to_custom_type_ok():
+    from tmppy import Type
+    class TypeWrapper:
+        def __init__(self, x: Type):
+            self.x = x
+    assert [TypeWrapper(x) for x in [Type('int'), Type('float'), Type('float')]] == [TypeWrapper(Type('int')), TypeWrapper(Type('float')), TypeWrapper(Type('float'))]
+
+@assert_compilation_succeeds
+def test_list_comprehension_type_to_const_custom_type_ok():
+    from tmppy import Type
+    class TypeWrapper:
+        def __init__(self, x: Type):
+            self.x = x
+    assert [TypeWrapper(Type('double')) for x in [Type('int'), Type('float'), Type('float')]] == [TypeWrapper(Type('double')), TypeWrapper(Type('double')), TypeWrapper(Type('double'))]
+
+@assert_compilation_succeeds
+def test_list_comprehension_in_function_using_function_arg_ok():
+    def f(k: int):
+        return [x * k for x in [1, k, 3]]
+    assert f(2) == [2, 4, 6]
+
+@assert_compilation_succeeds
+def test_list_comprehension_in_function_using_function_variable_ok():
+    def f(b: bool):
+        k = 2
+        return [x * k for x in [1, k, 3]]
+    assert f(True) == [2, 4, 6]
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+def test_list_comprehension_from_bool_list_throws_toplevel():
+    from tmppy import empty_list
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(b: bool):
+        if b:
+            raise MyError(True)
+        return True
+    assert [f(x) for x in [True, False, False]] == empty_list(bool)
+
+@assert_compilation_succeeds
+def test_list_comprehension_from_bool_list_throws_in_function_caught_success():
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(b: bool):
+        if b:
+            raise MyError(True)
+        return True
+    def g(b: bool):
+        try:
+            return [f(x) for x in [True, False, False]]
+        except MyError as e:
+            return [e.b]
+    assert g(True) == [True]
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+def test_list_comprehension_from_int_list_throws_toplevel():
+    from tmppy import empty_list
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(n: int):
+        if n == 1:
+            raise MyError(True)
+        return True
+    assert [f(x) for x in [0, 1, 2]] == empty_list(bool)
+
+@assert_compilation_succeeds
+def test_list_comprehension_from_int_list_throws_in_function_caught_success():
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(n: int):
+        if n == 1:
+            raise MyError(True)
+        return True
+    def g(b: bool):
+        try:
+            return [f(x) for x in [0, 1, 2]]
+        except MyError as e:
+            return [e.b]
+    assert g(True) == [True]
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+def test_list_comprehension_from_type_list_throws_toplevel():
+    from tmppy import empty_list, Type
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(x: Type):
+        if x == Type('float'):
+            raise MyError(True)
+        return True
+    assert [f(x) for x in [Type('int'), Type('float'), Type('double')]] == empty_list(bool)
+
+@assert_compilation_succeeds
+def test_list_comprehension_from_type_list_throws_in_function_caught_success():
+    from tmppy import Type
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(x: Type):
+        if x == Type('float'):
+            raise MyError(True)
+        return True
+    def g(b: bool):
+        try:
+            return [f(x) for x in [Type('int'), Type('float'), Type('double')]]
+        except MyError as e:
+            return [e.b]
+    assert g(True) == [True]
+
+@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+def test_list_comprehension_from_custom_type_list_throws_toplevel():
+    from tmppy import empty_list
+    class Int:
+        def __init__(self, n: int):
+            self.n = n
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(x: Int):
+        if x == Int(1):
+            raise MyError(True)
+        return True
+    assert [f(x) for x in [Int(0), Int(1), Int(2)]] == empty_list(bool)
+
+@assert_compilation_succeeds
+def test_list_comprehension_from_custom_type_list_throws_in_function_caught_success():
+    class Int:
+        def __init__(self, n: int):
+            self.n = n
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(x: Int):
+        if x == Int(1):
+            raise MyError(True)
+        return True
+    def g(b: bool):
+        try:
+            return [f(x) for x in [Int(0), Int(1), Int(2)]]
+        except MyError as e:
+            return [e.b]
+    assert g(True) == [True]
+
+@assert_conversion_fails
+def test_list_comprehension_with_multiple_for_clauses_error():
+    assert [y for x in [[1], [2]] for y in x]  # error: List comprehensions with multiple "for" clauses are not currently supported.
+
+@assert_conversion_fails
+def test_list_comprehension_with_if_clause_error():
+    assert [x for x in [1, 2] if x != 1]  # error: "if" clauses in list comprehensions are not currently supported.
+
+@assert_conversion_fails
+def test_list_comprehension_with_unpacking_error():
+    assert [x for [x, y] in [[1, 2]]]  # error: Only list comprehensions of the form \[... for var_name in ...\] are supported.
+
+@assert_conversion_fails
+def test_list_comprehension_with_non_list():
+    assert [x for x in 1]  # error: The RHS of a list comprehension should be a list, but this value has type "int".
+
+@assert_conversion_fails
+def test_list_comprehension_with_non_list_var():
+    def f(b: bool):
+        n = 1  # note: n was defined here
+        return [x for x in n]  # error: The RHS of a list comprehension should be a list, but this value has type "int".
+
+@assert_conversion_fails
+def test_list_comprehension_transforming_to_function_list_error():
+    def f(b: bool):
+        return b
+    assert [f for x in [1, 2]]  # error: Creating lists of functions is not supported. The elements of this list have type: \(bool\) -> bool
