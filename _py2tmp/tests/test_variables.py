@@ -105,3 +105,158 @@ def test_assignment_to_expression_error():
     def f(x: bool):
         x[0] = x  # error: Assignment not supported.
         return x
+
+@assert_compilation_succeeds
+def test_function_arg_named_type_ok():
+    from tmppy import Type
+    def f(type: Type):
+        return Type('float')
+    assert f(Type('int')) == Type('float')
+
+@assert_compilation_succeeds
+def test_function_arg_named_value_ok():
+    def f(value: int):
+        return 2
+    assert f(1) == 2
+
+@assert_compilation_succeeds
+def test_function_arg_named_error_in_function_returning_type_ok():
+    from tmppy import Type
+    def f(error: Type):
+        return Type('float')
+    assert f(Type('int')) == Type('float')
+
+@assert_compilation_succeeds
+def test_function_arg_named_error_in_function_returning_value_ok():
+    from tmppy import Type
+    def f(error: Type):
+        return 2
+    assert f(Type('int')) == 2
+
+@assert_compilation_succeeds
+def test_variable_named_type_ok():
+    from tmppy import Type
+    def f(b: bool):
+        type = Type('int')
+        return Type('float')
+    assert f(True) == Type('float')
+
+@assert_compilation_succeeds
+def test_variable_named_value_ok():
+    def f(b: bool):
+        value = 1
+        return 2
+    assert f(True) == 2
+
+@assert_compilation_succeeds
+def test_variable_named_error_in_function_returning_type_ok():
+    from tmppy import Type
+    def f(b: bool):
+        error = Type('int')
+        return Type('float')
+    assert f(True) == Type('float')
+
+@assert_compilation_succeeds
+def test_variable_named_error_in_function_returning_value_ok():
+    def f(b: bool):
+        error = 1
+        return 2
+    assert f(True) == 2
+
+@assert_compilation_succeeds
+def test_caught_exception_named_type_ok():
+    from tmppy import Type
+    class MyError(Exception):
+        def __init__(self, type: Type):
+            self.message = 'Something went wrong'
+            self.type = type
+    def f(x: Type):
+        try:
+            raise MyError(x)
+        except MyError as type:
+            return type.type
+    assert f(Type('int')) == Type('int')
+
+@assert_compilation_succeeds
+def test_caught_exception_named_value_ok():
+    class MyError(Exception):
+        def __init__(self, n: int):
+            self.message = 'Something went wrong'
+            self.n = n
+    def f(n: int):
+        try:
+            raise MyError(n)
+        except MyError as error:
+            return error.n
+    assert f(15) == 15
+
+@assert_compilation_succeeds
+def test_caught_exception_named_error_in_function_returning_type_ok():
+    from tmppy import Type
+    class MyError(Exception):
+        def __init__(self, type: Type):
+            self.message = 'Something went wrong'
+            self.type = type
+    def f(x: Type):
+        try:
+            raise MyError(x)
+        except MyError as type:
+            return type.type
+    assert f(Type('int')) == Type('int')
+
+@assert_compilation_succeeds
+def test_caught_exception_named_error_in_function_returning_value_ok():
+    class MyError(Exception):
+        def __init__(self, n: int):
+            self.message = 'Something went wrong'
+            self.n = n
+    def f(n: int):
+        try:
+            raise MyError(n)
+        except MyError as error:
+            return error.n
+    assert f(15) == 15
+
+@assert_compilation_succeeds
+def test_match_variable_named_type_ok():
+    from tmppy import Type, match, TypePattern
+    def f(b: bool):
+        return match(Type('int'))({
+            TypePattern('type'):
+                lambda type:
+                    Type('T*', T=type),
+        })
+    assert f(True) == Type('int*')
+
+@assert_compilation_succeeds
+def test_match_variable_named_value_ok():
+    from tmppy import Type, match, TypePattern
+    def f(b: bool):
+        return match(Type('int'))({
+            TypePattern('value'):
+                lambda value:
+                    15,
+        })
+    assert f(True) == 15
+
+@assert_compilation_succeeds
+def test_match_variable_named_error_in_match_returning_type_ok():
+    from tmppy import Type, match, TypePattern
+    def f(b: bool):
+        return match(Type('int'))({
+            TypePattern('error'):
+                lambda error:
+                    Type('T*', T=error),
+        })
+    assert f(True) == Type('int*')
+
+@assert_compilation_succeeds
+def test_match_variable_named_error_in_match_returning_value_ok():
+    from tmppy import Type, match, TypePattern
+    def f(b: bool):
+        return match(Type('int'))({
+            TypePattern('error'):
+                lambda error:
+                    15,
+        })
+    assert f(True) == 15

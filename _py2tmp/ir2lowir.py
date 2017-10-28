@@ -16,6 +16,7 @@ import itertools
 import re
 import _py2tmp.lowir as lowir
 import _py2tmp.ir as ir
+import _py2tmp.utils as utils
 from typing import List, Tuple, Optional, Iterator, Union, Callable, Dict
 
 class Writer:
@@ -335,21 +336,6 @@ def bool_literal_to_low_ir(literal: ir.BoolLiteral):
 def int_literal_to_low_ir(literal: ir.IntLiteral):
     return lowir.Literal(value=literal.value, kind=lowir.ExprKind.INT64), None
 
-
-def _replace_multiple_identifiers(cpp_type, replacements):
-    last_index = 0
-    result_parts = []
-    for match in re.finditer(r'[a-zA-Z_][a-zA-Z_0-9]*', cpp_type):
-        result_parts.append(cpp_type[last_index:match.start()])
-        identifier = match.group(0)
-        if identifier in replacements:
-            result_parts.append(replacements[identifier])
-        else:
-            result_parts.append(identifier)
-        last_index = match.end()
-    result_parts.append(cpp_type[last_index:])
-    return ''.join(result_parts)
-
 def type_literal_to_low_ir(literal: ir.TypeLiteral):
     kind = type_to_low_ir(literal.type).kind
     replacements = dict()
@@ -359,7 +345,7 @@ def type_literal_to_low_ir(literal: ir.TypeLiteral):
         assert arg_literal.kind == lowir.ExprKind.TYPE
         assert not arg_literal.is_metafunction_that_may_return_error
         replacements[arg_name] = arg_literal.cpp_type
-    expr = lowir.TypeLiteral.for_nonlocal(cpp_type=_replace_multiple_identifiers(literal.cpp_type, replacements),
+    expr = lowir.TypeLiteral.for_nonlocal(cpp_type=utils.replace_identifiers(literal.cpp_type, replacements),
                                           kind=kind,
                                           is_metafunction_that_may_return_error=(kind == lowir.ExprKind.TEMPLATE))
     return expr, None

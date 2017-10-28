@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import defaultdict
 import _py2tmp.ir as ir
 import _py2tmp.highir as highir
+import _py2tmp.utils as utils
 from typing import List, Iterator, Optional, Dict
 from contextlib import contextmanager
 
@@ -24,9 +26,13 @@ class FunWriter:
                                                              returns=ir.BoolType()),
                                              is_global_function=True)
         self.function_defns = [self._create_is_error_fun_defn()]
+        self.obfuscated_identifiers_by_identifier = defaultdict(lambda: self.new_id())  # type: Dict[str, str]
 
     def new_id(self):
         return next(self.identifier_generator)
+
+    def obfuscate_identifier(self, identifier: str):
+        return self.obfuscated_identifiers_by_identifier[identifier]
 
     def new_var(self, type: ir.ExprType, is_global_function: bool = False):
         return ir.VarReference(type=type,
@@ -83,6 +89,9 @@ class StmtWriter:
     def new_id(self):
         return self.fun_writer.new_id()
 
+    def obfuscate_identifier(self, identifier: str):
+        return self.fun_writer.obfuscate_identifier(identifier)
+
     def new_var(self, type: ir.ExprType):
         return self.fun_writer.new_var(type)
 
@@ -119,7 +128,7 @@ class StmtWriter:
             for context in self.try_except_contexts:
                 if_branch_writer = StmtWriter(self.fun_writer, self.current_fun_return_type)
                 if_branch_writer.write_stmt(ir.Assignment(lhs=ir.VarReference(type=context.caught_exception_type,
-                                                                              name=context.caught_exception_name,
+                                                                              name=self.obfuscate_identifier(context.caught_exception_name),
                                                                               is_global_function=False,
                                                                               is_function_that_may_throw=False),
                                                           rhs=ir.SafeUncheckedCast(error_var,
@@ -183,7 +192,7 @@ def type_to_ir(type: highir.ExprType):
 
 def expr_to_ir(expr: highir.Expr, writer: StmtWriter) -> ir.VarReference:
     if isinstance(expr, highir.VarReference):
-        return var_reference_to_ir(expr)
+        return var_reference_to_ir(expr, writer)
     elif isinstance(expr, highir.MatchExpr):
         return match_expr_to_ir(expr, writer)
     elif isinstance(expr, highir.BoolLiteral):
@@ -219,13 +228,13 @@ def expr_to_ir(expr: highir.Expr, writer: StmtWriter) -> ir.VarReference:
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
-def function_arg_decl_to_ir(decl: highir.FunctionArgDecl):
+def function_arg_decl_to_ir(decl: highir.FunctionArgDecl, writer: StmtWriter):
     return ir.FunctionArgDecl(type=type_to_ir(decl.type),
-                              name=decl.name)
+                              name=writer.obfuscate_identifier(decl.name))
 
-def var_reference_to_ir(var: highir.VarReference):
+def var_reference_to_ir(var: highir.VarReference, writer: StmtWriter):
     return ir.VarReference(type=type_to_ir(var.type),
-                           name=var.name,
+                           name=var.name if var.is_global_function else writer.obfuscate_identifier(var.name),
                            is_global_function=var.is_global_function,
                            is_function_that_may_throw=var.is_function_that_may_throw)
 
@@ -253,9 +262,13 @@ def match_expr_to_ir(match_expr: highir.MatchExpr, writer: StmtWriter):
                                         name=match_fun_name,
                                         is_global_function=True,
                                         is_function_that_may_throw=True)
+        replacements = {var_name: writer.obfuscate_identifier(var_name)
+                        for var_name in match_case.matched_var_names}
 
-        match_cases.append(ir.MatchCase(type_patterns=match_case.type_patterns,
-                                        matched_var_names=match_case.matched_var_names,
+        match_cases.append(ir.MatchCase(type_patterns=[utils.replace_identifiers(type_pattern, replacements)
+                                                       for type_pattern in  match_case.type_patterns],
+                                        matched_var_names=[writer.obfuscate_identifier(var_name)
+                                                           for var_name in match_case.matched_var_names],
                                         expr=ir.FunctionCall(fun=match_fun_ref,
                                                              args=forwarded_vars)))
 
@@ -400,7 +413,7 @@ def list_comprehension_expr_to_ir(expr: highir.ListComprehension, writer: StmtWr
                                                           is_function_that_may_throw=True),
                                       args=forwarded_vars)
     return writer.new_var_for_expr_with_error_checking(ir.ListComprehensionExpr(list_var=l_var,
-                                                                                loop_var=var_reference_to_ir(expr.loop_var),
+                                                                                loop_var=var_reference_to_ir(expr.loop_var, writer),
                                                                                 result_elem_expr=helper_fun_call))
 
 def assert_to_ir(assert_stmt: highir.Assert, writer: StmtWriter):
@@ -513,7 +526,7 @@ def try_except_stmt_to_ir(try_except_stmt: highir.TryExcept,
                                         error=None))
 
 def assignment_to_ir(assignment: highir.Assignment, writer: StmtWriter):
-    writer.write_stmt(ir.Assignment(lhs=var_reference_to_ir(assignment.lhs),
+    writer.write_stmt(ir.Assignment(lhs=var_reference_to_ir(assignment.lhs, writer),
                                     rhs=expr_to_ir(assignment.rhs, writer)))
 
 def return_stmt_to_ir(return_stmt: highir.ReturnStmt, writer: StmtWriter):
@@ -538,7 +551,7 @@ def raise_stmt_to_ir(raise_stmt: highir.RaiseStmt, writer: StmtWriter):
             # result, err = handler(e, ...)
             # return result, err
             exception_var = ir.VarReference(type=exception_expr.type,
-                                            name=context.caught_exception_name,
+                                            name=writer.obfuscate_identifier(context.caught_exception_name),
                                             is_global_function=False,
                                             is_function_that_may_throw=False)
             writer.write_stmt(ir.Assignment(lhs=exception_var, rhs=exception_expr))
@@ -592,7 +605,7 @@ def function_defn_to_ir(function_defn: highir.FunctionDefn, writer: FunWriter):
     stmts_to_ir(function_defn.body, stmt_writer)
 
     writer.write_function(ir.FunctionDefn(name=function_defn.name,
-                                          args=[function_arg_decl_to_ir(arg)
+                                          args=[function_arg_decl_to_ir(arg, stmt_writer)
                                                 for arg in function_defn.args],
                                           body=stmt_writer.stmts,
                                           return_type=return_type))

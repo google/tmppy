@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 import subprocess
 from enum import Enum
 
@@ -73,3 +74,17 @@ def clang_format(cxx_source: str, code_style='LLVM') -> str:
         raise Exception('clang-format exited with error code %s. Command was: %s. Error:\n%s' % (p.returncode, command, stderr))
     assert isinstance(stdout, str)
     return stdout
+
+def replace_identifiers(cpp_type, replacements):
+    last_index = 0
+    result_parts = []
+    for match in re.finditer(r'[a-zA-Z_][a-zA-Z_0-9]*', cpp_type):
+        result_parts.append(cpp_type[last_index:match.start()])
+        identifier = match.group(0)
+        if identifier in replacements:
+            result_parts.append(replacements[identifier])
+        else:
+            result_parts.append(identifier)
+        last_index = match.end()
+    result_parts.append(cpp_type[last_index:])
+    return ''.join(result_parts)
