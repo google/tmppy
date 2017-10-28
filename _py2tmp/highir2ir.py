@@ -521,8 +521,38 @@ def return_stmt_to_ir(return_stmt: highir.ReturnStmt, writer: StmtWriter):
                                     error=None))
 
 def raise_stmt_to_ir(raise_stmt: highir.RaiseStmt, writer: StmtWriter):
-    writer.write_stmt(ir.ReturnStmt(result=None,
-                                    error=expr_to_ir(raise_stmt.expr, writer)))
+    exception_expr = expr_to_ir(raise_stmt.expr, writer)
+    for context in writer.try_except_contexts:
+        if context.caught_exception_type == exception_expr.type:
+            # try:
+            #   raise f(x)
+            # except MyError as e:
+            #   ...
+            #
+            # Becomes:
+            #
+            # def handler(e, ...) :
+            #    ...
+            #
+            # e = f(x)
+            # result, err = handler(e, ...)
+            # return result, err
+            exception_var = ir.VarReference(type=exception_expr.type,
+                                            name=context.caught_exception_name,
+                                            is_global_function=False,
+                                            is_function_that_may_throw=False)
+            writer.write_stmt(ir.Assignment(lhs=exception_var, rhs=exception_expr))
+            handler_result_var = writer.new_var(context.except_fun_call_expr.type)
+            handler_error_var = writer.new_var(ir.ErrorOrVoidType())
+            writer.write_stmt(ir.Assignment(lhs=handler_result_var,
+                                            lhs2=handler_error_var,
+                                            rhs=context.except_fun_call_expr))
+            writer.write_stmt(ir.ReturnStmt(result=handler_result_var,
+                                            error=handler_error_var))
+            break
+    else:
+        writer.write_stmt(ir.ReturnStmt(result=None,
+                                        error=exception_expr))
 
 def if_stmt_to_ir(if_stmt: highir.IfStmt, writer: StmtWriter):
     cond_var = expr_to_ir(if_stmt.cond_expr, writer)

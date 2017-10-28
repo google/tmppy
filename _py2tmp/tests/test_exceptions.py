@@ -36,6 +36,23 @@ def test_exception_raised_and_caught_success():
             return Type('double')
     assert g(True) == Type('double')
 
+@assert_compilation_succeeds
+def test_exception_raised_and_caught_same_block_success():
+    from tmppy import Type
+    class MyError(Exception):
+        def __init__(self, b: bool, x: Type):
+            self.message = 'Something went wrong'
+            self.b = b
+            self.x = x
+    def f(b: bool):
+        try:
+            raise MyError(b, Type('int*'))
+        except MyError as e:
+            assert e.b == b
+            assert e.x == Type('int*')
+            return Type('double')
+    assert f(True) == Type('double')
+
 # TODO: add support for this.
 @assert_conversion_fails
 def test_exception_type_with_no_args_error():
