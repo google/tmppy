@@ -11,8 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import itertools
 
+import itertools
+import re
 import _py2tmp.lowir as lowir
 import _py2tmp.ir as ir
 from typing import List, Tuple, Optional, Iterator, Union, Callable, Dict
@@ -334,9 +335,31 @@ def bool_literal_to_low_ir(literal: ir.BoolLiteral):
 def int_literal_to_low_ir(literal: ir.IntLiteral):
     return lowir.Literal(value=literal.value, kind=lowir.ExprKind.INT64), None
 
+
+def _replace_multiple_identifiers(cpp_type, replacements):
+    last_index = 0
+    result_parts = []
+    for match in re.finditer(r'[a-zA-Z_][a-zA-Z_0-9]*', cpp_type):
+        result_parts.append(cpp_type[last_index:match.start()])
+        identifier = match.group(0)
+        if identifier in replacements:
+            result_parts.append(replacements[identifier])
+        else:
+            result_parts.append(identifier)
+        last_index = match.end()
+    result_parts.append(cpp_type[last_index:])
+    return ''.join(result_parts)
+
 def type_literal_to_low_ir(literal: ir.TypeLiteral):
     kind = type_to_low_ir(literal.type).kind
-    expr = lowir.TypeLiteral.for_nonlocal(cpp_type=literal.cpp_type,
+    replacements = dict()
+    for arg_name, arg_expr in sorted(literal.args.items(), key=lambda item: item[0]):
+        arg_literal = var_reference_to_low_ir(arg_expr)
+        assert isinstance(arg_literal.type, lowir.TypeType)
+        assert arg_literal.kind == lowir.ExprKind.TYPE
+        assert not arg_literal.is_metafunction_that_may_return_error
+        replacements[arg_name] = arg_literal.cpp_type
+    expr = lowir.TypeLiteral.for_nonlocal(cpp_type=_replace_multiple_identifiers(literal.cpp_type, replacements),
                                           kind=kind,
                                           is_metafunction_that_may_return_error=(kind == lowir.ExprKind.TEMPLATE))
     return expr, None

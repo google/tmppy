@@ -168,13 +168,15 @@ class BoolLiteral(Expr):
             yield
 
 class TypeLiteral(Expr):
-    def __init__(self, cpp_type: str):
+    def __init__(self, cpp_type: str, arg_exprs: Dict[str, Expr]):
         super().__init__(type=TypeType())
         self.cpp_type = cpp_type
+        self.arg_exprs = arg_exprs
 
     def get_free_variables(self):
-        if False:
-            yield
+        for expr in self.arg_exprs.values():
+            for var in expr.get_free_variables():
+                yield var
 
 class ListExpr(Expr):
     def __init__(self, elem_type: ExprType, elem_exprs: List[Expr]):

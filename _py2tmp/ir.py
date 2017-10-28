@@ -249,16 +249,19 @@ class BoolLiteral(Expr):
 
 
 class TypeLiteral(Expr):
-    def __init__(self, cpp_type: str):
+    def __init__(self, cpp_type: str, args: Dict[str, VarReference]):
         super().__init__(type=TypeType())
         self.cpp_type = cpp_type
+        self.args = args
 
     def get_free_variables(self):
-        if False:
-            yield
+        for arg in self.args.values():
+            for var in arg.get_free_variables():
+                yield var
 
     def __str__(self):
-        return 'Type(\'%s\')' % self.cpp_type
+        return 'Type(\'%s\'%s)' % (self.cpp_type, ''.join(', %s=%s' % (arg_name, str(arg_expr))
+                                                          for arg_name, arg_expr in self.args.items()))
 
     def describe_other_fields(self):
         return ''

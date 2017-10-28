@@ -1035,14 +1035,33 @@ def name_constant_ast_to_ir(ast_node: ast.NameConstant, compilation_context: Com
         raise CompilationError(compilation_context, ast_node, 'NameConstant not supported: ' + str(ast_node.value))  # pragma: no cover
 
 def type_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
-    if ast_node.keywords:
-        raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not supported.')
+    params_by_name = dict()
+    for keyword_arg in ast_node.keywords:
+        if keyword_arg.arg is None:
+            raise CompilationError(compilation_context, keyword_arg.value,
+                                   '**kwargs arguments are not supported (only explicit keyword arguments are).')
+        # Multiple keyword args with the same name result in a parsing error
+        assert keyword_arg.arg not in params_by_name
+        arg_expr = expression_ast_to_ir(keyword_arg.value, compilation_context)
+        if arg_expr.type != highir.TypeType():
+            notes = []
+            if isinstance(keyword_arg.value, ast.Name):
+                lookup_result = compilation_context.get_symbol_definition(keyword_arg.value.id)
+                assert not lookup_result.is_only_partially_defined
+                notes.append((lookup_result.ast_node, 'The definition of %s was here' % keyword_arg.value.id))
+            raise CompilationError(compilation_context, keyword_arg.value,
+                                   'Type mismatch for argument %s: expected type %s but was: %s' % (
+                                       keyword_arg.arg, str(highir.TypeType()), str(arg_expr.type)),
+                                   notes=notes)
+        params_by_name[keyword_arg.arg] = (keyword_arg.value, arg_expr)
+
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'Type() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
     if not isinstance(arg, ast.Str):
         raise CompilationError(compilation_context, arg, 'The first argument to Type should be a string constant.')
-    return highir.TypeLiteral(cpp_type=arg.s)
+    return highir.TypeLiteral(cpp_type=arg.s, arg_exprs={name: expr
+                                                         for name, (_, expr) in params_by_name.items()})
 
 def empty_list_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     if ast_node.keywords:

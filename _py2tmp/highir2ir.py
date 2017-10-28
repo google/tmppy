@@ -46,7 +46,7 @@ class FunWriter:
 
         stmt_writer = StmtWriter(self, current_fun_return_type=ir.BoolType())
         x_var = self.new_var(type=ir.ErrorOrVoidType())
-        v_var = stmt_writer.new_var_for_expr(ir.TypeLiteral(cpp_type='void'))
+        v_var = stmt_writer.new_var_for_expr(ir.TypeLiteral(cpp_type='void', args=dict()))
         b_var = stmt_writer.new_var_for_expr(ir.EqualityComparison(lhs=x_var, rhs=v_var))
         b2_var = stmt_writer.new_var_for_expr(ir.NotExpr(b_var))
         stmt_writer.write_stmt(ir.ReturnStmt(result=b2_var, error=None))
@@ -268,7 +268,10 @@ def int_literal_to_ir(literal: highir.IntLiteral, writer: StmtWriter):
     return writer.new_var_for_expr(ir.IntLiteral(value=literal.value))
 
 def type_literal_to_ir(literal: highir.TypeLiteral, writer: StmtWriter):
-    return writer.new_var_for_expr(ir.TypeLiteral(cpp_type=literal.cpp_type))
+    arg_vars_by_name = dict()
+    for arg_name, arg_expr in sorted(literal.arg_exprs.items(), key=lambda item: item[0]):
+        arg_vars_by_name[arg_name] = expr_to_ir(arg_expr, writer)
+    return writer.new_var_for_expr(ir.TypeLiteral(cpp_type=literal.cpp_type, args=arg_vars_by_name))
 
 def list_expr_to_ir(list_expr: highir.ListExpr, writer: StmtWriter):
     elem_vars = [expr_to_ir(elem_expr, writer)

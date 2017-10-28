@@ -19,6 +19,51 @@ def test_type_literal_success():
     from tmppy import Type
     assert Type('int') == Type('int')
 
+@assert_compilation_succeeds
+def test_type_pointer_literal_success():
+    from tmppy import Type
+    assert Type('T*', T=Type('int')) == Type('int*')
+
+@assert_compilation_succeeds
+def test_type_reference_literal_success():
+    from tmppy import Type
+    assert Type('T&', T=Type('int')) == Type('int&')
+
+@assert_compilation_succeeds
+def test_type_rvalue_reference_literal_success():
+    from tmppy import Type
+    assert Type('T&&', T=Type('int')) == Type('int&&')
+
+@assert_compilation_succeeds
+def test_const_type_literal_success():
+    from tmppy import Type
+    assert Type('const T', T=Type('int')) == Type('const int')
+
+@assert_compilation_succeeds
+def test_type_array_literal_success():
+    from tmppy import Type
+    assert Type('T[]', T=Type('int')) == Type('int[]')
+
+@assert_compilation_succeeds
+def test_type_function_literal_with_no_args_success():
+    from tmppy import Type
+    assert Type('T()', T=Type('int')) == Type('int()')
+
+@assert_compilation_succeeds
+def test_type_function_pointer_literal_with_no_args_success():
+    from tmppy import Type
+    assert Type('T(*)()', T=Type('int')) == Type('int(*)()')
+
+@assert_compilation_succeeds
+def test_type_function_literal_success():
+    from tmppy import Type
+    assert Type('T(U, V)', T=Type('int'), U=Type('float'), V=Type('double')) == Type('int(float, double)')
+
+@assert_compilation_succeeds
+def test_type_function_pointer_literal_success():
+    from tmppy import Type
+    assert Type('T(*)(U, V)', T=Type('int'), U=Type('float'), V=Type('double')) == Type('int(*)(float, double)')
+
 @assert_conversion_fails
 def test_type_literal_no_arguments_error():
     from tmppy import Type
@@ -38,8 +83,26 @@ def test_type_literal_argument_with_wrong_type_error():
         return Type(x)  # error: The first argument to Type should be a string constant.
 
 @assert_conversion_fails
-def test_type_literal_keyword_argument_error():
+def test_type_literal_kwargs_arg_not_supported():
     from tmppy import Type
     def f(x: bool):
-        return Type('int',
-                    x=x) # error: Keyword arguments are not supported.
+        y = 1
+        return Type(**y)  # error: \*\*kwargs arguments are not supported \(only explicit keyword arguments are\).
+
+@assert_conversion_fails
+def test_type_literal_string_arg_error():
+    from tmppy import Type
+    def f(x: bool):
+        return Type('T', T='int')  # error: This kind of expression is not supported.
+
+@assert_conversion_fails
+def test_type_literal_int_arg_error():
+    from tmppy import Type
+    def f(x: bool):
+        return Type('T', T=13)  # error: Type mismatch for argument T: expected type Type but was: int
+
+@assert_conversion_fails
+def test_type_literal_bool_var_arg_error():
+    from tmppy import Type
+    def f(x: bool):  # note: The definition of x was here
+        return Type('T', T=x)  # error: Type mismatch for argument T: expected type Type but was: bool

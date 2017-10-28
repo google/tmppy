@@ -16,7 +16,7 @@ import typing
 from typing import TypeVar, Callable, Dict, Any, List
 
 class Type:
-    def __init__(self, s):
+    def __init__(self, s, **kwargs: 'Type'):
         self.s = s
 
     def __str__(self):
