@@ -414,3 +414,12 @@ def test_match_multiple_mappings_that_specialize_nothing():
                     Type('double'),
         })
 
+@assert_conversion_fails
+def test_match_lambda_var_not_in_pattern_error():
+    from tmppy import Type, TypePattern, match
+    def f(x: Type):
+        return match(x)({
+            TypePattern('Bar'):  # note: The type patterns were defined here.
+                lambda Baz:  # error: The parameter Baz in the lambda does not appear in any type pattern.
+                    Type('double'),
+        })

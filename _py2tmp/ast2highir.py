@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import re
 import textwrap
 import _py2tmp.highir as highir
 import typed_ast.ast3 as ast
@@ -321,6 +321,12 @@ def match_expression_ast_to_ir(ast_node: ast.Call, compilation_context: Compilat
         lambda_body_compilation_context = compilation_context.create_child_context()
         lambda_arguments = []
         for arg in value_expr_ast.args.args:
+            if not any(re.search(r'\b%s\b' % arg.arg, type_pattern)
+                       for type_pattern in type_patterns):
+                raise CompilationError(compilation_context, arg,
+                                       'The parameter %s in the lambda does not appear in any type pattern.' % arg.arg,
+                                       notes=[(key_expr_ast, 'The type patterns were defined here.')])
+
             lambda_arguments.append(arg.arg)
             lambda_body_compilation_context.add_symbol(name=arg.arg,
                                                        type=highir.TypeType(),
@@ -1062,6 +1068,7 @@ def type_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationC
         raise CompilationError(compilation_context, arg, 'The first argument to Type should be a string constant.')
     return highir.TypeLiteral(cpp_type=arg.s, arg_exprs={name: expr
                                                          for name, (_, expr) in params_by_name.items()})
+
 
 def empty_list_literal_ast_to_ir(ast_node: ast.Call, compilation_context: CompilationContext):
     if ast_node.keywords:
