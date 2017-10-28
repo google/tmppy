@@ -661,7 +661,7 @@ def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_e
         return wrapper
     return eval
 
-# TODO: Check that the error is a static assert error and that it's reported on the desired line (moving the regex to a comment in the test).
+# TODO: Check that the error is s reported on the desired line (moving the regex to a comment in the test).
 def assert_compilation_fails_with_generic_error(expected_error_regex: str):
     def eval(f):
         @wraps(f)
@@ -670,6 +670,21 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str):
             module_ir, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
             expect_cpp_code_generic_compile_error(
                 expected_error_regex,
+                tmppy_source,
+                module_ir,
+                cpp_source)
+        return wrapper
+    return eval
+
+# TODO: Check that the error is s reported on the desired line (moving the regex to a comment in the test).
+def assert_compilation_fails_with_static_assert_error(expected_error_regex: str):
+    def eval(f):
+        @wraps(f)
+        def wrapper():
+            tmppy_source = _get_function_body(f)
+            module_ir, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+            expect_cpp_code_generic_compile_error(
+                r'(error: static assertion failed: |error: static_assert failed .)' + expected_error_regex,
                 tmppy_source,
                 module_ir,
                 cpp_source)

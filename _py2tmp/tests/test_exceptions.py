@@ -60,7 +60,7 @@ def test_exception_type_with_no_args_error():
         def __init__(self):  # error: Custom types must have at least 1 constructor argument \(and field\).
             self.message = 'Something went wrong'
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+@assert_compilation_fails_with_static_assert_error('Something went wrong')
 def test_exception_raised_and_not_caught_error():
     from tmppy import Type
     class MyError(Exception):
@@ -72,7 +72,7 @@ def test_exception_raised_and_not_caught_error():
         raise MyError(b, Type('int*'))
     assert f(True)
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+@assert_compilation_fails_with_static_assert_error('Something went wrong')
 def test_exception_raised_and_not_caught_with_branch_error():
     from tmppy import Type
     class MyError(Exception):
@@ -86,7 +86,7 @@ def test_exception_raised_and_not_caught_with_branch_error():
         return 1
     assert f(True) == 15
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+@assert_compilation_fails_with_static_assert_error('Something went wrong')
 def test_exception_raised_and_not_caught_from_another_function_error():
     from tmppy import Type
     class MyError(Exception):

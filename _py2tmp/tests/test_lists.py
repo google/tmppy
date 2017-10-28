@@ -336,7 +336,7 @@ def test_list_comprehension_in_function_using_function_variable_ok():
         return [x * k for x in [1, k, 3]]
     assert f(True) == [2, 4, 6]
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+@assert_compilation_fails_with_static_assert_error('Something went wrong')
 def test_list_comprehension_from_bool_list_throws_toplevel():
     from tmppy import empty_list
     class MyError(Exception):
@@ -366,7 +366,7 @@ def test_list_comprehension_from_bool_list_throws_in_function_caught_success():
             return [e.b]
     assert g(True) == [True]
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+@assert_compilation_fails_with_static_assert_error('Something went wrong')
 def test_list_comprehension_from_int_list_throws_toplevel():
     from tmppy import empty_list
     class MyError(Exception):
@@ -396,7 +396,7 @@ def test_list_comprehension_from_int_list_throws_in_function_caught_success():
             return [e.b]
     assert g(True) == [True]
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+@assert_compilation_fails_with_static_assert_error('Something went wrong')
 def test_list_comprehension_from_type_list_throws_toplevel():
     from tmppy import empty_list, Type
     class MyError(Exception):
@@ -427,7 +427,7 @@ def test_list_comprehension_from_type_list_throws_in_function_caught_success():
             return [e.b]
     assert g(True) == [True]
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: Something went wrong')
+@assert_compilation_fails_with_static_assert_error('Something went wrong')
 def test_list_comprehension_from_custom_type_list_throws_toplevel():
     from tmppy import empty_list
     class Int:

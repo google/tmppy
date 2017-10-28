@@ -18,7 +18,7 @@ from py2tmp.testing import *
 def test_bool_equals_success():
     assert True == True, 'Assertion error'
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+@assert_compilation_fails_with_static_assert_error('TMPPy assertion failed:')
 def test_bool_equals_error():
     assert True == False
 
@@ -66,7 +66,7 @@ def test_type_not_equal_success():
 def test_int_equals_success():
     assert 15 == 15
 
-@assert_compilation_fails_with_generic_error('error: static assertion failed: TMPPy assertion failed:')
+@assert_compilation_fails_with_static_assert_error('TMPPy assertion failed:')
 def test_int_equals_error():
     assert 1 == 0
 
