@@ -401,3 +401,35 @@ def test_function_returning_function_returning_function__bool_args_ok():
     def h(b: bool):
         return g
     assert h(True)(True)(False) == False
+
+@assert_compilation_succeeds
+def test_function_call_to_function_declared_after_with_return_type_decl_ok():
+    def f(b: bool):
+        return g(b)
+    def g(b: bool) -> bool:
+        return b
+    assert f(True)
+
+@assert_conversion_fails
+def test_function_call_to_function_declared_after_without_type_decl_error():
+    def f(b: bool):
+        return g(b)  # error: Reference to a function whose return type hasn't been determined yet. Please add a return type declaration in g or move its declaration before its use.
+    def g(b: bool):  # note: g was defined here
+        return b
+
+@assert_compilation_succeeds
+def test_recursive_function_call_with_return_type_decl_ok():
+    def fact(n: int) -> int:
+        if n == 0:
+            return 1
+        else:
+            return n * fact(n - 1)
+    assert fact(4) == 24
+
+@assert_conversion_fails
+def test_recursive_function_call_without_return_type_decl_error():
+    def fact(n: int):  # note: fact was defined here
+        if n == 0:
+            return 1
+        else:
+            return n * fact(n - 1)  # error: Recursive function references are only allowed if the return type is declared explicitly.

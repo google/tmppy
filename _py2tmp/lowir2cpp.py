@@ -242,6 +242,17 @@ def template_specialization_to_cpp(specialization: lowir.TemplateSpecialization,
             }};
             '''.format(**locals()))
 
+def template_defn_to_cpp_forward_decl(template_defn: lowir.TemplateDefn,
+                                      enclosing_function_defn_args: List[lowir.TemplateArgDecl],
+                                      writer: Writer):
+    template_name = template_defn.name
+    template_args = ', '.join(template_arg_decl_to_cpp(arg)
+                              for arg in template_defn.args)
+    writer.write_toplevel_elem('''\
+        template <{template_args}>
+        struct {template_name};
+        '''.format(**locals()))
+
 def template_defn_to_cpp(template_defn: lowir.TemplateDefn,
                          enclosing_function_defn_args: List[lowir.TemplateArgDecl],
                          writer: Writer):
@@ -251,13 +262,6 @@ def template_defn_to_cpp(template_defn: lowir.TemplateDefn,
                                        cxx_name=template_name,
                                        enclosing_function_defn_args=enclosing_function_defn_args,
                                        writer=writer)
-    else:
-        template_args = ', '.join(template_arg_decl_to_cpp(arg)
-                                  for arg in template_defn.args)
-        writer.write_toplevel_elem('''\
-            template <{template_args}>
-            struct {template_name};
-            '''.format(**locals()))
 
     for specialization in template_defn.specializations:
         template_specialization_to_cpp(specialization,
@@ -458,6 +462,12 @@ def header_to_cpp(header: lowir.Header, identifier_generator: Iterator[str]):
         #include <tmppy/tmppy.h>
         #include <type_traits>
         ''')
+    for elem in header.content:
+        # TODO: only do this when needed, many of these forward declarations are unnecessary.
+        if isinstance(elem, lowir.TemplateDefn):
+            template_defn_to_cpp_forward_decl(elem,
+                                              enclosing_function_defn_args=[],
+                                              writer=writer)
     for elem in header.content:
         if isinstance(elem, lowir.TemplateDefn):
             template_defn_to_cpp(elem,

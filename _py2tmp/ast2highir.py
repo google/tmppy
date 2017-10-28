@@ -65,9 +65,11 @@ class CompilationContext:
                  custom_types_symbol_table: SymbolTable,
                  filename: str,
                  source_lines: List[str],
-                 function_name: Optional[str] = None):
+                 function_name: Optional[str] = None,
+                 partially_typechecked_function_definitions_by_name: Dict[str, ast.FunctionDef] = None):
         self.symbol_table = symbol_table
         self.custom_types_symbol_table = custom_types_symbol_table
+        self.partially_typechecked_function_definitions_by_name = partially_typechecked_function_definitions_by_name or dict()
         self.filename = filename
         self.source_lines = source_lines
         self.current_function_name = function_name
@@ -77,7 +79,8 @@ class CompilationContext:
                                   self.custom_types_symbol_table,
                                   self.filename,
                                   self.source_lines,
-                                  function_name=function_name or self.current_function_name)
+                                  function_name=function_name or self.current_function_name,
+                                  partially_typechecked_function_definitions_by_name=self.partially_typechecked_function_definitions_by_name)
 
     def add_symbol(self,
                    name: str,
@@ -93,18 +96,8 @@ class CompilationContext:
         """
         if is_function_that_may_throw:
             assert isinstance(type, highir.FunctionType)
-        symbol_lookup_result = self.symbol_table.get_symbol_definition(name)
-        if not symbol_lookup_result:
-            symbol_lookup_result = self.custom_types_symbol_table.get_symbol_definition(name)
-        if symbol_lookup_result:
-            if symbol_lookup_result.is_only_partially_defined:
-                raise CompilationError(self, definition_ast_node,
-                                       '%s could be already initialized at this point.' % name,
-                                       notes=[(symbol_lookup_result.ast_node, 'It might have been initialized here (depending on which branch is taken).')])
-            else:
-                raise CompilationError(self, definition_ast_node,
-                                       '%s was already defined in this scope.' % name,
-                                       notes=[(symbol_lookup_result.ast_node, 'The previous declaration was here.')])
+
+        self._check_not_already_defined(name, definition_ast_node)
 
         self.symbol_table.add_symbol(name=name,
                                      type=type,
@@ -126,6 +119,57 @@ class CompilationContext:
                                                   definition_ast_node=definition_ast_node,
                                                   is_only_partially_defined=False,
                                                   is_function_that_may_throw=False)
+
+    def add_symbol_for_function_with_unknown_return_type(self,
+                                                         name: str,
+                                                         definition_ast_node: ast.FunctionDef):
+        self._check_not_already_defined(name, definition_ast_node)
+
+        self.partially_typechecked_function_definitions_by_name[name] = definition_ast_node
+
+    def get_symbol_definition(self, name: str):
+        return self.symbol_table.get_symbol_definition(name)
+
+    def get_partial_function_definition(self, name: str):
+        return self.partially_typechecked_function_definitions_by_name.get(name)
+
+    def get_type_symbol_definition(self, name: str):
+        return self.custom_types_symbol_table.get_symbol_definition(name)
+
+    def set_function_type(self, name: str, type: highir.FunctionType):
+        if name in self.partially_typechecked_function_definitions_by_name:
+            ast_node = self.partially_typechecked_function_definitions_by_name[name]
+            del self.partially_typechecked_function_definitions_by_name[name]
+            self.symbol_table.add_symbol(name=name,
+                                         type=type,
+                                         definition_ast_node=ast_node,
+                                         is_only_partially_defined=False,
+                                         is_function_that_may_throw=True)
+        else:
+            assert self.get_symbol_definition(name).symbol.type == type
+
+    def _check_not_already_defined(self, name: str, definition_ast_node: ast.AST):
+        symbol_lookup_result = self.symbol_table.get_symbol_definition(name)
+        if not symbol_lookup_result:
+            symbol_lookup_result = self.custom_types_symbol_table.get_symbol_definition(name)
+        if symbol_lookup_result:
+            is_only_partially_defined = symbol_lookup_result.is_only_partially_defined
+            previous_definition_ast_node = symbol_lookup_result.ast_node
+        elif name in self.partially_typechecked_function_definitions_by_name:
+            is_only_partially_defined = False
+            previous_definition_ast_node = self.partially_typechecked_function_definitions_by_name[name]
+        else:
+            is_only_partially_defined = None
+            previous_definition_ast_node = None
+        if previous_definition_ast_node:
+            if is_only_partially_defined:
+                raise CompilationError(self, definition_ast_node,
+                                       '%s could be already initialized at this point.' % name,
+                                       notes=[(previous_definition_ast_node, 'It might have been initialized here (depending on which branch is taken).')])
+            else:
+                raise CompilationError(self, definition_ast_node,
+                                       '%s was already defined in this scope.' % name,
+                                       notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
 
 class CompilationError(Exception):
     def __init__(self, compilation_context: CompilationContext, ast_node: ast.AST, error_message: str, notes: List[Tuple[ast.AST, str]] = []):
@@ -158,19 +202,24 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
     function_defns = []
     toplevel_assertions = []
     custom_types = []
+
+    # First pass: process everything except function bodies and toplevel assertions
     for ast_node in module_ast_node.body:
         if isinstance(ast_node, ast.FunctionDef):
-            new_function_defn = function_def_ast_to_ir(ast_node, compilation_context)
-            function_defns.append(new_function_defn)
+            function_name, arg_types, return_type = function_def_ast_to_symbol_info(ast_node, compilation_context)
 
-            compilation_context.add_symbol(
-                name=ast_node.name,
-                type=highir.FunctionType(argtypes=[arg.type
-                                                   for arg in new_function_defn.args],
-                                         returns=new_function_defn.return_type),
-                definition_ast_node=ast_node,
-                is_only_partially_defined=False,
-                is_function_that_may_throw=True)
+            if return_type:
+                compilation_context.add_symbol(
+                    name=function_name,
+                    type=highir.FunctionType(argtypes=arg_types,
+                                             returns=return_type),
+                    definition_ast_node=ast_node,
+                    is_only_partially_defined=False,
+                    is_function_that_may_throw=True)
+            else:
+                compilation_context.add_symbol_for_function_with_unknown_return_type(
+                    name=function_name,
+                    definition_ast_node=ast_node)
         elif isinstance(ast_node, ast.ImportFrom):
             supported_imports_by_module = {
                 'tmppy': ('Type', 'empty_list', 'TypePattern', 'match'),
@@ -190,16 +239,32 @@ def module_ast_to_ir(module_ast_node: ast.Module, compilation_context: Compilati
         elif isinstance(ast_node, ast.Import):
             raise CompilationError(compilation_context, ast_node,
                                    'TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".')
-        elif isinstance(ast_node, ast.Assert):
-            toplevel_assertions.append(assert_ast_to_ir(ast_node, compilation_context))
         elif isinstance(ast_node, ast.ClassDef):
             custom_type = class_definition_ast_to_ir(ast_node, compilation_context)
             compilation_context.add_custom_type_symbol(custom_type=custom_type,
                                                        definition_ast_node=ast_node)
             custom_types.append(custom_type)
+        elif isinstance(ast_node, ast.Assert):
+            # We'll process this in the 2nd pass (since we need to infer function return types first).
+            pass
         else:
             # raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy:\n%s' % ast_to_string(ast_node))
             raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy')
+
+    # 2nd pass: process function bodies and toplevel assertions
+    for ast_node in module_ast_node.body:
+        if isinstance(ast_node, ast.FunctionDef):
+            new_function_defn = function_def_ast_to_ir(ast_node, compilation_context)
+            function_defns.append(new_function_defn)
+
+            compilation_context.set_function_type(
+                name=ast_node.name,
+                type=highir.FunctionType(returns=new_function_defn.return_type,
+                                         argtypes=[arg.type
+                                                   for arg in new_function_defn.args]))
+        elif isinstance(ast_node, ast.Assert):
+            toplevel_assertions.append(assert_ast_to_ir(ast_node, compilation_context))
+
     return highir.Module(function_defns=function_defns,
                          assertions=toplevel_assertions,
                          custom_types=custom_types)
@@ -411,7 +476,7 @@ def raise_stmt_ast_to_ir(ast_node: ast.Raise, compilation_context: CompilationCo
     exception_expr = expression_ast_to_ir(ast_node.exc, compilation_context)
     if not (isinstance(exception_expr.type, highir.CustomType) and exception_expr.type.is_exception_class):
         if isinstance(exception_expr.type, highir.CustomType):
-            custom_type_defn = compilation_context.custom_types_symbol_table.get_symbol_definition(exception_expr.type.name).ast_node
+            custom_type_defn = compilation_context.get_type_symbol_definition(exception_expr.type.name).ast_node
             notes = [(custom_type_defn, 'The type %s was defined here.' % exception_expr.type.name)]
         else:
             notes = []
@@ -566,9 +631,9 @@ def statements_ast_to_ir(ast_nodes: List[ast.AST],
 
     return statements, first_return_stmt
 
-def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
+def function_def_ast_to_symbol_info(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
     function_body_compilation_context = compilation_context.create_child_context(function_name=ast_node.name)
-    args = []
+    arg_types = []
     for arg in ast_node.args.args:
         if not arg.annotation:
             if arg.type_comment:
@@ -581,8 +646,8 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
                                                      definition_ast_node=arg,
                                                      is_only_partially_defined=False,
                                                      is_function_that_may_throw=isinstance(arg_type, highir.FunctionType))
-        args.append(highir.FunctionArgDecl(type=arg_type, name=arg.arg))
-    if not args:
+        arg_types.append(arg_type)
+    if not arg_types:
         raise CompilationError(compilation_context, ast_node, 'Functions with no arguments are not supported.')
 
     if ast_node.args.vararg:
@@ -595,6 +660,25 @@ def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: Compi
         raise CompilationError(compilation_context, ast_node, 'Keyword function arguments are not supported.')
     if ast_node.decorator_list:
         raise CompilationError(compilation_context, ast_node, 'Function decorators are not supported.')
+
+    if ast_node.returns:
+        return_type = type_declaration_ast_to_ir_expression_type(ast_node.returns, compilation_context)
+    else:
+        return_type = None
+
+    return ast_node.name, arg_types, return_type
+
+def function_def_ast_to_ir(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
+    function_body_compilation_context = compilation_context.create_child_context(function_name=ast_node.name)
+    args = []
+    for arg in ast_node.args.args:
+        arg_type = type_declaration_ast_to_ir_expression_type(arg.annotation, compilation_context)
+        function_body_compilation_context.add_symbol(name=arg.arg,
+                                                     type=arg_type,
+                                                     definition_ast_node=arg,
+                                                     is_only_partially_defined=False,
+                                                     is_function_that_may_throw=isinstance(arg_type, highir.FunctionType))
+        args.append(highir.FunctionArgDecl(type=arg_type, name=arg.arg))
 
     statements, first_return_stmt = statements_ast_to_ir(ast_node.body, function_body_compilation_context,
                                                          previous_return_stmt=None,
@@ -722,7 +806,7 @@ def attribute_expression_ast_to_ir(ast_node: ast.Attribute, compilation_context:
                                                   attribute_name=ast_node.attr,
                                                   type=arg.type)
         else:
-            lookup_result = compilation_context.custom_types_symbol_table.get_symbol_definition(value_expr.type.name)
+            lookup_result = compilation_context.get_type_symbol_definition(value_expr.type.name)
             assert lookup_result
             raise CompilationError(compilation_context, ast_node.value,
                                    'Values of type "%s" don\'t have the attribute "%s". The available attributes for this type are: {"%s"}.' % (
@@ -850,7 +934,7 @@ def list_comprehension_ast_to_ir(ast_node: ast.ListComp, compilation_context: Co
     if not isinstance(list_expr.type, highir.ListType):
         notes = []
         if isinstance(list_expr, highir.VarReference):
-            lookup_result = compilation_context.symbol_table.get_symbol_definition(list_expr.name)
+            lookup_result = compilation_context.get_symbol_definition(list_expr.name)
             assert lookup_result
             notes.append((lookup_result.ast_node, '%s was defined here' % list_expr.name))
         raise CompilationError(compilation_context, ast_node.generators[0].target,
@@ -1013,7 +1097,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
         if not isinstance(fun_expr, highir.VarReference):
             raise CompilationError(compilation_context, ast_node,
                                    'Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable expressions. Please switch to non-keyword arguments.')
-        lookup_result = compilation_context.symbol_table.get_symbol_definition(fun_expr.name)
+        lookup_result = compilation_context.get_symbol_definition(fun_expr.name)
         assert lookup_result
         assert not lookup_result.is_only_partially_defined
         if isinstance(lookup_result.ast_node, ast.ClassDef):
@@ -1070,7 +1154,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
                 notes = [_construct_note_diagnostic_for_function_arg(arg_decl_ast_node)]
 
                 if isinstance(keyword_arg.value, ast.Name):
-                    lookup_result = compilation_context.symbol_table.get_symbol_definition(keyword_arg.value.id)
+                    lookup_result = compilation_context.get_symbol_definition(keyword_arg.value.id)
                     assert not lookup_result.is_only_partially_defined
                     notes.append((lookup_result.ast_node, 'The definition of %s was here' % keyword_arg.value.id))
 
@@ -1083,7 +1167,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
         args = [expression_ast_to_ir(arg_node, compilation_context) for arg_node in ast_node_args]
         if len(args) != len(fun_expr.type.argtypes):
             if isinstance(ast_node.func, ast.Name):
-                lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
+                lookup_result = compilation_context.get_symbol_definition(ast_node.func.id)
                 assert lookup_result
                 assert not lookup_result.is_only_partially_defined
                 raise CompilationError(compilation_context, ast_node,
@@ -1100,7 +1184,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
                 notes = []
 
                 if isinstance(ast_node.func, ast.Name):
-                    lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.func.id)
+                    lookup_result = compilation_context.get_symbol_definition(ast_node.func.id)
                     assert lookup_result
 
                     if isinstance(lookup_result.ast_node, ast.ClassDef):
@@ -1124,7 +1208,7 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
                         notes.append(_construct_note_diagnostic_for_function_arg(fun_definition_ast_node_args[arg_index]))
 
                 if isinstance(expr_ast_node, ast.Name):
-                    lookup_result = compilation_context.symbol_table.get_symbol_definition(expr_ast_node.id)
+                    lookup_result = compilation_context.get_symbol_definition(expr_ast_node.id)
                     assert lookup_result
 
                     notes.append((lookup_result.ast_node, 'The definition of %s was here' % expr_ast_node.id))
@@ -1141,18 +1225,28 @@ def function_call_ast_to_ir(ast_node: ast.Call, compilation_context: Compilation
 
 def var_reference_ast_to_ir(ast_node: ast.Name, compilation_context: CompilationContext):
     assert isinstance(ast_node.ctx, ast.Load)
-    lookup_result = compilation_context.symbol_table.get_symbol_definition(ast_node.id)
-    if not lookup_result:
-        raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function')
-    if lookup_result.is_only_partially_defined:
-        raise CompilationError(compilation_context, ast_node,
-                               'Reference to a variable that may or may not have been initialized (depending on which branch was taken)',
-                               notes=[(lookup_result.ast_node, '%s might have been initialized here' % ast_node.id)])
-    return highir.VarReference(type=lookup_result.symbol.type,
-                               name=lookup_result.symbol.name,
-                               is_global_function=lookup_result.symbol_table.parent is None,
-                               is_function_that_may_throw=isinstance(lookup_result.symbol.type, highir.FunctionType)
-                                                          and lookup_result.symbol.is_function_that_may_throw)
+    lookup_result = compilation_context.get_symbol_definition(ast_node.id)
+    if lookup_result:
+        if lookup_result.is_only_partially_defined:
+            raise CompilationError(compilation_context, ast_node,
+                                   'Reference to a variable that may or may not have been initialized (depending on which branch was taken)',
+                                   notes=[(lookup_result.ast_node, '%s might have been initialized here' % ast_node.id)])
+        return highir.VarReference(type=lookup_result.symbol.type,
+                                   name=lookup_result.symbol.name,
+                                   is_global_function=lookup_result.symbol_table.parent is None,
+                                   is_function_that_may_throw=isinstance(lookup_result.symbol.type, highir.FunctionType)
+                                                              and lookup_result.symbol.is_function_that_may_throw)
+    else:
+        definition_ast_node = compilation_context.get_partial_function_definition(ast_node.id)
+        if definition_ast_node:
+            if compilation_context.current_function_name == ast_node.id:
+                raise CompilationError(compilation_context, ast_node, 'Recursive function references are only allowed if the return type is declared explicitly.',
+                                       notes=[(definition_ast_node, '%s was defined here' % ast_node.id)])
+            else:
+                raise CompilationError(compilation_context, ast_node, 'Reference to a function whose return type hasn\'t been determined yet. Please add a return type declaration in %s or move its declaration before its use.' % ast_node.id,
+                                       notes=[(definition_ast_node, '%s was defined here' % ast_node.id)])
+        else:
+            raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function')
 
 def list_expression_ast_to_ir(ast_node: ast.List, compilation_context: CompilationContext):
     elem_exprs = [expression_ast_to_ir(elem_expr_node, compilation_context) for elem_expr_node in ast_node.elts]
@@ -1180,7 +1274,7 @@ def type_declaration_ast_to_ir_expression_type(ast_node: ast.AST, compilation_co
         elif ast_node.id == 'Type':
             return highir.TypeType()
         else:
-            lookup_result = compilation_context.custom_types_symbol_table.get_symbol_definition(ast_node.id)
+            lookup_result = compilation_context.get_type_symbol_definition(ast_node.id)
             if lookup_result:
                 return lookup_result.symbol.type
             else:
