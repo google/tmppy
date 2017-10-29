@@ -125,7 +125,7 @@ class PosixCompiler:
     def _compile(self, include_dirs, args):
         include_flags = ['-I%s' % include_dir for include_dir in include_dirs]
         args = (
-            ['-W', '-Wall', '-g0', '-Werror']
+            ['-W', '-Wall', '-g0', '-Werror', '-std=c++11']
             + include_flags
             + args
         )
