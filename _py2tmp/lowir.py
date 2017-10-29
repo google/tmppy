@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Set, Optional, Iterable, Union
+from typing import List, Set, Optional, Iterable, Union, Dict
 from enum import Enum
 
 class ExprKind(Enum):
@@ -122,10 +122,12 @@ class TypeLiteral(Expr):
                  cpp_type: str,
                  is_local: bool,
                  is_metafunction_that_may_return_error: bool,
+                 referenced_locals: List['TypeLiteral'],
                  kind: Optional[ExprKind] = None,
                  type: Optional[ExprType] = None):
         if is_local:
             assert type
+            assert not referenced_locals
         assert not (type and kind)
         if type:
             kind = type.kind
@@ -135,39 +137,51 @@ class TypeLiteral(Expr):
         self.is_local = is_local
         self.type = type
         self.is_metafunction_that_may_return_error = is_metafunction_that_may_return_error
+        self.referenced_locals = referenced_locals
 
     @staticmethod
-    def for_local(cpp_type: str, type: ExprType):
+    def for_local(cpp_type: str,
+                  type: ExprType):
         return TypeLiteral(cpp_type=cpp_type,
                            is_local=True,
                            type=type,
-                           is_metafunction_that_may_return_error=(type.kind == ExprKind.TEMPLATE))
+                           is_metafunction_that_may_return_error=(type.kind == ExprKind.TEMPLATE),
+                           referenced_locals=[])
 
     @staticmethod
-    def for_nonlocal(cpp_type: str, kind: ExprKind, is_metafunction_that_may_return_error: bool):
+    def for_nonlocal(cpp_type: str,
+                     kind: ExprKind,
+                     is_metafunction_that_may_return_error: bool,
+                     referenced_locals: List['TypeLiteral']):
         return TypeLiteral(cpp_type=cpp_type,
                            is_local=False,
                            kind=kind,
-                           is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
+                           is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
+                           referenced_locals=referenced_locals)
 
     @staticmethod
     def for_nonlocal_type(cpp_type: str):
         return TypeLiteral.for_nonlocal(cpp_type=cpp_type,
                                         kind=ExprKind.TYPE,
-                                        is_metafunction_that_may_return_error=False)
+                                        is_metafunction_that_may_return_error=False,
+                                        referenced_locals=[])
 
     @staticmethod
     def for_nonlocal_template(cpp_type: str, is_metafunction_that_may_return_error: bool):
         return TypeLiteral.for_nonlocal(cpp_type=cpp_type,
                                         kind=ExprKind.TEMPLATE,
-                                        is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
+                                        is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
+                                        referenced_locals=[])
 
     def references_any_of(self, variables: Set[str]):
-        return False
+        return any(local_var.cpp_type in variables
+                   for local_var in self.referenced_locals)
 
     def get_free_vars(self):
         if self.is_local:
             yield self
+        for local_var in self.referenced_locals:
+            yield local_var
 
 class TemplateArgPatternLiteral:
     def __init__(self, cxx_pattern: str = None):

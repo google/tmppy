@@ -339,15 +339,18 @@ def int_literal_to_low_ir(literal: ir.IntLiteral):
 def type_literal_to_low_ir(literal: ir.TypeLiteral):
     kind = type_to_low_ir(literal.type).kind
     replacements = dict()
+    arg_literals = []
     for arg_name, arg_expr in sorted(literal.args.items(), key=lambda item: item[0]):
         arg_literal = var_reference_to_low_ir(arg_expr)
+        arg_literals.append(arg_literal)
         assert isinstance(arg_literal.type, lowir.TypeType)
         assert arg_literal.kind == lowir.ExprKind.TYPE
         assert not arg_literal.is_metafunction_that_may_return_error
         replacements[arg_name] = arg_literal.cpp_type
     expr = lowir.TypeLiteral.for_nonlocal(cpp_type=utils.replace_identifiers(literal.cpp_type, replacements),
                                           kind=kind,
-                                          is_metafunction_that_may_return_error=(kind == lowir.ExprKind.TEMPLATE))
+                                          is_metafunction_that_may_return_error=(kind == lowir.ExprKind.TEMPLATE),
+                                          referenced_locals=arg_literals)
     return expr, None
 
 def list_expr_to_low_ir(list_expr: ir.ListExpr):

@@ -30,3 +30,15 @@ def test_unsupported_statement_error():
     def f(x: bool):
         for y in [x]:  # error: Unsupported statement.
             return y
+
+@assert_compilation_succeeds
+def test_add_pointer_multiple_example():
+    from tmppy import Type
+    def add_pointer_multiple(t: Type, n: int) -> Type:
+        if n == 0:
+            return t
+        else:
+            return Type('T*', T=add_pointer_multiple(t, n-1))
+    assert add_pointer_multiple(Type('int'), 0) == Type('int')
+    assert add_pointer_multiple(Type('int'), 2) == Type('int**')
+    assert add_pointer_multiple(Type('int*'), 2) == Type('int***')
