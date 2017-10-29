@@ -36,7 +36,7 @@ Some C++ metaprogramming libraries (notably Boost's MPL library) can be used to 
 
 Using TMPPy, the above can be written as:
 
-    def add_pointer_multiple(t: Type, n: int):
+    def add_pointer_multiple(t: Type, n: int) -> Type:
         if n == 0:
             return t
         else:
