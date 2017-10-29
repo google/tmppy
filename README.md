@@ -1,3 +1,6 @@
+
+[![Build Status](https://img.shields.io/travis/google/tmppy/master.svg?label=Linux/OSX%20build/tests)](https://travis-ci.org/google/tmppy)
+
 TMPPy is a subset of Python that can be compiled to C++ meta-functions using the `py2tmp` compiler.
 This project is aimed at C++ library developers whose libraries include a non-trivial amount of C++
 metaprogramming.
