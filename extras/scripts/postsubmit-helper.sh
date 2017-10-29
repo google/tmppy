@@ -71,6 +71,9 @@ clang-default)
     export CXX=clang++
     ;;
 
+bazel)
+    ;;
+
 *)
     echo "Unrecognized value of COMPILER: $COMPILER"
     exit 1
@@ -80,41 +83,57 @@ run_make() {
   make -j$N_JOBS
 }
 
-echo CXX version: $($CXX --version)
-echo C++ Standard library location: $(echo '#include <vector>' | $CXX -x c++ -E - | grep 'vector\"' | awk '{print $3}' | sed 's@/vector@@;s@\"@@g' | head -n 1)
-echo Normalized C++ Standard library location: $(readlink -f $(echo '#include <vector>' | $CXX -x c++ -E - | grep 'vector\"' | awk '{print $3}' | sed 's@/vector@@;s@\"@@g' | head -n 1))
-
-case "$1" in
-DebugPlain)           CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Debug   -DCMAKE_CXX_FLAGS="$STLARG -Werror -pedantic -D_GLIBCXX_DEBUG -O2") ;;
-ReleasePlain)         CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="$STLARG -Werror -pedantic") ;;
-*) echo "Error: you need to specify one of the supported postsubmit modes (see postsubmit.sh)."; exit 1 ;;
-esac
-
-SOURCES_PATH="$PWD"
-
-# This is not needed on Travis CI, but it's sometimes needed when running postsubmit.sh locally, to avoid "import
-# file mismatch" errors.
-rm -rf */tests/__pycache__/ */tests/*.pyc */tests/*/__pycache__/ */tests/*/*.pyc
-
-rm -rf build
-mkdir build
-cd build
-cmake .. "${CMAKE_ARGS[@]}"
-echo
-echo "Content of CMakeFiles/CMakeError.log:"
-if [ -f "CMakeFiles/CMakeError.log" ]
+if [[ "${COMPILER}" != "bazel" ]]
 then
-  cat CMakeFiles/CMakeError.log
+    echo CXX version: $($CXX --version)
+    echo C++ Standard library location: $(echo '#include <vector>' | $CXX -x c++ -E - | grep 'vector\"' | awk '{print $3}' | sed 's@/vector@@;s@\"@@g' | head -n 1)
+    echo Normalized C++ Standard library location: $(readlink -f $(echo '#include <vector>' | $CXX -x c++ -E - | grep 'vector\"' | awk '{print $3}' | sed 's@/vector@@;s@\"@@g' | head -n 1))
+
+    case "$1" in
+    DebugPlain)           CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Debug   -DCMAKE_CXX_FLAGS="$STLARG -Werror -pedantic -D_GLIBCXX_DEBUG -O2") ;;
+    ReleasePlain)         CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="$STLARG -Werror -pedantic") ;;
+    *) echo "Error: you need to specify one of the supported postsubmit modes (see postsubmit.sh)."; exit 1 ;;
+    esac
+
+    SOURCES_PATH="$PWD"
+
+    # This is not needed on Travis CI, but it's sometimes needed when running postsubmit.sh locally, to avoid "import
+    # file mismatch" errors.
+    rm -rf */tests/__pycache__/ */tests/*.pyc */tests/*/__pycache__/ */tests/*/*.pyc
+
+    rm -rf build
+    mkdir build
+    cd build
+    cmake .. "${CMAKE_ARGS[@]}"
+    echo
+    echo "Content of CMakeFiles/CMakeError.log:"
+    if [ -f "CMakeFiles/CMakeError.log" ]
+    then
+      cat CMakeFiles/CMakeError.log
+    fi
+    echo
+    run_make
+
+    cd _py2tmp/tests
+    run_make
+    # We specify the path explicitly because old versions of pytest (e.g. the one in Ubuntu 14.04)
+    # don't support the testpaths setting in pytest.ini, so they will ignore it and they would
+    # otherwise run no tests.
+    py.test -n auto -r a "$SOURCES_PATH"/_py2tmp/tests
+    cd ../../
+
+    make install
+else
+    # COMPILER=bazel
+    
+    BAZEL_FLAGS=("--force_python=PY3")
+    case "$1" in
+    DebugPlain)      ;;
+    ReleasePlain)    BAZEL_FLAGS+=("-c" "opt") ;;
+    *) echo "Error: you need to specify one of the supported postsubmit modes (see postsubmit.sh)."; exit 1 ;;
+    esac
+
+    cd extras/bazel_root/third_party/tmppy
+    bazel build "${BAZEL_FLAGS[@]}" ...
+    bazel test "${BAZEL_FLAGS[@]}" --test_output=errors ...
 fi
-echo
-run_make
-
-cd _py2tmp/tests
-run_make
-# We specify the path explicitly because old versions of pytest (e.g. the one in Ubuntu 14.04)
-# don't support the testpaths setting in pytest.ini, so they will ignore it and they would
-# otherwise run no tests.
-py.test -n auto -r a "$SOURCES_PATH"/_py2tmp/tests
-cd ../../
-
-make install

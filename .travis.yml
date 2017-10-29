@@ -62,6 +62,12 @@ matrix:
     script: export OS=linux; export COMPILER='clang-4.0'; export STL='libstdc++';
       export UBUNTU='17.04'; extras/scripts/postsubmit.sh DebugPlain
   - compiler: gcc
+    env: COMPILER=bazel UBUNTU=16.04
+    install: export OS=linux; export COMPILER='bazel'; export UBUNTU='16.04'; extras/scripts/travis_ci_install_linux.sh
+    os: linux
+    script: export OS=linux; export COMPILER='bazel'; export UBUNTU='16.04'; extras/scripts/postsubmit.sh
+      DebugPlain
+  - compiler: gcc
     env: COMPILER=gcc-6 TEST=DebugPlain
     install: export OS=osx; export COMPILER='gcc-6'; extras/scripts/travis_ci_install_osx.sh
     os: osx

@@ -199,7 +199,7 @@ def expect_cpp_code_compile_error_helper(check_error_fun, tmppy_source, cxx_sour
     try:
         compiler.compile_discarding_output(
             source=source_file_name,
-            include_dirs=[config.MPYL_INCLUDE_DIR],
+            include_dirs=[config.TMPPY_INCLUDE_DIR],
             args=[])
         pytest.fail(textwrap.dedent('''\
             The test should have failed to compile, but it compiled successfully.
@@ -505,7 +505,7 @@ def expect_cpp_code_success(tmppy_source, module_ir, cxx_source):
     try:
         compiler.compile_and_link(
             source=source_file_name,
-            include_dirs=[config.MPYL_INCLUDE_DIR],
+            include_dirs=[config.TMPPY_INCLUDE_DIR],
             output_file_name=output_file_name,
             args=[])
     except CommandFailedException as e1:
