@@ -24,7 +24,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 set(INSTALL_INCLUDE_DIR include/fruit CACHE PATH "Installation directory for headers")
 
-set(TMPPY_VERSION "0.1.1")
+set(TMPPY_VERSION "0.1.3")
 
 install(DIRECTORY include/fruit/
   DESTINATION "${INSTALL_INCLUDE_DIR}"

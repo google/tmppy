@@ -25,7 +25,7 @@ with codecs.open(os.path.join(parent_path, 'README.md'), encoding='utf-8') as f:
 
 setuptools.setup(
     name='TMPPy',
-    version='0.1.1',
+    version='0.1.3',
     description='A subset of Python that can be compiled to C++ meta-functions using the py2tmp compiler',
     long_description=long_description,
     url='https://github.com/google/tmppy',
@@ -46,9 +46,7 @@ setuptools.setup(
     ],
 
     packages=setuptools.find_packages(exclude=['*.tests', 'extras']),
-    package_data={
-        'tmppy': ['include/tmppy/tmppy.h'],
-    },
+    data_files=[('include/tmppy', ['include/tmppy/tmppy.h'])],
     entry_points={
         'console_scripts': ['py2tmp=py2tmp:main'],
     },
