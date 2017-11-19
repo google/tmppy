@@ -115,6 +115,16 @@ struct BoolListConcat<BoolList<bs1...>, BoolList<bs2...>> {
   using type = BoolList<bs1..., bs2...>;
 };
 
+template <typename L>
+struct Int64ListSum {
+  static constexpr int64_t value = 0;
+};
+
+template <int64_t n, int64_t... ns>
+struct Int64ListSum<Int64List<n, ns...>> {
+  static constexpr int64_t value = n + Int64ListSum<Int64List<ns...>>::value;
+};
+
 template <typename... Ts>
 struct GetFirstError {
   using type = void;

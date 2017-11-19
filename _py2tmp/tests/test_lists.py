@@ -490,3 +490,16 @@ def test_list_comprehension_transforming_to_function_list_error():
     def f(b: bool):
         return b
     assert [f for x in [1, 2]]  # error: Creating lists of functions is not supported. The elements of this list have type: \(bool\) -> bool
+
+@assert_compilation_succeeds
+def test_sum_success():
+    assert sum([5, 1, 34]) == 40
+
+@assert_compilation_succeeds
+def test_sum_empty_list_success():
+    from tmppy import empty_list
+    assert sum(empty_list(int)) == 0
+
+@assert_conversion_fails
+def test_sum_bool_list_error():
+    assert sum([True, False]) == 40  # error: The argument of sum\(\) must have type List\[int\]. Got type: List\[bool\]

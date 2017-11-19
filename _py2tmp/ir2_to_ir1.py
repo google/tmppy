@@ -114,6 +114,8 @@ def expr_to_ir1(expr: ir2.Expr, writer: Writer) -> ir1.Expr:
         return int_comparison_expr_to_ir1(expr, writer)
     elif isinstance(expr, ir2.UnaryMinusExpr):
         return unary_minus_expr_to_ir1(expr, writer)
+    elif isinstance(expr, ir2.IntListSumExpr):
+        return int_list_sum_expr_to_ir1(expr, writer)
     elif isinstance(expr, ir2.IntBinaryOpExpr):
         return int_binary_op_expr_to_ir1(expr, writer)
     elif isinstance(expr, ir2.ListConcatExpr):
@@ -202,6 +204,21 @@ def int_comparison_expr_to_ir1(expr: ir2.IntComparisonExpr, writer: Writer):
 
 def unary_minus_expr_to_ir1(expr: ir2.UnaryMinusExpr, writer: Writer):
     return ir1.UnaryMinusExpr(var=var_reference_to_ir1(expr.var, writer))
+
+def int_list_sum_expr_to_ir1(expr: ir2.IntListSumExpr, writer: Writer):
+    # sum(l)
+    #
+    # Becomes:
+    #
+    # Int64ListSum<l>::value
+
+    template_instantiation = ir1.TemplateInstantiation(template_name='Int64ListSum',
+                                                       args=[var_reference_to_ir1(expr.var, writer)],
+                                                       instantiation_might_trigger_static_asserts=False)
+
+    return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
+                                 member_name='value',
+                                 member_type=ir1.IntType())
 
 def int_binary_op_expr_to_ir1(expr: ir2.IntBinaryOpExpr, writer: Writer):
     return ir1.IntBinaryOpExpr(lhs=var_reference_to_ir1(expr.lhs, writer),

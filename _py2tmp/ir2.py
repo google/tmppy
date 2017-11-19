@@ -395,6 +395,23 @@ class UnaryMinusExpr(Expr):
     def describe_other_fields(self):
         return self.var.describe_other_fields()
 
+class IntListSumExpr(Expr):
+    def __init__(self, var: VarReference):
+        assert isinstance(var.type, ListType)
+        assert isinstance(var.type.elem_type, IntType)
+        super().__init__(type=IntType())
+        self.var = var
+
+    def get_free_variables(self):
+        for var in self.var.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'sum(%s)' % self.var.name
+
+    def describe_other_fields(self):
+        return self.var.describe_other_fields()
+
 class IntComparisonExpr(Expr):
     def __init__(self, lhs: VarReference, rhs: VarReference, op: str):
         assert lhs.type == IntType()

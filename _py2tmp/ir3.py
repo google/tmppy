@@ -190,6 +190,17 @@ class ListExpr(Expr):
             for var in expr.get_free_variables():
                 yield var
 
+class IntListSumExpr(Expr):
+    def __init__(self, list_expr: Expr):
+        assert isinstance(list_expr.type, ListType)
+        assert isinstance(list_expr.type.elem_type, IntType)
+        super().__init__(type=IntType())
+        self.list_expr = list_expr
+
+    def get_free_variables(self):
+        for var in self.list_expr.get_free_variables():
+            yield var
+
 class FunctionCall(Expr):
     def __init__(self,
                  fun_expr: Expr,
