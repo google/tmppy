@@ -95,17 +95,6 @@ class FunctionType(ExprType):
                       for arg in self.argtypes),
             str(self.returns))
 
-class ListType(ExprType):
-    def __init__(self, elem_type: ExprType):
-        assert not isinstance(elem_type, FunctionType)
-        self.elem_type = elem_type
-
-    def __eq__(self, other):
-        return isinstance(other, ListType) and self.__dict__ == other.__dict__
-
-    def __str__(self):
-        return 'List[%s]' % str(self.elem_type)
-
 class CustomTypeArgDecl:
     def __init__(self, name: str, type: ExprType):
         self.name = name
@@ -249,7 +238,7 @@ class BoolLiteral(Expr):
 
 
 class TypeLiteral(Expr):
-    def __init__(self, cpp_type: str, args: Dict[str, VarReference]):
+    def __init__(self, cpp_type: str, args: Dict[str, Expr]):
         super().__init__(type=TypeType())
         self.cpp_type = cpp_type
         self.args = args
@@ -266,24 +255,48 @@ class TypeLiteral(Expr):
     def describe_other_fields(self):
         return ''
 
-class ListExpr(Expr):
-    def __init__(self, elem_type: ExprType, elems: List[VarReference]):
-        assert not isinstance(elem_type, FunctionType)
-        super().__init__(type=ListType(elem_type))
-        self.elem_type = elem_type
-        self.elems = elems
+class TemplateInstantiation(Expr):
+    def __init__(self,
+                 template_name: str,
+                 args: List[VarReference],
+                 instantiation_might_trigger_static_asserts: bool):
+        super().__init__(type=TypeType())
+        self.template_name = template_name
+        self.args = args
+        self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
 
     def get_free_variables(self):
-        for expr in self.elems:
+        for expr in self.args:
             for var in expr.get_free_variables():
                 yield var
 
     def __str__(self):
-        return '[%s]' % ', '.join(var.name
-                                  for var in self.elems)
+        return str(TypeLiteral(cpp_type='%s<%s>' % (self.template_name, ', '.join(arg.name
+                                                                                  for arg in self.args)),
+                               args={arg.name: arg.name
+                                     for arg in self.args}))
 
     def describe_other_fields(self):
-        return ''
+        return '; '.join('%s: %s' % (arg.name, arg.describe_other_fields())
+                         for arg in self.args)
+
+class ClassMemberAccess(Expr):
+    def __init__(self, class_type_expr: Expr, member_name: str, member_type: ExprType):
+        super().__init__(type=member_type)
+        self.class_type_expr = class_type_expr
+        self.member_name = member_name
+        self.member_type = member_type
+
+    def get_free_variables(self):
+        for var in self.class_type_expr.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return str(TypeLiteral(cpp_type='X::%s' % self.member_name,
+                               args={'X': self.class_type_expr}))
+
+    def describe_other_fields(self):
+        return self.class_type_expr.describe_other_fields()
 
 class FunctionCall(Expr):
     def __init__(self, fun: VarReference, args: List[VarReference]):
@@ -437,25 +450,6 @@ class IntBinaryOpExpr(Expr):
     def describe_other_fields(self):
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
-class ListConcatExpr(Expr):
-    def __init__(self, lhs: VarReference, rhs: VarReference):
-        assert isinstance(lhs.type, ListType)
-        assert lhs.type == rhs.type
-        super().__init__(type=lhs.type)
-        self.lhs = lhs
-        self.rhs = rhs
-
-    def get_free_variables(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_variables():
-                yield var
-
-    def __str__(self):
-        return '%s + %s' % (self.lhs.name, self.rhs.name)
-
-    def describe_other_fields(self):
-        return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
-
 class IsInstanceExpr(Expr):
     def __init__(self, var: VarReference, checked_type: CustomType):
         super().__init__(type=BoolType())
@@ -491,9 +485,8 @@ class SafeUncheckedCast(Expr):
 
 class ListComprehensionExpr(Expr):
     def __init__(self, list_var: VarReference, loop_var: VarReference, result_elem_expr: FunctionCall):
-        assert isinstance(list_var.type, ListType)
-        assert list_var.type.elem_type == loop_var.type
-        super().__init__(type=ListType(result_elem_expr.type))
+        assert isinstance(list_var.type, TypeType)
+        super().__init__(type=TypeType())
         self.list_var = list_var
         self.loop_var = loop_var
         self.result_elem_expr = result_elem_expr
@@ -670,7 +663,8 @@ class CheckIfErrorDefn:
         writer.writeln('')
 
 class Module:
-    def __init__(self, body: List[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]]):
+    def __init__(self,
+                 body: List[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]]):
         self.body = body
 
     def __str__(self):

@@ -124,8 +124,6 @@ def type_to_ir0(type: ir1.ExprType):
         return ir0.TypeType()
     elif isinstance(type, ir1.CustomType):
         return ir0.TypeType()
-    elif isinstance(type, ir1.ListType):
-        return ir0.TypeType()
     elif isinstance(type, ir1.ErrorOrVoidType):
         return ir0.TypeType()
     elif isinstance(type, ir1.FunctionType):
@@ -151,8 +149,6 @@ def expr_to_ir0(expr: ir1.Expr, writer: Writer) -> Tuple[Optional[ir0.Expr], Opt
         return int_literal_to_ir0(expr)
     elif isinstance(expr, ir1.TypeLiteral):
         return type_literal_to_ir0(expr)
-    elif isinstance(expr, ir1.ListExpr):
-        return list_expr_to_ir0(expr)
     elif isinstance(expr, ir1.FunctionCall):
         return function_call_to_ir0(expr, writer)
     elif isinstance(expr, ir1.EqualityComparison):
@@ -167,14 +163,16 @@ def expr_to_ir0(expr: ir1.Expr, writer: Writer) -> Tuple[Optional[ir0.Expr], Opt
         return int_comparison_expr_to_ir0(expr)
     elif isinstance(expr, ir1.IntBinaryOpExpr):
         return int_binary_op_expr_to_ir0(expr)
-    elif isinstance(expr, ir1.ListConcatExpr):
-        return list_concat_expr_to_ir0(expr, writer)
     elif isinstance(expr, ir1.IsInstanceExpr):
         return is_instance_expr_to_ir0(expr, writer)
     elif isinstance(expr, ir1.SafeUncheckedCast):
         return safe_unchecked_cast_expr_to_ir0(expr), None
     elif isinstance(expr, ir1.ListComprehensionExpr):
         return list_comprehension_expr_to_ir0(expr, writer)
+    elif isinstance(expr, ir1.ClassMemberAccess):
+        return class_member_access_expr_to_ir0(expr, writer), None
+    elif isinstance(expr, ir1.TemplateInstantiation):
+        return template_instantiation_expr_to_ir0(expr, writer), None
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -351,26 +349,6 @@ def type_literal_to_ir0(literal: ir1.TypeLiteral):
                                         referenced_locals=arg_literals)
     return expr, None
 
-def list_expr_to_ir0(list_expr: ir1.ListExpr):
-    exprs = [var_reference_to_ir0(elem)
-             for elem in list_expr.elems]
-
-    elem_kind = type_to_ir0(list_expr.elem_type).kind
-    if elem_kind == ir0.ExprKind.BOOL:
-        list_template = ir0.TypeLiteral.for_nonlocal_template('BoolList', is_metafunction_that_may_return_error=False)
-    elif elem_kind == ir0.ExprKind.INT64:
-        list_template = ir0.TypeLiteral.for_nonlocal_template('Int64List', is_metafunction_that_may_return_error=False)
-    elif elem_kind == ir0.ExprKind.TYPE:
-        list_template = ir0.TypeLiteral.for_nonlocal_template('List', is_metafunction_that_may_return_error=False)
-    else:
-        raise NotImplementedError('elem_kind: %s' % elem_kind)
-
-    expr = ir0.TemplateInstantiation(template_expr=list_template,
-                                     arg_types=[],
-                                     instantiation_might_trigger_static_asserts=False,
-                                     args=exprs)
-    return expr, None
-
 def function_call_to_ir0(call_expr: ir1.FunctionCall, writer: Writer):
     fun = var_reference_to_ir0(call_expr.fun)
     args = [var_reference_to_ir0(arg)
@@ -435,24 +413,6 @@ def int_binary_op_expr_to_ir0(expr: ir1.IntBinaryOpExpr):
         '%': '%',
     }[expr.op]
     return ir0.Int64BinaryOpExpr(lhs=lhs, rhs=rhs, op=cpp_op), None
-
-def list_concat_expr_to_ir0(expr: ir1.ListConcatExpr, writer: Writer):
-    lhs = var_reference_to_ir0(expr.lhs)
-    rhs = var_reference_to_ir0(expr.rhs)
-    assert isinstance(expr.type, ir1.ListType)
-    elem_kind = type_to_ir0(expr.type.elem_type).kind
-    type = type_to_ir0(expr.type)
-    list_concat_cpp_type = {
-        ir0.ExprKind.BOOL: 'BoolListConcat',
-        ir0.ExprKind.INT64: 'Int64ListConcat',
-        ir0.ExprKind.TYPE: 'TypeListConcat',
-    }[elem_kind]
-    return _create_metafunction_call(template_expr=ir0.TypeLiteral.for_nonlocal_template(cpp_type=list_concat_cpp_type,
-                                                                                         is_metafunction_that_may_return_error=False),
-                                     args=[lhs, rhs],
-                                     arg_types=[type, type],
-                                     member_kind=type.kind,
-                                     writer=writer)
 
 def is_instance_expr_to_ir0(expr: ir1.IsInstanceExpr, writer: Writer):
     is_instance_of_type_template = ir0.TypeLiteral.for_nonlocal_template(cpp_type=writer.get_is_instance_template_name_for_error(expr.checked_type.name),
@@ -574,6 +534,22 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
                                                     ir0.TemplateType(argtypes=[x_type])],
                                          member_kind=type_to_ir0(expr.type).kind,
                                          writer=writer)
+
+def class_member_access_expr_to_ir0(expr: ir1.ClassMemberAccess, writer: Writer):
+    result_var, error_var = expr_to_ir0(expr.class_type_expr, writer)
+    assert not error_var
+    return ir0.ClassMemberAccess(class_type_expr=result_var,
+                                 member_name=expr.member_name,
+                                 member_kind=type_to_ir0(expr.member_type).kind)
+
+def template_instantiation_expr_to_ir0(expr: ir1.TemplateInstantiation, writer: Writer):
+    return ir0.TemplateInstantiation(template_expr=ir0.TypeLiteral.for_nonlocal_template(cpp_type=expr.template_name,
+                                                                                         is_metafunction_that_may_return_error=False),
+                                     args=[var_reference_to_ir0(arg)
+                                           for arg in expr.args],
+                                     arg_types=[type_to_ir0(arg.type)
+                                                for arg in expr.args],
+                                     instantiation_might_trigger_static_asserts=expr.instantiation_might_trigger_static_asserts)
 
 def assert_to_ir0(assert_stmt: ir1.Assert, writer: Writer):
     expr = var_reference_to_ir0(assert_stmt.var)

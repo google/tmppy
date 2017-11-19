@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import _py2tmp.ir0 as ir0
 import _py2tmp.ir1 as ir1
 import _py2tmp.ir2 as ir2
+import _py2tmp.ir1_to_ir0 as ir1_to_ir0
+
 from typing import List, Iterator, Optional
 
 class Writer:
@@ -75,7 +78,7 @@ def type_to_ir1(type: ir2.ExprType):
     elif isinstance(type, ir2.ErrorOrVoidType):
         return ir1.ErrorOrVoidType()
     elif isinstance(type, ir2.ListType):
-        return ir1.ListType(elem_type=type_to_ir1(type.elem_type))
+        return ir1.TypeType()
     elif isinstance(type, ir2.FunctionType):
         return ir1.FunctionType(argtypes=[type_to_ir1(arg)
                                           for arg in type.argtypes],
@@ -154,9 +157,26 @@ def type_literal_to_ir1(literal: ir2.TypeLiteral, writer: Writer):
                                  for arg_name, arg_expr in literal.args.items()})
 
 def list_expr_to_ir1(list_expr: ir2.ListExpr, writer: Writer):
-    return ir1.ListExpr(elem_type=type_to_ir1(list_expr.elem_type),
-                        elems=[var_reference_to_ir1(elem_expr, writer)
-                               for elem_expr in list_expr.elems])
+    # [1, 2, x]
+    #
+    # Becomes:
+    #
+    # IntList<1, 2, x>
+
+    elem_kind = ir1_to_ir0.type_to_ir0(type_to_ir1(list_expr.elem_type)).kind
+    if elem_kind == ir0.ExprKind.BOOL:
+        list_template_name = 'BoolList'
+    elif elem_kind == ir0.ExprKind.INT64:
+        list_template_name = 'Int64List'
+    elif elem_kind == ir0.ExprKind.TYPE:
+        list_template_name = 'List'
+    else:
+        raise NotImplementedError('elem_kind: %s' % elem_kind)
+
+    return ir1.TemplateInstantiation(template_name=list_template_name,
+                                     args=[var_reference_to_ir1(elem_expr, writer)
+                                           for elem_expr in list_expr.elems],
+                                     instantiation_might_trigger_static_asserts=False)
 
 def function_call_to_ir1(call_expr: ir2.FunctionCall, writer: Writer):
     return ir1.FunctionCall(fun=var_reference_to_ir1(call_expr.fun, writer),
@@ -189,8 +209,30 @@ def int_binary_op_expr_to_ir1(expr: ir2.IntBinaryOpExpr, writer: Writer):
                                op=expr.op)
 
 def list_concat_expr_to_ir1(expr: ir2.ListConcatExpr, writer: Writer):
-    return ir1.ListConcatExpr(lhs=var_reference_to_ir1(expr.lhs, writer),
-                              rhs=var_reference_to_ir1(expr.rhs, writer))
+    # l1 + l2
+    #
+    # Becomes (if l1 and l2 are lists of ints):
+    #
+    # Int64ListConcat<l1, l2>::type
+
+    elem_kind = ir1_to_ir0.type_to_ir0(type_to_ir1(expr.type.elem_type)).kind
+    if elem_kind == ir0.ExprKind.BOOL:
+        list_concat_template_name = 'BoolListConcat'
+    elif elem_kind == ir0.ExprKind.INT64:
+        list_concat_template_name = 'Int64ListConcat'
+    elif elem_kind == ir0.ExprKind.TYPE:
+        list_concat_template_name = 'TypeListConcat'
+    else:
+        raise NotImplementedError('elem_kind: %s' % elem_kind)
+
+    template_instantiation = ir1.TemplateInstantiation(template_name=list_concat_template_name,
+                                                       args=[var_reference_to_ir1(expr.lhs, writer),
+                                                             var_reference_to_ir1(expr.rhs, writer)],
+                                                       instantiation_might_trigger_static_asserts=False)
+
+    return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
+                                 member_name='type',
+                                 member_type=ir1.TypeType())
 
 def list_comprehension_expr_to_ir1(expr: ir2.ListComprehensionExpr, writer: Writer):
     return ir1.ListComprehensionExpr(list_var=var_reference_to_ir1(expr.list_var, writer),
