@@ -201,6 +201,28 @@ class IntListSumExpr(Expr):
         for var in self.list_expr.get_free_variables():
             yield var
 
+class BoolListAllExpr(Expr):
+    def __init__(self, list_expr: Expr):
+        assert isinstance(list_expr.type, ListType)
+        assert isinstance(list_expr.type.elem_type, BoolType)
+        super().__init__(type=BoolType())
+        self.list_expr = list_expr
+
+    def get_free_variables(self):
+        for var in self.list_expr.get_free_variables():
+            yield var
+
+class BoolListAnyExpr(Expr):
+    def __init__(self, list_expr: Expr):
+        assert isinstance(list_expr.type, ListType)
+        assert isinstance(list_expr.type.elem_type, BoolType)
+        super().__init__(type=BoolType())
+        self.list_expr = list_expr
+
+    def get_free_variables(self):
+        for var in self.list_expr.get_free_variables():
+            yield var
+
 class FunctionCall(Expr):
     def __init__(self,
                  fun_expr: Expr,

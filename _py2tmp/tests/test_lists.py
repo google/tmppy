@@ -503,3 +503,37 @@ def test_sum_empty_list_success():
 @assert_conversion_fails
 def test_sum_bool_list_error():
     assert sum([True, False]) == 40  # error: The argument of sum\(\) must have type List\[int\]. Got type: List\[bool\]
+
+@assert_compilation_succeeds
+def test_all_success_returns_true():
+    assert all([True, True, True]) == True
+
+@assert_compilation_succeeds
+def test_all_success_returns_false():
+    assert all([True, False, True]) == False
+
+@assert_compilation_succeeds
+def test_all_empty_list_success():
+    from tmppy import empty_list
+    assert all(empty_list(bool)) == True
+
+@assert_conversion_fails
+def test_all_int_list_error():
+    assert all([1, 3]) == True  # error: The argument of all\(\) must have type List\[bool\]. Got type: List\[int\]
+
+@assert_compilation_succeeds
+def test_any_success_returns_false():
+    assert any([False, False, False]) == False
+
+@assert_compilation_succeeds
+def test_any_success_returns_false():
+    assert any([False, True, False]) == True
+
+@assert_compilation_succeeds
+def test_any_empty_list_success():
+    from tmppy import empty_list
+    assert any(empty_list(bool)) == False
+
+@assert_conversion_fails
+def test_any_int_list_error():
+    assert any([1, 3]) == True  # error: The argument of any\(\) must have type List\[bool\]. Got type: List\[int\]

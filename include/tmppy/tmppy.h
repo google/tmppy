@@ -18,6 +18,7 @@
 #define TMPPY_H
 
 #include <cstdint>
+#include <type_traits>
 
 template <typename...>
 struct List;
@@ -123,6 +124,22 @@ struct Int64ListSum {
 template <int64_t n, int64_t... ns>
 struct Int64ListSum<Int64List<n, ns...>> {
   static constexpr int64_t value = n + Int64ListSum<Int64List<ns...>>::value;
+};
+
+template <typename L>
+struct BoolListAll;
+
+template <bool... bs>
+struct BoolListAll<BoolList<bs...>> {
+  static constexpr bool value = std::is_same<BoolList<bs...>, BoolList<(bs || true)...>>::value;
+};
+
+template <typename L>
+struct BoolListAny;
+
+template <bool... bs>
+struct BoolListAny<BoolList<bs...>> {
+  static constexpr bool value = !std::is_same<BoolList<bs...>, BoolList<(bs && false)...>>::value;
 };
 
 template <typename... Ts>

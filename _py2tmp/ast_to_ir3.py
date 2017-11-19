@@ -970,7 +970,7 @@ def list_comprehension_ast_to_ir3(ast_node: ast.ListComp, compilation_context: C
                                                            is_function_that_may_throw=False),
                                  result_elem_expr=result_elem_expr)
 
-def add_expression_ast_to_ir3(ast_node: ast.Add, compilation_context: CompilationContext):
+def add_expression_ast_to_ir3(ast_node: ast.BinOp, compilation_context: CompilationContext):
     lhs = expression_ast_to_ir3(ast_node.left, compilation_context)
     rhs = expression_ast_to_ir3(ast_node.right, compilation_context)
 
@@ -1000,6 +1000,10 @@ def expression_ast_to_ir3(ast_node: ast.AST, compilation_context: CompilationCon
         return empty_list_literal_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'sum':
         return int_list_sum_expr_ast_to_ir3(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'all':
+        return bool_list_all_expr_ast_to_ir3(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'any':
+        return bool_list_any_expr_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Call) and isinstance(ast_node.func.func, ast.Name) and ast_node.func.func.id == 'match':
         return match_expression_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call):
@@ -1103,6 +1107,44 @@ def int_list_sum_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: Compil
                                'The argument of sum() must have type List[int]. Got type: %s' % str(arg_expr.type),
                                notes=notes)
     return ir3.IntListSumExpr(list_expr=arg_expr)
+
+def bool_list_all_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
+    if ast_node.keywords:
+        raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not supported.')
+    if len(ast_node.args) != 1:
+        raise CompilationError(compilation_context, ast_node, 'all() takes 1 argument. Got: %s' % len(ast_node.args))
+    [arg] = ast_node.args
+    arg_expr = expression_ast_to_ir3(arg, compilation_context)
+    if not (isinstance(arg_expr.type, ir3.ListType) and isinstance(arg_expr.type.elem_type, ir3.BoolType)):
+        notes = []
+        if isinstance(arg_expr, ir3.VarReference):
+            lookup_result = compilation_context.get_symbol_definition(arg_expr.name)
+            assert lookup_result
+            assert not lookup_result.is_only_partially_defined
+            notes.append((lookup_result.ast_node, '%s was defined here' % arg_expr.name))
+        raise CompilationError(compilation_context, arg,
+                               'The argument of all() must have type List[bool]. Got type: %s' % str(arg_expr.type),
+                               notes=notes)
+    return ir3.BoolListAllExpr(list_expr=arg_expr)
+
+def bool_list_any_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
+    if ast_node.keywords:
+        raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not supported.')
+    if len(ast_node.args) != 1:
+        raise CompilationError(compilation_context, ast_node, 'any() takes 1 argument. Got: %s' % len(ast_node.args))
+    [arg] = ast_node.args
+    arg_expr = expression_ast_to_ir3(arg, compilation_context)
+    if not (isinstance(arg_expr.type, ir3.ListType) and isinstance(arg_expr.type.elem_type, ir3.BoolType)):
+        notes = []
+        if isinstance(arg_expr, ir3.VarReference):
+            lookup_result = compilation_context.get_symbol_definition(arg_expr.name)
+            assert lookup_result
+            assert not lookup_result.is_only_partially_defined
+            notes.append((lookup_result.ast_node, '%s was defined here' % arg_expr.name))
+        raise CompilationError(compilation_context, arg,
+                               'The argument of any() must have type List[bool]. Got type: %s' % str(arg_expr.type),
+                               notes=notes)
+    return ir3.BoolListAnyExpr(list_expr=arg_expr)
 
 def eq_ast_to_ir3(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: CompilationContext):
     lhs = expression_ast_to_ir3(lhs_node, compilation_context)

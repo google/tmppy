@@ -116,6 +116,10 @@ def expr_to_ir1(expr: ir2.Expr, writer: Writer) -> ir1.Expr:
         return unary_minus_expr_to_ir1(expr, writer)
     elif isinstance(expr, ir2.IntListSumExpr):
         return int_list_sum_expr_to_ir1(expr, writer)
+    elif isinstance(expr, ir2.BoolListAllExpr):
+        return bool_list_all_expr_to_ir1(expr, writer)
+    elif isinstance(expr, ir2.BoolListAnyExpr):
+        return bool_list_any_expr_to_ir1(expr, writer)
     elif isinstance(expr, ir2.IntBinaryOpExpr):
         return int_binary_op_expr_to_ir1(expr, writer)
     elif isinstance(expr, ir2.ListConcatExpr):
@@ -219,6 +223,37 @@ def int_list_sum_expr_to_ir1(expr: ir2.IntListSumExpr, writer: Writer):
     return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
                                  member_name='value',
                                  member_type=ir1.IntType())
+
+def bool_list_all_expr_to_ir1(expr: ir2.IntListSumExpr, writer: Writer):
+    # all(l)
+    #
+    # Becomes:
+    #
+    # BoolListAll<l>::value
+
+    template_instantiation = ir1.TemplateInstantiation(template_name='BoolListAll',
+                                                       args=[var_reference_to_ir1(expr.var, writer)],
+                                                       instantiation_might_trigger_static_asserts=False)
+
+    return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
+                                 member_name='value',
+                                 member_type=ir1.BoolType())
+
+
+def bool_list_any_expr_to_ir1(expr: ir2.IntListSumExpr, writer: Writer):
+    # any(l)
+    #
+    # Becomes:
+    #
+    # BoolListAny<l>::value
+
+    template_instantiation = ir1.TemplateInstantiation(template_name='BoolListAny',
+                                                       args=[var_reference_to_ir1(expr.var, writer)],
+                                                       instantiation_might_trigger_static_asserts=False)
+
+    return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
+                                 member_name='value',
+                                 member_type=ir1.BoolType())
 
 def int_binary_op_expr_to_ir1(expr: ir2.IntBinaryOpExpr, writer: Writer):
     return ir1.IntBinaryOpExpr(lhs=var_reference_to_ir1(expr.lhs, writer),

@@ -412,6 +412,40 @@ class IntListSumExpr(Expr):
     def describe_other_fields(self):
         return self.var.describe_other_fields()
 
+class BoolListAllExpr(Expr):
+    def __init__(self, var: VarReference):
+        assert isinstance(var.type, ListType)
+        assert isinstance(var.type.elem_type, BoolType)
+        super().__init__(type=BoolType())
+        self.var = var
+
+    def get_free_variables(self):
+        for var in self.var.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'all(%s)' % self.var.name
+
+    def describe_other_fields(self):
+        return self.var.describe_other_fields()
+
+class BoolListAnyExpr(Expr):
+    def __init__(self, var: VarReference):
+        assert isinstance(var.type, ListType)
+        assert isinstance(var.type.elem_type, BoolType)
+        super().__init__(type=BoolType())
+        self.var = var
+
+    def get_free_variables(self):
+        for var in self.var.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'any(%s)' % self.var.name
+
+    def describe_other_fields(self):
+        return self.var.describe_other_fields()
+
 class IntComparisonExpr(Expr):
     def __init__(self, lhs: VarReference, rhs: VarReference, op: str):
         assert lhs.type == IntType()

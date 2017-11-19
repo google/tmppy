@@ -219,6 +219,10 @@ def expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.VarReference:
         return int_unary_minus_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.IntListSumExpr):
         return int_list_sum_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.BoolListAllExpr):
+        return bool_list_all_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.BoolListAnyExpr):
+        return bool_list_any_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.IntComparisonExpr):
         return int_comparison_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.IntBinaryOpExpr):
@@ -368,6 +372,12 @@ def int_unary_minus_expr_to_ir2(expr: ir3.IntUnaryMinusExpr, writer: StmtWriter)
 
 def int_list_sum_expr_to_ir2(expr: ir3.IntListSumExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.IntListSumExpr(expr_to_ir2(expr.list_expr, writer)))
+
+def bool_list_all_expr_to_ir2(expr: ir3.BoolListAllExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.BoolListAllExpr(expr_to_ir2(expr.list_expr, writer)))
+
+def bool_list_any_expr_to_ir2(expr: ir3.BoolListAnyExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.BoolListAnyExpr(expr_to_ir2(expr.list_expr, writer)))
 
 def int_comparison_expr_to_ir2(expr: ir3.IntComparisonExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.IntComparisonExpr(lhs=expr_to_ir2(expr.lhs, writer),
