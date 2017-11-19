@@ -15,45 +15,48 @@
 import itertools
 import typed_ast.ast3 as ast
 
-import _py2tmp.ast2highir as ast2highir
-import _py2tmp.highir2ir as highir2ir
-import _py2tmp.ir2lowir as ir2lowir
-import _py2tmp.lowir2cpp as lowir2cpp
+import _py2tmp.ast_to_ir3 as ast_to_ir3
+import _py2tmp.ir3_to_ir2 as ir3_to_ir2
+import _py2tmp.ir2_to_ir1 as ir2_to_ir1
+import _py2tmp.ir1_to_ir0 as ir1_to_ir0
+import _py2tmp.ir0_to_cpp as ir0_to_cpp
 import _py2tmp.utils as utils
 
 import argparse
 
 def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
     source_ast = ast.parse(python_source, filename=filename)
-    compilation_context = ast2highir.CompilationContext(ast2highir.SymbolTable(),
-                                                        ast2highir.SymbolTable(),
-                                                        filename,
-                                                        python_source.splitlines())
 
     def identifier_generator_fun():
         for i in itertools.count():
             yield 'TmppyInternal_%s' % i
     identifier_generator = iter(identifier_generator_fun())
 
-    module_high_ir = ast2highir.module_ast_to_ir(source_ast, compilation_context)
+    module_ir3 = ast_to_ir3.module_ast_to_ir3(source_ast, filename, python_source.splitlines())
     if verbose:
-        print('TMPPy high IR:')
-        print(utils.ir_to_string(module_high_ir))
+        print('TMPPy IR3:')
+        print(utils.ir_to_string(module_ir3))
         print()
 
-    module_ir = highir2ir.module_to_ir(module_high_ir, identifier_generator)
+    module_ir2 = ir3_to_ir2.module_to_ir2(module_ir3, identifier_generator)
     if verbose:
-        print('TMPPy IR:')
-        print(utils.ir_to_string(module_ir))
+        print('TMPPy IR2:')
+        print(utils.ir_to_string(module_ir2))
         print()
 
-    header = ir2lowir.module_to_low_ir(module_ir, identifier_generator)
+    module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2, identifier_generator)
     if verbose:
-        print('TMPPy low IR:')
-        print(utils.ir_to_string(header))
+        print('TMPPy IR1:')
+        print(utils.ir_to_string(module_ir1))
         print()
 
-    result = lowir2cpp.header_to_cpp(header, identifier_generator)
+    header_ir0 = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
+    if verbose:
+        print('TMPPy IR0:')
+        print(utils.ir_to_string(header_ir0))
+        print()
+
+    result = ir0_to_cpp.header_to_cpp(header_ir0, identifier_generator)
     result = utils.clang_format(result)
 
     if verbose:

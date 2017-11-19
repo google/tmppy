@@ -670,7 +670,7 @@ class CheckIfErrorDefn:
         writer.writeln('')
 
 class Module:
-    def __init__(self, body: List[Union[FunctionDefn, Assignment, Assert, CustomType]]):
+    def __init__(self, body: List[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]]):
         self.body = body
 
     def __str__(self):
