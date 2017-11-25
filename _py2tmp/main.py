@@ -15,12 +15,12 @@
 import itertools
 import typed_ast.ast3 as ast
 
-import _py2tmp.ast_to_ir3 as ast_to_ir3
-import _py2tmp.ir3_to_ir2 as ir3_to_ir2
-import _py2tmp.ir2_to_ir1 as ir2_to_ir1
-import _py2tmp.ir1_to_ir0 as ir1_to_ir0
-import _py2tmp.ir0_to_cpp as ir0_to_cpp
-import _py2tmp.utils as utils
+from _py2tmp import ast_to_ir3
+from _py2tmp import ir3_to_ir2
+from _py2tmp import ir2_to_ir1
+from _py2tmp import ir1_to_ir0
+from _py2tmp import ir0_to_cpp
+from _py2tmp import utils
 
 import argparse
 

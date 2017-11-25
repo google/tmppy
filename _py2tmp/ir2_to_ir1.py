@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import _py2tmp.ir0 as ir0
-import _py2tmp.ir1 as ir1
-import _py2tmp.ir2 as ir2
-import _py2tmp.ir1_to_ir0 as ir1_to_ir0
+from _py2tmp import ir0
+from _py2tmp import ir1
+from _py2tmp import ir2
+from _py2tmp import ir1_to_ir0
 
 from typing import List, Iterator, Optional
 

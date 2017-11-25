@@ -27,18 +27,15 @@ from functools import wraps
 
 import pytest
 
-import _py2tmp.ast_to_ir3
-import _py2tmp.ir0
-import py2tmp
-
 import py2tmp_test_config as config
 import typed_ast.ast3 as ast
-import _py2tmp.ast_to_ir3 as ast_to_ir3
-import _py2tmp.ir3_to_ir2 as ir3_to_ir2
-import _py2tmp.ir2_to_ir1 as ir2_to_ir1
-import _py2tmp.ir1_to_ir0 as ir1_to_ir0
-import _py2tmp.ir0_to_cpp as ir0_to_cpp
-import _py2tmp.utils as utils
+from _py2tmp import ast_to_ir3
+from _py2tmp import ir3_to_ir2
+from _py2tmp import ir2_to_ir1
+from _py2tmp import ir1_to_ir0
+from _py2tmp import ir0_to_cpp
+from _py2tmp import ir0
+from _py2tmp import utils
 
 
 def pretty_print_command(command):
@@ -636,7 +633,7 @@ def _convert_to_cpp_expecting_success(tmppy_source):
     try:
         module_ir2, module_ir1 = _convert_tmppy_source_to_ir(tmppy_source, identifier_generator)
         e = None
-    except _py2tmp.ast_to_ir3.CompilationError as e1:
+    except ast_to_ir3.CompilationError as e1:
         e = e1
     if e:
         pytest.fail(
@@ -653,7 +650,7 @@ def _convert_to_cpp_expecting_success(tmppy_source):
 
     try:
         return module_ir2, module_ir1, _convert_ir_to_cpp(module_ir1, identifier_generator)
-    except _py2tmp.ast_to_ir3.CompilationError as e1:
+    except ast_to_ir3.CompilationError as e1:
         e = e1
     if e:
         pytest.fail(
@@ -774,7 +771,7 @@ def assert_conversion_fails(f):
         try:
             module_ir2, module_ir1 = _convert_tmppy_source_to_ir('\n'.join(actual_source_lines), create_identifier_generator())
             e = None
-        except _py2tmp.ast_to_ir3.CompilationError as e1:
+        except ast_to_ir3.CompilationError as e1:
             e = e1
 
         if not e:
@@ -884,7 +881,7 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
             try:
                 module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
                 e = None
-            except _py2tmp.ir0.CodegenError as e1:
+            except ir0.CodegenError as e1:
                 e = e1
 
             if not e:

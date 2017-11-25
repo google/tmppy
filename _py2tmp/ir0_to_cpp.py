@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from typing import List, Iterator, Tuple, Union
-import _py2tmp.ir0 as ir0
+from _py2tmp import ir0
 
 class Writer:
     def new_id(self) -> str: ... # pragma: no cover

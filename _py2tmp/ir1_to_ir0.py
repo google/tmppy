@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import _py2tmp.ir0 as ir0
-import _py2tmp.ir1 as ir1
-import _py2tmp.utils as utils
+from _py2tmp import ir0
+from _py2tmp import ir1
+from _py2tmp import utils
 from typing import List, Tuple, Optional, Iterator, Union, Callable, Dict
 
 class Writer:

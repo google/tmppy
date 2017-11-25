@@ -13,9 +13,9 @@
 # limitations under the License.
 
 from collections import defaultdict
-import _py2tmp.ir2 as ir2
-import _py2tmp.ir3 as ir3
-import _py2tmp.utils as utils
+from _py2tmp import ir2
+from _py2tmp import ir3
+from _py2tmp import utils
 from typing import List, Iterator, Optional, Dict
 from contextlib import contextmanager
 

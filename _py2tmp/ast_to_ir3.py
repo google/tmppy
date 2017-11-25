@@ -13,7 +13,7 @@
 # limitations under the License.
 import re
 import textwrap
-import _py2tmp.ir3 as ir3
+from _py2tmp import ir3
 import typed_ast.ast3 as ast
 from typing import List, Tuple, Dict, Optional, Union
 
