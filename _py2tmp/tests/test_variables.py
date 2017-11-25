@@ -95,12 +95,6 @@ def test_multi_assignment_error():
         return y
 
 @assert_conversion_fails
-def test_unpacking_error():
-    def f(x: bool):
-        y, z = x  # error: Unpacking in assignments is not currently supported.
-        return y
-
-@assert_conversion_fails
 def test_assignment_to_expression_error():
     def f(x: bool):
         x[0] = x  # error: Assignment not supported.

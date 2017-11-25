@@ -544,6 +544,12 @@ def assignment_to_ir2(assignment: ir3.Assignment, writer: StmtWriter):
     writer.write_stmt(ir2.Assignment(lhs=var_reference_to_ir2(assignment.lhs, writer),
                                      rhs=expr_to_ir2(assignment.rhs, writer)))
 
+def unpacking_assignment_to_ir2(assignment: ir3.UnpackingAssignment, writer: StmtWriter):
+    writer.write_stmt(ir2.UnpackingAssignment(lhs_list=[var_reference_to_ir2(var, writer)
+                                                        for var in assignment.lhs_list],
+                                              rhs=expr_to_ir2(assignment.rhs, writer),
+                                              error_message=assignment.error_message))
+
 def return_stmt_to_ir2(return_stmt: ir3.ReturnStmt, writer: StmtWriter):
     writer.write_stmt(ir2.ReturnStmt(result=expr_to_ir2(return_stmt.expr, writer),
                                      error=None))
@@ -601,6 +607,8 @@ def stmts_to_ir2(stmts: List[ir3.Stmt], writer: StmtWriter):
             if_stmt_to_ir2(stmt, writer)
         elif isinstance(stmt, ir3.Assignment):
             assignment_to_ir2(stmt, writer)
+        elif isinstance(stmt, ir3.UnpackingAssignment):
+            unpacking_assignment_to_ir2(stmt, writer)
         elif isinstance(stmt, ir3.ReturnStmt):
             return_stmt_to_ir2(stmt, writer)
         elif isinstance(stmt, ir3.RaiseStmt):

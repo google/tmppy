@@ -626,6 +626,37 @@ class Assignment(Stmt):
             else:
                 writer.writeln('')
 
+class UnpackingAssignment(Stmt):
+    def __init__(self,
+                 lhs_list: List[VarReference],
+                 rhs: VarReference,
+                 error_message: str):
+        assert isinstance(rhs.type, ListType)
+        assert lhs_list
+        for lhs in lhs_list:
+            assert lhs.type == rhs.type.elem_type
+        self.lhs_list = lhs_list
+        self.rhs = rhs
+        self.error_message = error_message
+
+    def get_free_variables(self):
+        for var in self.rhs.get_free_variables():
+            yield var
+
+    def write(self, writer: Writer, verbose: bool):
+        writer.write('[')
+        writer.write(', '.join(var.name
+                               for var in self.lhs_list))
+        writer.write('] = ')
+        writer.write(self.rhs.name)
+        if verbose:
+            writer.writeln('  # lhs: [%s]; rhs: %s' % (
+                ', '.join(lhs_var.describe_other_fields()
+                          for lhs_var in self.lhs_list),
+                self.rhs.describe_other_fields()))
+        else:
+            writer.writeln('')
+
 class ReturnStmt(Stmt):
     def __init__(self, result: Optional[VarReference], error: Optional[VarReference]):
         assert result or error
@@ -740,6 +771,9 @@ def get_free_variables_in_stmts(stmts: List[Stmt]):
             local_var_names.add(stmt.lhs.name)
             if stmt.lhs2:
                 local_var_names.add(stmt.lhs2.name)
+        elif isinstance(stmt, UnpackingAssignment):
+            for var in stmt.lhs_list:
+                local_var_names.add(var.name)
 
 def get_unique_free_variables_in_stmts(stmts: List[Stmt]) -> List[VarReference]:
     var_by_name = dict()

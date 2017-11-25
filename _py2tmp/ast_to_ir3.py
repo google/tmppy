@@ -587,13 +587,7 @@ def statements_ast_to_ir3(ast_nodes: List[ast.AST],
         if isinstance(statement_node, ast.Assert):
             statements.append(assert_ast_to_ir3(statement_node, compilation_context))
         elif isinstance(statement_node, ast.Assign) or isinstance(statement_node, ast.AnnAssign) or isinstance(statement_node, ast.AugAssign):
-            assignment_ir = assignment_ast_to_ir3(statement_node, compilation_context)
-            compilation_context.add_symbol(name=assignment_ir.lhs.name,
-                                           type=assignment_ir.lhs.type,
-                                           definition_ast_node=statement_node,
-                                           is_only_partially_defined=False,
-                                           is_function_that_may_throw=isinstance(assignment_ir.lhs.type, ir3.FunctionType))
-            statements.append(assignment_ir)
+            statements.append(assignment_ast_to_ir3(statement_node, compilation_context))
         elif isinstance(statement_node, ast.Return):
             return_stmt = return_stmt_ast_to_ir3(statement_node, compilation_context)
             if previous_return_stmt:
@@ -752,17 +746,60 @@ def assignment_ast_to_ir3(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssi
         raise CompilationError(compilation_context, ast_node, 'Multi-assignment is not supported.')
     [target] = ast_node.targets
     if isinstance(target, ast.List) or isinstance(target, ast.Tuple):
-        raise CompilationError(compilation_context, ast_node, 'Unpacking in assignments is not currently supported.')
-    if not isinstance(target, ast.Name):
+        # This is an "unpacking" assignment
+        for lhs_elem_ast_node in target.elts:
+            if not isinstance(lhs_elem_ast_node, ast.Name):
+                raise CompilationError(compilation_context, lhs_elem_ast_node,
+                                       'This kind of unpacking assignment is not supported. Only unpacking assignments of the form x,y=... or [x,y]=... are supported.')
+
+        expr = expression_ast_to_ir3(ast_node.value, compilation_context)
+        if not isinstance(expr.type, ir3.ListType):
+            raise CompilationError(compilation_context, ast_node,
+                                   'Unpacking requires a list on the RHS, but the value on the RHS has type %s' % str(expr.type))
+        elem_type = expr.type.elem_type
+
+        var_refs = []
+        for lhs_elem_ast_node in target.elts:
+            compilation_context.add_symbol(name=lhs_elem_ast_node.id,
+                                           type=elem_type,
+                                           definition_ast_node=lhs_elem_ast_node,
+                                           is_only_partially_defined=False,
+                                           is_function_that_may_throw=isinstance(elem_type, ir3.FunctionType))
+
+            var_ref = ir3.VarReference(type=elem_type,
+                                       name=lhs_elem_ast_node.id,
+                                       is_global_function=False,
+                                       is_function_that_may_throw=isinstance(elem_type, ir3.FunctionType))
+            var_refs.append(var_ref)
+
+        first_line_number = ast_node.lineno
+        message = 'unexpected number of elements in the TMPPy list unpacking at:\n{filename}:{first_line_number}: {line}'.format(
+            filename=compilation_context.filename,
+            first_line_number=first_line_number,
+            line=compilation_context.source_lines[first_line_number - 1])
+        message = message.replace('\\', '\\\\').replace('"', '\"').replace('\n', '\\n')
+
+        return ir3.UnpackingAssignment(lhs_list=var_refs,
+                                          rhs=expr,
+                                          error_message=message)
+
+    elif isinstance(target, ast.Name):
+        # This is a "normal" assignment
+        expr = expression_ast_to_ir3(ast_node.value, compilation_context)
+
+        compilation_context.add_symbol(name=target.id,
+                                       type=expr.type,
+                                       definition_ast_node=target,
+                                       is_only_partially_defined=False,
+                                       is_function_that_may_throw=isinstance(expr.type, ir3.FunctionType))
+
+        return ir3.Assignment(lhs=ir3.VarReference(type=expr.type,
+                                                   name=target.id,
+                                                   is_global_function=False,
+                                                   is_function_that_may_throw=isinstance(expr.type, ir3.FunctionType)),
+                                 rhs=expr)
+    else:
         raise CompilationError(compilation_context, ast_node, 'Assignment not supported.')
-
-    expr = expression_ast_to_ir3(ast_node.value, compilation_context)
-
-    return ir3.Assignment(lhs=ir3.VarReference(type=expr.type,
-                                               name=target.id,
-                                               is_global_function=False,
-                                               is_function_that_may_throw=isinstance(expr.type, ir3.FunctionType)),
-                          rhs=expr)
 
 def int_comparison_ast_to_ir3(lhs_ast_node: ast.AST,
                              rhs_ast_node: ast.AST,

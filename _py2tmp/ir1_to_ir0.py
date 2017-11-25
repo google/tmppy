@@ -687,7 +687,7 @@ def return_stmt_to_ir0(return_stmt: ir1.ReturnStmt, writer: TemplateBodyWriter):
 def _get_free_vars_in_elements(elements: List[ir0.TemplateBodyElement]):
     free_var_names = set()
     bound_var_names = set()
-    free_vars = []
+    free_vars = [] # type: List[ir0.TypeLiteral]
     for element in elements:
         if isinstance(element, ir0.StaticAssert) or isinstance(element, ir0.ConstantDef) or isinstance(element, ir0.Typedef):
             for var in element.expr.get_free_vars():
@@ -806,6 +806,98 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
     writer.write_result_body_elements(result_expr=function_call_expr,
                                       error_expr=function_call_error_expr)
 
+def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
+                                other_stmts: List[ir1.Stmt],
+                                write_continuation_fun_call: Optional[Callable[[TemplateBodyWriter], None]],
+                                writer: TemplateBodyWriter):
+
+    lhs_vars = [var_reference_to_ir0(var)
+                for var in assignment.lhs_list]
+    lhs_var_names = {var.cpp_type for var in lhs_vars}
+    rhs_var = var_reference_to_ir0(assignment.rhs)
+
+    elem_kind = lhs_vars[0].type.kind
+    if elem_kind == ir0.ExprKind.BOOL:
+        list_template_name = 'BoolList'
+    elif elem_kind == ir0.ExprKind.INT64:
+        list_template_name = 'Int64List'
+    elif elem_kind == ir0.ExprKind.TYPE:
+        list_template_name = 'List'
+    else:
+        raise NotImplementedError('elem_kind: %s' % elem_kind)
+
+    then_writer = writer.create_sibling_writer(writer.parent_arbitrary_arg, writer.parent_return_type)
+    assignment_to_ir0(ir1.Assignment(lhs=assignment.rhs,
+                                     rhs=ir1.TemplateInstantiation(template_name=list_template_name,
+                                                                   args=assignment.lhs_list,
+                                                                   instantiation_might_trigger_static_asserts=False)),
+                      then_writer)
+    stmts_to_ir0(other_stmts, write_continuation_fun_call, then_writer)
+
+    forwarded_vars = [var
+                      for var in _get_free_vars_in_elements(then_writer.elems)
+                      if var.cpp_type != rhs_var.cpp_type and var.cpp_type not in lhs_var_names]
+    assert all(var.cpp_type != rhs_var.cpp_type
+               for var in forwarded_vars)
+
+    forwarded_vars_args = [ir0.TemplateArgDecl(type=var.type, name=var.cpp_type)
+                           for var in forwarded_vars]
+    forwarded_vars_patterns = [ir0.TemplateArgPatternLiteral(cxx_pattern=var.cpp_type)
+                               for var in forwarded_vars]
+    forwarded_vars_exprs = [ir0.TypeLiteral.for_local(cpp_type=var.cpp_type,
+                                                      type=var.type)
+                            for var in forwarded_vars]
+    forwarded_vars_types = [var.type
+                            for var in forwarded_vars]
+
+
+    # template <typename L, ...>
+    # struct Id1 {
+    #   static_assert(AlwaysFalseFromType<L>::value, "<message>");
+    # };
+    rhs_var_arg_decl = ir0.TemplateArgDecl(type=ir0.TypeType(), name=rhs_var.cpp_type)
+    always_false_instantiation = ir0.TemplateInstantiation(template_expr=ir0.TypeLiteral.for_nonlocal_template('AlwaysFalseFromType',
+                                                                                                               is_metafunction_that_may_return_error=False),
+                                                           args=[rhs_var],
+                                                           arg_types=[ir0.TypeType()],
+                                                           instantiation_might_trigger_static_asserts=False)
+    always_false_expr = ir0.ClassMemberAccess(class_type_expr=always_false_instantiation,
+                                              member_name='value',
+                                              member_kind=ir0.ExprKind.BOOL)
+    main_definition = ir0.TemplateSpecialization(args=[rhs_var_arg_decl] + forwarded_vars_args,
+                                                 patterns=None,
+                                                 body=[ir0.StaticAssert(expr=always_false_expr,
+                                                                        message=assignment.error_message)])
+
+    # template <int64_t n0, int64_t n1, int64_t n2, ...>
+    # struct Id1<Int64List<n0, n1, n2>, ...> {
+    #   using L = Int64List<n0, n1, n2>;
+    #   ...
+    # };
+    lhs_vars_arg_decls = [ir0.TemplateArgDecl(type=var.type, name=var.cpp_type)
+                          for var in lhs_vars]
+    list_pattern = ir0.TemplateArgPatternLiteral('%s<%s>' % (list_template_name,
+                                                             ', '.join(var.cpp_type for var in lhs_vars)))
+    specialization = ir0.TemplateSpecialization(args=lhs_vars_arg_decls + forwarded_vars_args,
+                                                patterns=[list_pattern] + forwarded_vars_patterns,
+                                                body=then_writer.elems)
+
+    template_defn = ir0.TemplateDefn(name=writer.new_id(),
+                                     args=[rhs_var_arg_decl] + forwarded_vars_args,
+                                     main_definition=main_definition,
+                                     specializations=[specialization])
+    writer.write(template_defn)
+
+    function_call_expr, function_call_error_expr = _create_metafunction_call(ir0.TypeLiteral.for_nonlocal_template(cpp_type=template_defn.name,
+                                                                                                                   is_metafunction_that_may_return_error=True),
+                                                                             args=[rhs_var] + forwarded_vars_exprs,
+                                                                             arg_types=[ir0.TypeType()] + forwarded_vars_types,
+                                                                             member_kind=writer.parent_return_type.kind,
+                                                                             writer=writer)
+
+    writer.write_result_body_elements(result_expr=function_call_expr,
+                                      error_expr=function_call_error_expr)
+
 def stmts_to_ir0(stmts: List[ir1.Stmt],
                  write_continuation_fun_call: Optional[Callable[[TemplateBodyWriter], None]],
                  writer: Writer):
@@ -820,6 +912,9 @@ def stmts_to_ir0(stmts: List[ir1.Stmt],
         elif isinstance(stmt, ir1.IfStmt):
             assert isinstance(writer, TemplateBodyWriter)
             if_stmt_to_ir0(stmt, stmts[index + 1:], write_continuation_fun_call, writer)
+            break
+        elif isinstance(stmt, ir1.UnpackingAssignment):
+            unpacking_assignment_to_ir0(stmt, stmts[index + 1:], write_continuation_fun_call, writer)
             break
         else:
             raise NotImplementedError('Unexpected statement type: ' + stmt.__class__.__name__)

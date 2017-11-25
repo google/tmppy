@@ -568,6 +568,35 @@ class Assignment(Stmt):
             else:
                 writer.writeln('')
 
+class UnpackingAssignment(Stmt):
+    def __init__(self,
+                 lhs_list: List[VarReference],
+                 rhs: VarReference,
+                 error_message: str):
+        assert isinstance(rhs.type, TypeType)
+        assert lhs_list
+        self.lhs_list = lhs_list
+        self.rhs = rhs
+        self.error_message = error_message
+
+    def get_free_variables(self):
+        for var in self.rhs.get_free_variables():
+            yield var
+
+    def write(self, writer: Writer, verbose: bool):
+        writer.write('[')
+        writer.write(', '.join(var.name
+                               for var in self.lhs_list))
+        writer.write('] = ')
+        writer.write(self.rhs.name)
+        if verbose:
+            writer.writeln('  # lhs: [%s]; rhs: %s' % (
+                ', '.join(lhs_var.describe_other_fields()
+                          for lhs_var in self.lhs_list),
+                self.rhs.describe_other_fields()))
+        else:
+            writer.writeln('')
+
 class ReturnStmt(Stmt):
     def __init__(self, result: Optional[VarReference], error: Optional[VarReference]):
         assert result or error

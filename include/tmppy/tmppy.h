@@ -44,6 +44,11 @@ struct AlwaysTrueFromType {
   static constexpr bool value = true;
 };
 
+template <typename>
+struct AlwaysFalseFromType {
+  static constexpr bool value = false;
+};
+
 template <bool b, bool>
 struct Select1stBoolBool {
   static constexpr bool value = b;

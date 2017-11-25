@@ -408,6 +408,19 @@ class Assignment(Stmt):
     def get_return_type(self):
         return ReturnTypeInfo(type=None, always_returns=False)
 
+class UnpackingAssignment(Stmt):
+    def __init__(self, lhs_list: List[VarReference], rhs: Expr, error_message: str):
+        assert isinstance(rhs.type, ListType)
+        assert lhs_list
+        for lhs in lhs_list:
+            assert lhs.type == rhs.type.elem_type
+        self.lhs_list = lhs_list
+        self.rhs = rhs
+        self.error_message = error_message
+
+    def get_return_type(self):
+        return ReturnTypeInfo(type=None, always_returns=False)
+
 class ReturnStmt(Stmt):
     def __init__(self, expr: Expr):
         self.expr = expr

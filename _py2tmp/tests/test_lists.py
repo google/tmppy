@@ -537,3 +537,69 @@ def test_any_empty_list_success():
 @assert_conversion_fails
 def test_any_int_list_error():
     assert any([1, 3]) == True  # error: The argument of any\(\) must have type List\[bool\]. Got type: List\[int\]
+
+@assert_compilation_succeeds
+def test_list_unpacking_as_tuple_success():
+    def f(b: bool):
+        return [10, 20, 30, 40]
+    def g(b1: bool):
+        a, b, c, d = f(b1)
+        return b
+    assert g(True) == 20
+
+@assert_compilation_succeeds
+def test_list_unpacking_as_list_success():
+    def f(b: bool):
+        return [10, 20, 30, 40]
+    def g(b1: bool):
+        [a, b, c, d] = f(b1)
+        return b
+    assert g(True) == 20
+
+@assert_conversion_fails
+def test_list_unpacking_as_tuple_not_a_list_error():
+    def f(b: bool):
+        return 10
+    def g(b1: bool):
+        a, b, c = f(b1)  # error: Unpacking requires a list on the RHS, but the value on the RHS has type int
+        return b
+
+@assert_conversion_fails
+def test_list_unpacking_as_list_not_a_list_error():
+    def f(b: bool):
+        return 10
+    def g(b1: bool):
+        [a, b, c] = f(b1)  # error: Unpacking requires a list on the RHS, but the value on the RHS has type int
+        return b
+
+# TODO: we could report a better error message.
+@assert_conversion_fails
+def test_list_unpacking_as_tuple_at_toplevel_error():
+    def f(b: bool):
+        return [1, 2, 3]
+    a, b, c = f(True)  # error: This Python construct is not supported in TMPPy
+
+# TODO: we could report a better error message.
+@assert_conversion_fails
+def test_list_unpacking_as_list_at_toplevel_error():
+    def f(b: bool):
+        return [1, 2, 3]
+    [a, b, c] = f(True)  # error: This Python construct is not supported in TMPPy
+
+@assert_compilation_fails_with_static_assert_error('unexpected number of elements in the TMPPy list unpacking at:')
+def test_list_unpacking_as_tuple_wrong_number_of_elements_error():
+    def f(b: bool):
+        return [10, 20, 30, 40]
+    def g(b1: bool):
+        a, b, c = f(b1)
+        return b
+    assert g(True) == 20
+
+@assert_compilation_fails_with_static_assert_error('unexpected number of elements in the TMPPy list unpacking at:')
+def test_list_unpacking_as_list_wrong_number_of_elements_error():
+    def f(b: bool):
+        return [10, 20, 30, 40]
+    def g(b1: bool):
+        [a, b, c] = f(b1)
+        return b
+    assert g(True) == 20
