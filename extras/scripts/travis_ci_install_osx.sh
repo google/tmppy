@@ -19,6 +19,8 @@ time brew update
 install_brew_package md5sha1sum
 # For `timeout'
 install_brew_package coreutils
+# For clang-format
+install_brew_package clang-format
 
 which cmake &>/dev/null || install_brew_package cmake
 
