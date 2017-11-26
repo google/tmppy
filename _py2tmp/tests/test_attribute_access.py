@@ -53,6 +53,11 @@ def test_attribute_access_on_list_error():
     assert [Type('int')].type == Type('int')  # error: Attribute access is not supported for values of type List\[Type\].
 
 @assert_conversion_fails
+def test_attribute_access_on_set_error():
+    from tmppy import Type
+    assert {Type('int')}.type == Type('int')  # error: Attribute access is not supported for values of type Set\[Type\].
+
+@assert_conversion_fails
 def test_attribute_access_on_function_error():
     from tmppy import Type
     def f(x: Type):

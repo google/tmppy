@@ -16,6 +16,7 @@ import textwrap
 from _py2tmp import ir3
 import typed_ast.ast3 as ast
 from typing import List, Tuple, Dict, Optional, Union
+from _py2tmp.utils import ast_to_string
 
 class Symbol:
     def __init__(self, name: str, type: ir3.ExprType, is_function_that_may_throw: bool):
@@ -226,8 +227,8 @@ def module_ast_to_ir3(module_ast_node: ast.Module, filename: str, source_lines: 
                     definition_ast_node=ast_node)
         elif isinstance(ast_node, ast.ImportFrom):
             supported_imports_by_module = {
-                'tmppy': ('Type', 'empty_list', 'TypePattern', 'match'),
-                'typing': ('List', 'Callable')
+                'tmppy': ('Type', 'empty_list', 'empty_set', 'TypePattern', 'match'),
+                'typing': ('List', 'Set', 'Callable')
             }
             supported_imports = supported_imports_by_module.get(ast_node.module)
             if not supported_imports:
@@ -1007,6 +1008,51 @@ def list_comprehension_ast_to_ir3(ast_node: ast.ListComp, compilation_context: C
                                                            is_function_that_may_throw=False),
                                  result_elem_expr=result_elem_expr)
 
+def set_comprehension_ast_to_ir3(ast_node: ast.SetComp, compilation_context: CompilationContext):
+    assert ast_node.generators
+    if len(ast_node.generators) > 1:
+        raise CompilationError(compilation_context, ast_node.generators[1].target,
+                               'Set comprehensions with multiple "for" clauses are not currently supported.')
+
+    [generator] = ast_node.generators
+    if generator.ifs:
+        raise CompilationError(compilation_context, generator.ifs[0],
+                               '"if" clauses in set comprehensions are not currently supported.')
+    if not isinstance(generator.target, ast.Name):
+        raise CompilationError(compilation_context, generator.target,
+                               'Only set comprehensions of the form {... for var_name in ...} are supported.')
+
+    set_expr = expression_ast_to_ir3(generator.iter, compilation_context)
+    if not isinstance(set_expr.type, ir3.SetType):
+        notes = []
+        if isinstance(set_expr, ir3.VarReference):
+            lookup_result = compilation_context.get_symbol_definition(set_expr.name)
+            assert lookup_result
+            notes.append((lookup_result.ast_node, '%s was defined here' % set_expr.name))
+        raise CompilationError(compilation_context, ast_node.generators[0].target,
+                               'The RHS of a set comprehension should be a set, but this value has type "%s".' % str(set_expr.type),
+                               notes=notes)
+
+    child_context = compilation_context.create_child_context(function_name=compilation_context.current_function_name)
+    child_context.add_symbol(name=generator.target.id,
+                             type=set_expr.elem_type,
+                             definition_ast_node=generator.target,
+                             is_only_partially_defined=False,
+                             is_function_that_may_throw=False)
+    result_elem_expr = expression_ast_to_ir3(ast_node.elt, child_context)
+
+    if isinstance(result_elem_expr.type, ir3.FunctionType):
+        raise CompilationError(compilation_context, ast_node,
+                               'Creating sets of functions is not supported. The elements of this set have type: %s' % str(result_elem_expr.type))
+
+    return ir3.SetComprehension(set_expr=set_expr,
+                                loop_var=ir3.VarReference(name=generator.target.id,
+                                                          type=set_expr.elem_type,
+                                                          is_global_function=False,
+                                                          is_function_that_may_throw=False),
+                                result_elem_expr=result_elem_expr)
+
+
 def add_expression_ast_to_ir3(ast_node: ast.BinOp, compilation_context: CompilationContext):
     lhs = expression_ast_to_ir3(ast_node.left, compilation_context)
     rhs = expression_ast_to_ir3(ast_node.right, compilation_context)
@@ -1035,12 +1081,14 @@ def expression_ast_to_ir3(ast_node: ast.AST, compilation_context: CompilationCon
         return type_literal_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'empty_list':
         return empty_list_literal_ast_to_ir3(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'empty_set':
+        return empty_set_literal_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'sum':
-        return int_list_sum_expr_ast_to_ir3(ast_node, compilation_context)
+        return int_iterable_sum_expr_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'all':
-        return bool_list_all_expr_ast_to_ir3(ast_node, compilation_context)
+        return bool_iterable_all_expr_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'any':
-        return bool_list_any_expr_ast_to_ir3(ast_node, compilation_context)
+        return bool_iterable_any_expr_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Call) and isinstance(ast_node.func.func, ast.Name) and ast_node.func.func.id == 'match':
         return match_expression_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Call):
@@ -1051,6 +1099,8 @@ def expression_ast_to_ir3(ast_node: ast.AST, compilation_context: CompilationCon
         return var_reference_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.List) and isinstance(ast_node.ctx, ast.Load):
         return list_expression_ast_to_ir3(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.Set):
+        return set_expression_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Attribute) and isinstance(ast_node.ctx, ast.Load):
         return attribute_expression_ast_to_ir3(ast_node, compilation_context)
     elif isinstance(ast_node, ast.Num):
@@ -1077,6 +1127,8 @@ def expression_ast_to_ir3(ast_node: ast.AST, compilation_context: CompilationCon
         return int_binary_op_expression_ast_to_ir3(ast_node, '%', compilation_context)
     elif isinstance(ast_node, ast.ListComp):
         return list_comprehension_ast_to_ir3(ast_node, compilation_context)
+    elif isinstance(ast_node, ast.SetComp):
+        return set_comprehension_ast_to_ir3(ast_node, compilation_context)
     else:
         # raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported: %s' % ast_to_string(ast_node))
         raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported.')  # pragma: no cover
@@ -1126,14 +1178,23 @@ def empty_list_literal_ast_to_ir3(ast_node: ast.Call, compilation_context: Compi
     elem_type = type_declaration_ast_to_ir3_expression_type(arg, compilation_context)
     return ir3.ListExpr(elem_type=elem_type, elem_exprs=[])
 
-def int_list_sum_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
+def empty_set_literal_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
+    if ast_node.keywords:
+        raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not supported.')
+    if len(ast_node.args) != 1:
+        raise CompilationError(compilation_context, ast_node, 'empty_set() takes 1 argument. Got: %s' % len(ast_node.args))
+    [arg] = ast_node.args
+    elem_type = type_declaration_ast_to_ir3_expression_type(arg, compilation_context)
+    return ir3.SetExpr(elem_type=elem_type, elem_exprs=[])
+
+def int_iterable_sum_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
     if ast_node.keywords:
         raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not supported.')
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'sum() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
     arg_expr = expression_ast_to_ir3(arg, compilation_context)
-    if not (isinstance(arg_expr.type, ir3.ListType) and isinstance(arg_expr.type.elem_type, ir3.IntType)):
+    if not (isinstance(arg_expr.type, (ir3.ListType, ir3.SetType)) and isinstance(arg_expr.type.elem_type, ir3.IntType)):
         notes = []
         if isinstance(arg_expr, ir3.VarReference):
             lookup_result = compilation_context.get_symbol_definition(arg_expr.name)
@@ -1141,18 +1202,21 @@ def int_list_sum_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: Compil
             assert not lookup_result.is_only_partially_defined
             notes.append((lookup_result.ast_node, '%s was defined here' % arg_expr.name))
         raise CompilationError(compilation_context, arg,
-                               'The argument of sum() must have type List[int]. Got type: %s' % str(arg_expr.type),
+                               'The argument of sum() must have type List[int] or Set[int]. Got type: %s' % str(arg_expr.type),
                                notes=notes)
-    return ir3.IntListSumExpr(list_expr=arg_expr)
+    if isinstance(arg_expr.type, ir3.ListType):
+        return ir3.IntListSumExpr(list_expr=arg_expr)
+    else:
+        return ir3.IntSetSumExpr(set_expr=arg_expr)
 
-def bool_list_all_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
+def bool_iterable_all_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
     if ast_node.keywords:
         raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not supported.')
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'all() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
     arg_expr = expression_ast_to_ir3(arg, compilation_context)
-    if not (isinstance(arg_expr.type, ir3.ListType) and isinstance(arg_expr.type.elem_type, ir3.BoolType)):
+    if not (isinstance(arg_expr.type, (ir3.ListType, ir3.SetType)) and isinstance(arg_expr.type.elem_type, ir3.BoolType)):
         notes = []
         if isinstance(arg_expr, ir3.VarReference):
             lookup_result = compilation_context.get_symbol_definition(arg_expr.name)
@@ -1160,18 +1224,21 @@ def bool_list_all_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: Compi
             assert not lookup_result.is_only_partially_defined
             notes.append((lookup_result.ast_node, '%s was defined here' % arg_expr.name))
         raise CompilationError(compilation_context, arg,
-                               'The argument of all() must have type List[bool]. Got type: %s' % str(arg_expr.type),
+                               'The argument of all() must have type List[bool] or Set[bool]. Got type: %s' % str(arg_expr.type),
                                notes=notes)
-    return ir3.BoolListAllExpr(list_expr=arg_expr)
+    if isinstance(arg_expr.type, ir3.ListType):
+        return ir3.BoolListAllExpr(list_expr=arg_expr)
+    else:
+        return ir3.BoolSetAllExpr(set_expr=arg_expr)
 
-def bool_list_any_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
+def bool_iterable_any_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
     if ast_node.keywords:
         raise CompilationError(compilation_context, ast_node.keywords[0].value, 'Keyword arguments are not supported.')
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'any() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
     arg_expr = expression_ast_to_ir3(arg, compilation_context)
-    if not (isinstance(arg_expr.type, ir3.ListType) and isinstance(arg_expr.type.elem_type, ir3.BoolType)):
+    if not (isinstance(arg_expr.type, (ir3.ListType, ir3.SetType)) and isinstance(arg_expr.type.elem_type, ir3.BoolType)):
         notes = []
         if isinstance(arg_expr, ir3.VarReference):
             lookup_result = compilation_context.get_symbol_definition(arg_expr.name)
@@ -1179,9 +1246,37 @@ def bool_list_any_expr_ast_to_ir3(ast_node: ast.Call, compilation_context: Compi
             assert not lookup_result.is_only_partially_defined
             notes.append((lookup_result.ast_node, '%s was defined here' % arg_expr.name))
         raise CompilationError(compilation_context, arg,
-                               'The argument of any() must have type List[bool]. Got type: %s' % str(arg_expr.type),
+                               'The argument of any() must have type List[bool] or Set[bool]. Got type: %s' % str(arg_expr.type),
                                notes=notes)
-    return ir3.BoolListAnyExpr(list_expr=arg_expr)
+    if isinstance(arg_expr.type, ir3.ListType):
+        return ir3.BoolListAnyExpr(list_expr=arg_expr)
+    else:
+        return ir3.BoolSetAnyExpr(set_expr=arg_expr)
+
+def _is_structural_equality_check_supported_for_type(type: ir3.ExprType):
+    if isinstance(type, ir3.BoolType):
+        return True
+    elif isinstance(type, ir3.IntType):
+        return True
+    elif isinstance(type, ir3.TypeType):
+        return True
+    elif isinstance(type, ir3.FunctionType):
+        return False
+    elif isinstance(type, ir3.ListType):
+        return _is_structural_equality_check_supported_for_type(type.elem_type)
+    elif isinstance(type, ir3.SetType):
+        return False
+    elif isinstance(type, ir3.CustomType):
+        return all(_is_structural_equality_check_supported_for_type(arg_type.type)
+                   for arg_type in type.arg_types)
+    else:
+        raise NotImplementedError('Unexpected type: %s' % type.__class__.__name__)
+
+def _is_equality_check_supported_for_type(type: ir3.ExprType):
+    if isinstance(type, ir3.SetType):
+        return _is_structural_equality_check_supported_for_type(type.elem_type)
+    else:
+        return _is_structural_equality_check_supported_for_type(type)
 
 def eq_ast_to_ir3(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: CompilationContext):
     lhs = expression_ast_to_ir3(lhs_node, compilation_context)
@@ -1189,7 +1284,7 @@ def eq_ast_to_ir3(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context: Com
     if lhs.type != rhs.type:
         raise CompilationError(compilation_context, lhs_node, 'Type mismatch in ==: %s vs %s' % (
             str(lhs.type), str(rhs.type)))
-    if isinstance(lhs.type, ir3.FunctionType):
+    if not _is_equality_check_supported_for_type(lhs.type):
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.type))
     return ir3.EqualityComparison(lhs=lhs, rhs=rhs)
 
@@ -1199,7 +1294,7 @@ def not_eq_ast_to_ir3(lhs_node: ast.AST, rhs_node: ast.AST, compilation_context:
     if lhs.type != rhs.type:
         raise CompilationError(compilation_context, lhs_node, 'Type mismatch in !=: %s vs %s' % (
             str(lhs.type), str(rhs.type)))
-    if isinstance(lhs.type, ir3.FunctionType):
+    if not _is_equality_check_supported_for_type(lhs.type):
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.type))
     return ir3.NotExpr(expr=ir3.EqualityComparison(lhs=lhs, rhs=rhs))
 
@@ -1395,6 +1490,22 @@ def list_expression_ast_to_ir3(ast_node: ast.List, compilation_context: Compilat
 
     return ir3.ListExpr(elem_type=elem_type, elem_exprs=elem_exprs)
 
+def set_expression_ast_to_ir3(ast_node: ast.Set, compilation_context: CompilationContext):
+    elem_exprs = [expression_ast_to_ir3(elem_expr_node, compilation_context) for elem_expr_node in ast_node.elts]
+    assert elem_exprs
+    elem_type = elem_exprs[0].type
+    for elem_expr, elem_expr_ast_node in zip(elem_exprs, ast_node.elts):
+        if elem_expr.type != elem_type:
+            raise CompilationError(compilation_context, elem_expr_ast_node,
+                                   'Found different types in set elements, this is not supported. The type of this element was %s instead of %s' % (
+                                       str(elem_expr.type), str(elem_type)),
+                                   notes=[(ast_node.elts[0], 'A previous set element with type %s was here.' % str(elem_type))])
+    if isinstance(elem_type, ir3.FunctionType):
+        raise CompilationError(compilation_context, ast_node,
+                               'Creating sets of functions is not supported. The elements of this set have type: %s' % str(elem_type))
+
+    return ir3.SetExpr(elem_type=elem_type, elem_exprs=elem_exprs)
+
 def type_declaration_ast_to_ir3_expression_type(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.Name) and isinstance(ast_node.ctx, ast.Load):
         if ast_node.id == 'bool':
@@ -1417,6 +1528,8 @@ def type_declaration_ast_to_ir3_expression_type(ast_node: ast.AST, compilation_c
         and isinstance(ast_node.slice, ast.Index)):
         if ast_node.value.id == 'List':
             return ir3.ListType(type_declaration_ast_to_ir3_expression_type(ast_node.slice.value, compilation_context))
+        if ast_node.value.id == 'Set':
+            return ir3.SetType(type_declaration_ast_to_ir3_expression_type(ast_node.slice.value, compilation_context))
         elif (ast_node.value.id == 'Callable'
               and isinstance(ast_node.slice.value, ast.Tuple)
               and len(ast_node.slice.value.elts) == 2

@@ -56,6 +56,16 @@ def test_function_call_returning_list():
     assert g([Type('int'), Type('float')]) == [Type('int'), Type('float')]
 
 @assert_compilation_succeeds
+def test_function_call_returning_set():
+    from tmppy import Type
+    from typing import Set
+    def f(x: Set[Type]):
+        return x
+    def g(x: Set[Type]):
+        return f(f(x))
+    assert g({Type('int'), Type('float')}) == {Type('int'), Type('float')}
+
+@assert_compilation_succeeds
 def test_type_function_passed_as_argument():
     from tmppy import Type
     from typing import List
@@ -191,6 +201,11 @@ def test_calling_bool_error():
 def test_calling_list_error():
     def f(x: bool):
         return [x](x)  # error: Attempting to call an object that is not a function. It has type: List\[bool\]
+
+@assert_conversion_fails
+def test_calling_set_error():
+    def f(x: bool):
+        return {x}(x)  # error: Attempting to call an object that is not a function. It has type: Set\[bool\]
 
 @assert_conversion_fails
 def test_calling_type_error():
@@ -362,6 +377,17 @@ def test_function_returning_function_returning_list_success():
     def h(x: Type):
         return g(x)(True)
     assert h(Type('int')) == [True]
+
+@assert_compilation_succeeds
+def test_function_returning_function_returning_set_success():
+    from tmppy import Type
+    def f(x: bool):
+        return {x}
+    def g(b: Type):
+        return f
+    def h(x: Type):
+        return g(x)(True)
+    assert h(Type('int')) == {True}
 
 @assert_compilation_succeeds
 def test_function_returning_function_returning_bool_ok():

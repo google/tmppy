@@ -285,6 +285,59 @@ class ListExpr(Expr):
     def describe_other_fields(self):
         return ''
 
+class AddToSetExpr(Expr):
+    def __init__(self, set_expr: VarReference, elem_expr: VarReference):
+        assert isinstance(set_expr.type, ListType)
+        assert set_expr.type.elem_type == elem_expr.type
+        super().__init__(type=ListType(set_expr.type.elem_type))
+        self.set_expr = set_expr
+        self.elem_expr = elem_expr
+
+    def get_free_variables(self):
+        for expr in (self.set_expr, self.elem_expr):
+            for var in expr.get_free_variables():
+                yield var
+
+    def __str__(self):
+        return 'add_to_set(%s, %s)' % (
+            str(self.set_expr),
+            str(self.elem_expr))
+
+    def describe_other_fields(self):
+        return 'set: %s; elem: %s' % (self.set_expr.describe_other_fields(), self.elem_expr.describe_other_fields())
+
+class SetToListExpr(Expr):
+    def __init__(self, var: VarReference):
+        assert isinstance(var.type, ListType)
+        super().__init__(type=ListType(elem_type=var.type.elem_type))
+        self.var = var
+
+    def get_free_variables(self):
+        for var in self.var.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'set_to_list(%s)' % self.var.name
+
+    def describe_other_fields(self):
+        return self.var.describe_other_fields()
+
+class ListToSetExpr(Expr):
+    def __init__(self, var: VarReference):
+        assert isinstance(var.type, ListType)
+        super().__init__(type=ListType(elem_type=var.type.elem_type))
+        self.var = var
+
+    def get_free_variables(self):
+        for var in self.var.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'list_to_set(%s)' % self.var.name
+
+    def describe_other_fields(self):
+        return self.var.describe_other_fields()
+
 class FunctionCall(Expr):
     def __init__(self, fun: VarReference, args: List[VarReference]):
         assert isinstance(fun.type, FunctionType)
@@ -326,6 +379,25 @@ class EqualityComparison(Expr):
 
     def __str__(self):
         return '%s == %s' % (self.lhs.name, self.rhs.name)
+
+    def describe_other_fields(self):
+        return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
+
+class SetEqualityComparison(Expr):
+    def __init__(self, lhs: VarReference, rhs: VarReference):
+        super().__init__(type=BoolType())
+        assert isinstance(lhs.type, ListType)
+        assert lhs.type == rhs.type
+        self.lhs = lhs
+        self.rhs = rhs
+
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
+    def __str__(self):
+        return 'set_equals(%s, %s)' % (self.lhs.name, self.rhs.name)
 
     def describe_other_fields(self):
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())

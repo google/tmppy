@@ -173,6 +173,12 @@ def expr_to_ir0(expr: ir1.Expr, writer: Writer) -> Tuple[Optional[ir0.Expr], Opt
         return class_member_access_expr_to_ir0(expr, writer), None
     elif isinstance(expr, ir1.TemplateInstantiation):
         return template_instantiation_expr_to_ir0(expr, writer), None
+    elif isinstance(expr, ir1.AddToSetExpr):
+        return add_to_set_expr_to_ir0(expr), None
+    elif isinstance(expr, ir1.SetEqualityComparison):
+        return set_equality_comparison_expr_to_ir0(expr), None
+    elif isinstance(expr, ir1.ListToSetExpr):
+        return list_to_set_expr_to_ir0(expr), None
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -550,6 +556,95 @@ def template_instantiation_expr_to_ir0(expr: ir1.TemplateInstantiation, writer: 
                                      arg_types=[type_to_ir0(arg.type)
                                                 for arg in expr.args],
                                      instantiation_might_trigger_static_asserts=expr.instantiation_might_trigger_static_asserts)
+
+def add_to_set_expr_to_ir0(expr: ir1.AddToSetExpr):
+    # add_to_set(s, 3)
+    #
+    # Becomes:
+    #
+    # AddToInt64Set<s, 3>::type
+
+    set_expr = var_reference_to_ir0(expr.set_expr)
+    elem_expr = var_reference_to_ir0(expr.elem_expr)
+
+    if elem_expr.kind == ir0.ExprKind.BOOL:
+        template_name = 'AddToBoolSet'
+    elif elem_expr.kind == ir0.ExprKind.INT64:
+        template_name = 'AddToInt64Set'
+    elif elem_expr.kind == ir0.ExprKind.TYPE:
+        template_name = 'AddToTypeSet'
+    else:
+        raise NotImplementedError('Unexpected type kind: %s' % elem_expr.kind)
+
+    add_to_set_instantiation = ir0.TemplateInstantiation(template_expr=ir0.TypeLiteral.for_nonlocal_template(cpp_type=template_name,
+                                                                                                             is_metafunction_that_may_return_error=False),
+                                                         args=[set_expr, elem_expr],
+                                                         arg_types=[ir0.TypeType(), type_to_ir0(expr.elem_expr.type)],
+                                                         instantiation_might_trigger_static_asserts=False)
+
+    return ir0.ClassMemberAccess(class_type_expr=add_to_set_instantiation,
+                                 member_name='type',
+                                 member_kind=ir0.ExprKind.TYPE)
+
+def set_equality_comparison_expr_to_ir0(expr: ir1.SetEqualityComparison):
+    # set_equals(x, y)
+    #
+    # Becomes:
+    #
+    # Int64SetEquals<x, y>::value
+
+    lhs = var_reference_to_ir0(expr.lhs)
+    rhs = var_reference_to_ir0(expr.rhs)
+    assert lhs.kind == rhs.kind
+
+    elem_kind = type_to_ir0(expr.elem_type).kind
+    if elem_kind == ir0.ExprKind.BOOL:
+        template_name = 'BoolSetEquals'
+    elif elem_kind == ir0.ExprKind.INT64:
+        template_name = 'Int64SetEquals'
+    elif elem_kind == ir0.ExprKind.TYPE:
+        template_name = 'TypeSetEquals'
+    else:
+        raise NotImplementedError('Unexpected type kind: %s' % lhs.kind)
+
+    set_equals_instantiation = ir0.TemplateInstantiation(template_expr=ir0.TypeLiteral.for_nonlocal_template(cpp_type=template_name,
+                                                                                                             is_metafunction_that_may_return_error=False),
+                                                         args=[lhs, rhs],
+                                                         arg_types=[type_to_ir0(expr.lhs.type), type_to_ir0(expr.rhs.type)],
+                                                         instantiation_might_trigger_static_asserts=False)
+
+    return ir0.ClassMemberAccess(class_type_expr=set_equals_instantiation,
+                                 member_name='value',
+                                 member_kind=ir0.ExprKind.BOOL)
+
+def list_to_set_expr_to_ir0(expr: ir1.ListToSetExpr):
+    # list_to_set(x)
+    #
+    # Becomes:
+    #
+    # Int64ListToSet<x>::type
+
+    var = var_reference_to_ir0(expr.var)
+
+    elem_kind = type_to_ir0(expr.elem_type).kind
+    if elem_kind == ir0.ExprKind.BOOL:
+        template_name = 'BoolListToSet'
+    elif elem_kind == ir0.ExprKind.INT64:
+        template_name = 'Int64ListToSet'
+    elif elem_kind == ir0.ExprKind.TYPE:
+        template_name = 'TypeListToSet'
+    else:
+        raise NotImplementedError('Unexpected type kind: %s' % elem_kind)
+
+    set_equals_instantiation = ir0.TemplateInstantiation(template_expr=ir0.TypeLiteral.for_nonlocal_template(cpp_type=template_name,
+                                                                                                             is_metafunction_that_may_return_error=False),
+                                                         args=[var],
+                                                         arg_types=[type_to_ir0(expr.var.type)],
+                                                         instantiation_might_trigger_static_asserts=False)
+
+    return ir0.ClassMemberAccess(class_type_expr=set_equals_instantiation,
+                                 member_name='type',
+                                 member_kind=ir0.ExprKind.TYPE)
 
 def assert_to_ir0(assert_stmt: ir1.Assert, writer: Writer):
     expr = var_reference_to_ir0(assert_stmt.var)

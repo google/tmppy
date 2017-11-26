@@ -179,6 +179,8 @@ def type_to_ir2(type: ir3.ExprType):
         return ir2.BottomType()
     elif isinstance(type, ir3.ListType):
         return ir2.ListType(elem_type=type_to_ir2(type.elem_type))
+    elif isinstance(type, ir3.SetType):
+        return ir2.ListType(elem_type=type_to_ir2(type.elem_type))
     elif isinstance(type, ir3.FunctionType):
         return ir2.FunctionType(argtypes=[type_to_ir2(arg)
                                           for arg in type.argtypes],
@@ -203,6 +205,8 @@ def expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.VarReference:
         return type_literal_to_ir2(expr, writer)
     elif isinstance(expr, ir3.ListExpr):
         return list_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.SetExpr):
+        return set_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.FunctionCall):
         return function_call_to_ir2(expr, writer)
     elif isinstance(expr, ir3.EqualityComparison):
@@ -219,10 +223,16 @@ def expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.VarReference:
         return int_unary_minus_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.IntListSumExpr):
         return int_list_sum_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.IntSetSumExpr):
+        return int_set_sum_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.BoolListAllExpr):
         return bool_list_all_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.BoolSetAllExpr):
+        return bool_set_all_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.BoolListAnyExpr):
         return bool_list_any_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.BoolSetAnyExpr):
+        return bool_set_any_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.IntComparisonExpr):
         return int_comparison_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.IntBinaryOpExpr):
@@ -231,6 +241,8 @@ def expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.VarReference:
         return list_concat_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.ListComprehension):
         return list_comprehension_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.SetComprehension):
+        return set_comprehension_expr_to_ir2(expr, writer)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -298,6 +310,17 @@ def list_expr_to_ir2(list_expr: ir3.ListExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.ListExpr(elem_type=type_to_ir2(list_expr.elem_type),
                                                 elems=elem_vars))
 
+def set_expr_to_ir2(set_expr: ir3.SetExpr, writer: StmtWriter):
+    result = writer.new_var_for_expr(ir2.ListExpr(elem_type=type_to_ir2(set_expr.elem_type),
+                                                  elems=[]))
+
+    elem_vars = [expr_to_ir2(elem_expr, writer)
+                 for elem_expr in set_expr.elem_exprs]
+    for var in elem_vars:
+        result = writer.new_var_for_expr(ir2.AddToSetExpr(set_expr=result,
+                                                          elem_expr=var))
+    return result
+
 def function_call_to_ir2(call_expr: ir3.FunctionCall, writer: StmtWriter):
     fun_var = expr_to_ir2(call_expr.fun_expr, writer)
     arg_vars = [expr_to_ir2(arg_expr, writer)
@@ -310,8 +333,12 @@ def function_call_to_ir2(call_expr: ir3.FunctionCall, writer: StmtWriter):
                                                         args=arg_vars))
 
 def equality_comparison_to_ir2(comparison_expr: ir3.EqualityComparison, writer: StmtWriter):
-    return writer.new_var_for_expr(ir2.EqualityComparison(lhs=expr_to_ir2(comparison_expr.lhs, writer),
-                                                          rhs=expr_to_ir2(comparison_expr.rhs, writer)))
+    if isinstance(comparison_expr.lhs.type, ir3.SetType):
+        return writer.new_var_for_expr(ir2.SetEqualityComparison(lhs=expr_to_ir2(comparison_expr.lhs, writer),
+                                                                 rhs=expr_to_ir2(comparison_expr.rhs, writer)))
+    else:
+        return writer.new_var_for_expr(ir2.EqualityComparison(lhs=expr_to_ir2(comparison_expr.lhs, writer),
+                                                              rhs=expr_to_ir2(comparison_expr.rhs, writer)))
 
 def attribute_access_expr_to_ir2(attribute_access_expr: ir3.AttributeAccessExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.AttributeAccessExpr(var=expr_to_ir2(attribute_access_expr.expr, writer),
@@ -373,11 +400,20 @@ def int_unary_minus_expr_to_ir2(expr: ir3.IntUnaryMinusExpr, writer: StmtWriter)
 def int_list_sum_expr_to_ir2(expr: ir3.IntListSumExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.IntListSumExpr(expr_to_ir2(expr.list_expr, writer)))
 
+def int_set_sum_expr_to_ir2(expr: ir3.IntSetSumExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.IntListSumExpr(expr_to_ir2(expr.set_expr, writer)))
+
 def bool_list_all_expr_to_ir2(expr: ir3.BoolListAllExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.BoolListAllExpr(expr_to_ir2(expr.list_expr, writer)))
 
+def bool_set_all_expr_to_ir2(expr: ir3.BoolSetAllExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.BoolListAllExpr(expr_to_ir2(expr.set_expr, writer)))
+
 def bool_list_any_expr_to_ir2(expr: ir3.BoolListAnyExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.BoolListAnyExpr(expr_to_ir2(expr.list_expr, writer)))
+
+def bool_set_any_expr_to_ir2(expr: ir3.BoolSetAnyExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.BoolListAnyExpr(expr_to_ir2(expr.set_expr, writer)))
 
 def int_comparison_expr_to_ir2(expr: ir3.IntComparisonExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.IntComparisonExpr(lhs=expr_to_ir2(expr.lhs, writer),
@@ -393,7 +429,10 @@ def list_concat_expr_to_ir2(expr: ir3.ListConcatExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.ListConcatExpr(lhs=expr_to_ir2(expr.lhs, writer),
                                                       rhs=expr_to_ir2(expr.rhs, writer)))
 
-def list_comprehension_expr_to_ir2(expr: ir3.ListComprehension, writer: StmtWriter):
+def deconstructed_list_comprehension_expr_to_ir2(list_var: ir3.VarReference,
+                                                 loop_var: ir2.VarReference,
+                                                 result_elem_expr: ir2.Expr,
+                                                 writer: StmtWriter):
     # [f(x, y) * 2
     #  for x in l]
     #
@@ -405,12 +444,10 @@ def list_comprehension_expr_to_ir2(expr: ir3.ListComprehension, writer: StmtWrit
     # [g(x, y)
     #  for x in l]
 
-    l_var = expr_to_ir2(expr.list_expr, writer)
-
-    result_elem_type = type_to_ir2(expr.result_elem_expr.type)
+    result_elem_type = type_to_ir2(result_elem_expr.type)
     helper_fun_writer = StmtWriter(writer.fun_writer,
                                    current_fun_return_type=result_elem_type)
-    helper_fun_writer.write_stmt(ir2.ReturnStmt(result=expr_to_ir2(expr.result_elem_expr, helper_fun_writer),
+    helper_fun_writer.write_stmt(ir2.ReturnStmt(result=expr_to_ir2(result_elem_expr, helper_fun_writer),
                                                 error=None))
     forwarded_vars = ir2.get_unique_free_variables_in_stmts(helper_fun_writer.stmts)
     helper_fun_name = writer.new_id()
@@ -427,9 +464,40 @@ def list_comprehension_expr_to_ir2(expr: ir3.ListComprehension, writer: StmtWrit
                                                             is_global_function=True,
                                                             is_function_that_may_throw=True),
                                        args=forwarded_vars)
-    return writer.new_var_for_expr_with_error_checking(ir2.ListComprehensionExpr(list_var=l_var,
-                                                                                 loop_var=var_reference_to_ir2(expr.loop_var, writer),
+    return writer.new_var_for_expr_with_error_checking(ir2.ListComprehensionExpr(list_var=list_var,
+                                                                                 loop_var=var_reference_to_ir2(loop_var, writer),
                                                                                  result_elem_expr=helper_fun_call))
+
+
+def list_comprehension_expr_to_ir2(expr: ir3.ListComprehension, writer: StmtWriter):
+    l_var = expr_to_ir2(expr.list_expr, writer)
+
+    return deconstructed_list_comprehension_expr_to_ir2(list_var=l_var,
+                                                        loop_var=expr.loop_var,
+                                                        result_elem_expr=expr.result_elem_expr,
+                                                        writer=writer)
+
+
+def set_comprehension_expr_to_ir2(expr: ir3.SetComprehension, writer: StmtWriter):
+    # {f(x, y) * 2
+    #  for x in s}
+    #
+    # Becomes:
+    #
+    # l = set_to_list(s)
+    # l2 = [f(x, y) * 2
+    #       for x in l] # (in fact, this will be converted further)
+    # list_to_set(l2)
+
+    s_var = expr_to_ir2(expr.set_expr, writer)
+    l_var = writer.new_var_for_expr(ir2.SetToListExpr(s_var))
+
+    l2_var = deconstructed_list_comprehension_expr_to_ir2(list_var=l_var,
+                                                          loop_var=expr.loop_var,
+                                                          result_elem_expr=expr.result_elem_expr,
+                                                          writer=writer)
+
+    return writer.new_var_for_expr(ir2.ListToSetExpr(l2_var))
 
 def assert_to_ir2(assert_stmt: ir3.Assert, writer: StmtWriter):
     writer.write_stmt(ir2.Assert(var=expr_to_ir2(assert_stmt.expr, writer),

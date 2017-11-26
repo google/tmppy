@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Type, List, TypeVar
+from typing import Type, List, Set, TypeVar
 
 T = TypeVar('T')
 
 def empty_list(t: Type[T]) -> List[T]:
     return []
+
+def empty_set(t: Type[T]) -> Set[T]:
+    return set()

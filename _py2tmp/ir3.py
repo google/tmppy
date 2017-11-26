@@ -73,6 +73,17 @@ class ListType(ExprType):
     def __eq__(self, other):
         return isinstance(other, ListType) and self.__dict__ == other.__dict__
 
+class SetType(ExprType):
+    def __init__(self, elem_type: ExprType):
+        assert not isinstance(elem_type, FunctionType)
+        self.elem_type = elem_type
+
+    def __str__(self):
+        return "Set[%s]" % str(self.elem_type)
+
+    def __eq__(self, other):
+        return isinstance(other, SetType) and self.__dict__ == other.__dict__
+
 class CustomTypeArgDecl:
     def __init__(self, name: str, type: ExprType):
         self.name = name
@@ -190,6 +201,18 @@ class ListExpr(Expr):
             for var in expr.get_free_variables():
                 yield var
 
+class SetExpr(Expr):
+    def __init__(self, elem_type: ExprType, elem_exprs: List[Expr]):
+        assert not isinstance(elem_type, FunctionType)
+        super().__init__(type=SetType(elem_type))
+        self.elem_type = elem_type
+        self.elem_exprs = elem_exprs
+
+    def get_free_variables(self):
+        for expr in self.elem_exprs:
+            for var in expr.get_free_variables():
+                yield var
+
 class IntListSumExpr(Expr):
     def __init__(self, list_expr: Expr):
         assert isinstance(list_expr.type, ListType)
@@ -199,6 +222,17 @@ class IntListSumExpr(Expr):
 
     def get_free_variables(self):
         for var in self.list_expr.get_free_variables():
+            yield var
+
+class IntSetSumExpr(Expr):
+    def __init__(self, set_expr: Expr):
+        assert isinstance(set_expr.type, SetType)
+        assert isinstance(set_expr.type.elem_type, IntType)
+        super().__init__(type=IntType())
+        self.set_expr = set_expr
+
+    def get_free_variables(self):
+        for var in self.set_expr.get_free_variables():
             yield var
 
 class BoolListAllExpr(Expr):
@@ -212,6 +246,17 @@ class BoolListAllExpr(Expr):
         for var in self.list_expr.get_free_variables():
             yield var
 
+class BoolSetAllExpr(Expr):
+    def __init__(self, set_expr: Expr):
+        assert isinstance(set_expr.type, SetType)
+        assert isinstance(set_expr.type.elem_type, BoolType)
+        super().__init__(type=BoolType())
+        self.set_expr = set_expr
+
+    def get_free_variables(self):
+        for var in self.set_expr.get_free_variables():
+            yield var
+
 class BoolListAnyExpr(Expr):
     def __init__(self, list_expr: Expr):
         assert isinstance(list_expr.type, ListType)
@@ -221,6 +266,17 @@ class BoolListAnyExpr(Expr):
 
     def get_free_variables(self):
         for var in self.list_expr.get_free_variables():
+            yield var
+
+class BoolSetAnyExpr(Expr):
+    def __init__(self, set_expr: Expr):
+        assert isinstance(set_expr.type, SetType)
+        assert isinstance(set_expr.type.elem_type, BoolType)
+        super().__init__(type=BoolType())
+        self.set_expr = set_expr
+
+    def get_free_variables(self):
+        for var in self.set_expr.get_free_variables():
             yield var
 
 class FunctionCall(Expr):
@@ -375,6 +431,24 @@ class ListComprehension(Expr):
 
     def get_free_variables(self):
         for var in self.list_expr.get_free_variables():
+            yield var
+        for var in self.result_elem_expr.get_free_variables():
+            if var.name != self.loop_var.name:
+                yield var
+
+class SetComprehension(Expr):
+    def __init__(self,
+                 set_expr: Expr,
+                 loop_var: VarReference,
+                 result_elem_expr: Expr):
+        assert isinstance(set_expr.type, SetType)
+        super().__init__(type=SetType(result_elem_expr.type))
+        self.set_expr = set_expr
+        self.loop_var = loop_var
+        self.result_elem_expr = result_elem_expr
+
+    def get_free_variables(self):
+        for var in self.set_expr.get_free_variables():
             yield var
         for var in self.result_elem_expr.get_free_variables():
             if var.name != self.loop_var.name:

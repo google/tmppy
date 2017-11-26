@@ -24,6 +24,8 @@ class Writer:
 
     def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment]): ...  # pragma: no cover
 
+    def get_fun_writer(self) -> 'FunWriter': ...  # pragma: no cover
+
 class FunWriter(Writer):
     def __init__(self, identifier_generator: Iterator[str]):
         self.identifier_generator = identifier_generator
@@ -40,6 +42,9 @@ class FunWriter(Writer):
 
     def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment]):
         self.elems.append(elem)
+
+    def get_fun_writer(self):
+        return self
 
 class StmtWriter(Writer):
     def __init__(self,
@@ -60,6 +65,9 @@ class StmtWriter(Writer):
 
     def new_var(self, type: ir1.ExprType):
         return self.fun_writer.new_var(type)
+
+    def get_fun_writer(self):
+        return self.fun_writer
 
 def custom_type_to_ir1(type: ir2.CustomType):
     return ir1.CustomType(name=type.name,
@@ -129,6 +137,14 @@ def expr_to_ir1(expr: ir2.Expr) -> ir1.Expr:
         return is_instance_expr_to_ir1(expr)
     elif isinstance(expr, ir2.SafeUncheckedCast):
         return safe_unchecked_cast_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.AddToSetExpr):
+        return add_to_set_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.SetEqualityComparison):
+        return set_equality_comparison_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.ListToSetExpr):
+        return list_to_set_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.SetToListExpr):
+        return set_to_list_expr_to_ir1(expr)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -297,6 +313,24 @@ def is_instance_expr_to_ir1(expr: ir2.IsInstanceExpr):
 def safe_unchecked_cast_expr_to_ir1(expr: ir2.SafeUncheckedCast):
     return ir1.SafeUncheckedCast(var=var_reference_to_ir1(expr.var),
                                  type=custom_type_to_ir1(expr.type))
+
+def add_to_set_expr_to_ir1(expr: ir2.AddToSetExpr):
+    return ir1.AddToSetExpr(set_expr=var_reference_to_ir1(expr.set_expr),
+                            elem_expr=var_reference_to_ir1(expr.elem_expr))
+
+def set_equality_comparison_expr_to_ir1(expr: ir2.SetEqualityComparison):
+    assert isinstance(expr.lhs.type, ir2.ListType)
+    return ir1.SetEqualityComparison(lhs=var_reference_to_ir1(expr.lhs),
+                                     rhs=var_reference_to_ir1(expr.rhs),
+                                     elem_type=type_to_ir1(expr.lhs.type.elem_type))
+
+def list_to_set_expr_to_ir1(expr: ir2.ListToSetExpr):
+    assert isinstance(expr.var.type, ir2.ListType)
+    return ir1.ListToSetExpr(var=var_reference_to_ir1(expr.var),
+                             elem_type=type_to_ir1(expr.var.type.elem_type))
+
+def set_to_list_expr_to_ir1(expr: ir2.SetToListExpr):
+    return var_reference_to_ir1(expr.var)
 
 def assert_to_ir1(assert_stmt: ir2.Assert, writer: Writer):
     writer.write(ir1.Assert(var=var_reference_to_ir1(assert_stmt.var),

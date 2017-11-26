@@ -220,6 +220,23 @@ def test_match_with_list_expr_call():
     assert f(Type('int(*)(int)')) == [Type('int')]
 
 @assert_compilation_succeeds
+def test_match_with_set_expr_call():
+    from tmppy import Type, TypePattern, match
+    def f(x: Type):
+        return match(x)({
+            TypePattern('T(*)(U)'):
+                lambda T, U:
+                    {Type('double')},
+            TypePattern('int(*)(T)'):
+                lambda T:
+                    {T},
+            TypePattern('float(*)(T)'):
+                lambda T:
+                    {T},
+        })
+    assert f(Type('int(*)(int)')) == {Type('int')}
+
+@assert_compilation_succeeds
 def test_match_with_int_expr_call():
     from tmppy import Type, TypePattern, match
     def f(x: Type):

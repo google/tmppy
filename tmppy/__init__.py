@@ -13,4 +13,4 @@
 # limitations under the License.
 
 from _tmppy.type import Type, TypePattern, match
-from _tmppy.lists import empty_list
+from _tmppy.lists import empty_list, empty_set

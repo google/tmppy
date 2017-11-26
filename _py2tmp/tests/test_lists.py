@@ -502,7 +502,7 @@ def test_sum_empty_list_success():
 
 @assert_conversion_fails
 def test_sum_bool_list_error():
-    assert sum([True, False]) == 40  # error: The argument of sum\(\) must have type List\[int\]. Got type: List\[bool\]
+    assert sum([True, False]) == 40  # error: The argument of sum\(\) must have type List\[int\] or Set\[int\]. Got type: List\[bool\]
 
 @assert_compilation_succeeds
 def test_all_success_returns_true():
@@ -519,7 +519,7 @@ def test_all_empty_list_success():
 
 @assert_conversion_fails
 def test_all_int_list_error():
-    assert all([1, 3]) == True  # error: The argument of all\(\) must have type List\[bool\]. Got type: List\[int\]
+    assert all([1, 3]) == True  # error: The argument of all\(\) must have type List\[bool\] or Set\[bool\]. Got type: List\[int\]
 
 @assert_compilation_succeeds
 def test_any_success_returns_false():
@@ -536,7 +536,7 @@ def test_any_empty_list_success():
 
 @assert_conversion_fails
 def test_any_int_list_error():
-    assert any([1, 3]) == True  # error: The argument of any\(\) must have type List\[bool\]. Got type: List\[int\]
+    assert any([1, 3]) == True  # error: The argument of any\(\) must have type List\[bool\] or Set\[bool\]. Got type: List\[int\]
 
 @assert_compilation_succeeds
 def test_list_unpacking_as_tuple_success():

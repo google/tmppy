@@ -20,7 +20,7 @@ def test_import_unsupported_module():
 
 @assert_conversion_fails
 def test_import_unsupported_symbol():
-    from typing import MutableSequence  # error: The only supported imports from typing are: Callable, List.
+    from typing import MutableSequence  # error: The only supported imports from typing are: Callable, List, Set.
 
 @assert_conversion_fails
 def test_import_module_as_alias_error():
