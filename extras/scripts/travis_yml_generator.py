@@ -103,10 +103,10 @@ def add_osx_tests(compiler, xcode_version=None, stl=None, smoke_tests=[], exclud
 
 
 add_ubuntu_tests(ubuntu_version='17.10', compiler='gcc-7', smoke_tests=['DebugPlain', 'ReleasePlain'])
-add_ubuntu_tests(ubuntu_version='17.10', compiler='clang-4.0', stl='libstdc++', smoke_tests=['DebugPlain', 'ReleasePlain'])
+add_ubuntu_tests(ubuntu_version='17.10', compiler='clang-5.0', stl='libstdc++', smoke_tests=['DebugPlain', 'ReleasePlain'])
 
 add_ubuntu_tests(ubuntu_version='17.04', compiler='gcc-6', smoke_tests=['DebugPlain', 'ReleasePlain'])
-add_ubuntu_tests(ubuntu_version='17.04', compiler='clang-4.0', stl='libstdc++', smoke_tests=['DebugPlain', 'ReleasePlain'])
+add_ubuntu_tests(ubuntu_version='17.04', compiler='clang-5.0', stl='libstdc++', smoke_tests=['DebugPlain', 'ReleasePlain'])
 
 add_ubuntu_tests(ubuntu_version='16.04', compiler='gcc-5')
 add_ubuntu_tests(ubuntu_version='16.04', compiler='clang-3.5', stl='libstdc++')
@@ -117,7 +117,7 @@ add_ubuntu_tests(ubuntu_version='16.04', compiler='clang-3.9', stl='libc++')
 add_osx_tests(compiler='gcc-5', xcode_version='8')
 add_osx_tests(compiler='gcc-6', xcode_version='8', smoke_tests=['DebugPlain'])
 add_osx_tests(compiler='clang-3.7', stl='libc++')
-add_osx_tests(compiler='clang-4.0', xcode_version='8', stl='libc++', smoke_tests=['DebugPlain'])
+add_osx_tests(compiler='clang-5.0', xcode_version='8', stl='libc++', smoke_tests=['DebugPlain'])
 
 add_osx_tests(compiler='clang-default', xcode_version='7.3', stl='libc++')
 add_osx_tests(compiler='clang-default', xcode_version='8.2', stl='libc++', smoke_tests=['DebugPlain'])
