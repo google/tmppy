@@ -53,6 +53,55 @@ def test_exception_raised_and_caught_same_block_success():
             return Type('double')
     assert f(True) == Type('double')
 
+@assert_compilation_fails_with_static_assert_error('Something went wrong 1')
+def test_catch_does_not_catch_other_exception():
+    from tmppy import Type
+    class MyError1(Exception):
+        def __init__(self, b: bool, x: Type):
+            self.message = 'Something went wrong 1'
+            self.b = b
+            self.x = x
+    class MyError2(Exception):
+        def __init__(self, b: bool, x: Type):
+            self.message = 'Something went wrong 2'
+            self.b = b
+            self.x = x
+    def f(b: bool):
+        if b:
+            raise MyError1(b, Type('int*'))
+        return Type('float')
+    def g(b: bool):
+        try:
+            x = f(b)
+            return x
+        except MyError2 as e:
+            assert e.b == b
+            assert e.x == Type('int*')
+            return Type('double')
+    assert g(True) == Type('double')
+
+@assert_compilation_fails_with_static_assert_error('Something went wrong 1')
+def test_catch_does_not_catch_other_exception_same_block():
+    from tmppy import Type
+    class MyError1(Exception):
+        def __init__(self, b: bool, x: Type):
+            self.message = 'Something went wrong 1'
+            self.b = b
+            self.x = x
+    class MyError2(Exception):
+        def __init__(self, b: bool, x: Type):
+            self.message = 'Something went wrong 2'
+            self.b = b
+            self.x = x
+    def f(b: bool):
+        try:
+            raise MyError1(b, Type('int*'))
+        except MyError2 as e:
+            assert e.b == b
+            assert e.x == Type('int*')
+            return Type('double')
+    assert f(True) == Type('double')
+
 # TODO: add support for this.
 @assert_conversion_fails
 def test_exception_type_with_no_args_error():

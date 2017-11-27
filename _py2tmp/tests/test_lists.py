@@ -504,6 +504,20 @@ def test_sum_empty_list_success():
 def test_sum_bool_list_error():
     assert sum([True, False]) == 40  # error: The argument of sum\(\) must have type List\[int\] or Set\[int\]. Got type: List\[bool\]
 
+@assert_conversion_fails
+def test_sum_bool_list_error_using_var():
+    def f(b: bool):
+        l = [True, False]  # note: l was defined here
+        assert sum(l) == 40  # error: The argument of sum\(\) must have type List\[int\] or Set\[int\]. Got type: List\[bool\]
+
+@assert_conversion_fails
+def test_sum_with_keyword_argument_error():
+    assert sum([True, False], start=0) == 40  # error: Keyword arguments are not supported.
+
+@assert_conversion_fails
+def test_sum_with_multiple_arguments_error():
+    assert sum([True, False], 0) == 40  # error: sum\(\) takes 1 argument. Got: 2
+
 @assert_compilation_succeeds
 def test_all_success_returns_true():
     assert all([True, True, True]) == True
@@ -521,6 +535,20 @@ def test_all_empty_list_success():
 def test_all_int_list_error():
     assert all([1, 3]) == True  # error: The argument of all\(\) must have type List\[bool\] or Set\[bool\]. Got type: List\[int\]
 
+@assert_conversion_fails
+def test_all_int_list_error_using_var():
+    def f(b: bool):
+        l = [1, 3]  # note: l was defined here
+        assert all(l) == True  # error: The argument of all\(\) must have type List\[bool\] or Set\[bool\]. Got type: List\[int\]
+
+@assert_conversion_fails
+def test_all_with_keyword_argument_error():
+    assert all([True, False], x=True) == True  # error: Keyword arguments are not supported.
+
+@assert_conversion_fails
+def test_all_with_multiple_arguments_error():
+    assert all([True, False], True) == True  # error: all\(\) takes 1 argument. Got: 2
+
 @assert_compilation_succeeds
 def test_any_success_returns_false():
     assert any([False, False, False]) == False
@@ -537,6 +565,20 @@ def test_any_empty_list_success():
 @assert_conversion_fails
 def test_any_int_list_error():
     assert any([1, 3]) == True  # error: The argument of any\(\) must have type List\[bool\] or Set\[bool\]. Got type: List\[int\]
+
+@assert_conversion_fails
+def test_any_int_list_error_using_var():
+    def f(b: bool):
+        l = [1, 3]  # note: l was defined here
+        assert any(l) == True  # error: The argument of any\(\) must have type List\[bool\] or Set\[bool\]. Got type: List\[int\]
+
+@assert_conversion_fails
+def test_any_with_keyword_argument_error():
+    assert any([True, False], x=True) == True  # error: Keyword arguments are not supported.
+
+@assert_conversion_fails
+def test_any_with_multiple_arguments_error():
+    assert any([True, False], True) == True  # error: any\(\) takes 1 argument. Got: 2
 
 @assert_compilation_succeeds
 def test_list_unpacking_as_tuple_success():
@@ -570,6 +612,22 @@ def test_list_unpacking_as_list_not_a_list_error():
         return 10
     def g(b1: bool):
         [a, b, c] = f(b1)  # error: Unpacking requires a list on the RHS, but the value on the RHS has type int
+        return b
+
+@assert_conversion_fails
+def test_list_unpacking_as_tuple_multiple_levels_not_supported():
+    def f(b: bool):
+        return 10
+    def g(b1: bool):
+        a, (b, c) = f(b1)  # error: This kind of unpacking assignment is not supported. Only unpacking assignments of the form x,y=... or \[x,y\]=... are supported.
+        return b
+
+@assert_conversion_fails
+def test_list_unpacking_as_list_multiple_levels_not_supported():
+    def f(b: bool):
+        return 10
+    def g(b1: bool):
+        [a, [b, c]] = f(b1)  # error: This kind of unpacking assignment is not supported. Only unpacking assignments of the form x,y=... or \[x,y\]=... are supported.
         return b
 
 # TODO: we could report a better error message.
