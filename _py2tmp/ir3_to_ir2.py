@@ -58,6 +58,7 @@ class FunWriter:
         stmt_writer.write_stmt(ir2.ReturnStmt(result=b2_var, error=None))
 
         return ir2.FunctionDefn(name=self.is_error_fun_ref.name,
+                                description='The is_error (meta)function',
                                 args=[ir2.FunctionArgDecl(type=x_var.type, name=x_var.name)],
                                 body=stmt_writer.stmts,
                                 return_type=ir2.BoolType())
@@ -270,6 +271,7 @@ def match_expr_to_ir2(match_expr: ir3.MatchExpr, writer: StmtWriter):
 
         match_fun_name = writer.new_id()
         writer.write_function(ir2.FunctionDefn(name=match_fun_name,
+                                               description='(meta)function wrapping the code in a branch of a match expression',
                                                args=[ir2.FunctionArgDecl(type=var.type, name=var.name)
                                                      for var in forwarded_vars],
                                                body=match_case_writer.stmts,
@@ -452,6 +454,7 @@ def deconstructed_list_comprehension_expr_to_ir2(list_var: ir3.VarReference,
     forwarded_vars = ir2.get_unique_free_variables_in_stmts(helper_fun_writer.stmts)
     helper_fun_name = writer.new_id()
     writer.write_function(ir2.FunctionDefn(name=helper_fun_name,
+                                           description='(meta)function wrapping the result expression in a list/set comprehension',
                                            args=[ir2.FunctionArgDecl(type=var.type, name=var.name)
                                                  for var in forwarded_vars],
                                            body=helper_fun_writer.stmts,
@@ -559,6 +562,7 @@ def try_except_stmt_to_ir2(try_except_stmt: ir3.TryExcept,
 
         then_fun_forwarded_vars = ir2.get_unique_free_variables_in_stmts(then_stmts_writer.stmts)
         then_fun_defn = ir2.FunctionDefn(name=writer.new_id(),
+                                         description='(meta)function wrapping the code after a try-except statement',
                                          args=[ir2.FunctionArgDecl(type=var.type, name=var.name)
                                                for var in then_fun_forwarded_vars],
                                          body=then_stmts_writer.stmts,
@@ -584,6 +588,7 @@ def try_except_stmt_to_ir2(try_except_stmt: ir3.TryExcept,
 
     except_fun_forwarded_vars = ir2.get_unique_free_variables_in_stmts(except_stmts_writer.stmts)
     except_fun_defn = ir2.FunctionDefn(name=writer.new_id(),
+                                       description='(meta)function wrapping the code in an except block',
                                        args=[ir2.FunctionArgDecl(type=var.type, name=var.name)
                                              for var in except_fun_forwarded_vars],
                                        body=except_stmts_writer.stmts,
@@ -696,6 +701,7 @@ def function_defn_to_ir2(function_defn: ir3.FunctionDefn, writer: FunWriter):
     stmts_to_ir2(function_defn.body, stmt_writer)
 
     writer.write_function(ir2.FunctionDefn(name=function_defn.name,
+                                           description='',
                                            args=[function_arg_decl_to_ir2(arg, stmt_writer)
                                                 for arg in function_defn.args],
                                            body=stmt_writer.stmts,

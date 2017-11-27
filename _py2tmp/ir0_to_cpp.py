@@ -258,12 +258,16 @@ def template_defn_to_cpp(template_defn: ir0.TemplateDefn,
                          writer: Writer):
     template_name = template_defn.name
     if template_defn.main_definition:
+        if template_defn.description:
+            writer.write_toplevel_elem('// %s\n' % template_defn.description)
         template_specialization_to_cpp(template_defn.main_definition,
                                        cxx_name=template_name,
                                        enclosing_function_defn_args=enclosing_function_defn_args,
                                        writer=writer)
 
     for specialization in template_defn.specializations:
+        if template_defn.description:
+            writer.write_toplevel_elem('// %s\n' % template_defn.description)
         template_specialization_to_cpp(specialization,
                                        cxx_name=template_name,
                                        enclosing_function_defn_args=enclosing_function_defn_args,

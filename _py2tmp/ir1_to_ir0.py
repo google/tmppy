@@ -321,7 +321,8 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
     helper_function = ir0.TemplateDefn(args=args_decls,
                                        main_definition=main_definition,
                                        specializations=specializations,
-                                       name=writer.new_id())
+                                       name=writer.new_id(),
+                                       description='(meta)function wrapping a match expression')
     writer.write(helper_function)
 
     helper_function_reference = ir0.TypeLiteral.for_nonlocal_template(cpp_type=helper_function.name,
@@ -467,6 +468,7 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
     result_expr, error_expr = function_call_to_ir0(expr.result_elem_expr, helper_template_body_writer)
     helper_template_body_writer.write_result_body_elements(result_expr=result_expr, error_expr=error_expr)
     helper_template_defn = ir0.TemplateDefn(name=writer.new_id(),
+                                            description='(meta)function wrapping the expression in a list comprehension',
                                             specializations=[],
                                             args=[template_arg_decl],
                                             main_definition=ir0.TemplateSpecialization(args=[template_arg_decl],
@@ -516,6 +518,7 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
                                                               name=var.name)
                                           for var in captured_vars]
         helper_wrapper_template_defn = ir0.TemplateDefn(name=writer.new_id(),
+                                                        description='(meta)function wrapping the metafunction that implements the expression in a list comprehension (to pass captured local vars)',
                                                         specializations=[],
                                                         args=captured_vars_as_template_args,
                                                         main_definition=ir0.TemplateSpecialization(args=captured_vars_as_template_args,
@@ -718,6 +721,7 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
         holder_template_instantiation_args.append(var_reference_to_ir0(rhs_var))
 
     holder_template = ir0.TemplateDefn(name=holder_template_id,
+                                       description='Holder template for the custom type %s' % custom_type.name,
                                        args=arg_decls,
                                        specializations=[],
                                        main_definition=ir0.TemplateSpecialization(args=arg_decls,
@@ -736,6 +740,7 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
                                                type=ir0.TypeType(),
                                                expr=ir0.TypeLiteral.for_nonlocal_type('void'))
     constructor_fn = ir0.TemplateDefn(name=custom_type.name,
+                                      description='Constructor (meta)function for the custom type %s' % custom_type.name,
                                       args=arg_decls,
                                       specializations=[],
                                       main_definition=ir0.TemplateSpecialization(args=arg_decls,
@@ -747,6 +752,7 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
     writer.set_holder_template_name_for_error(custom_type.name, holder_template_id)
 
     is_instance_template = ir0.TemplateDefn(name=writer.new_id(),
+                                            description='isinstance() (meta)function for the custom type %s' % custom_type.name,
                                             args=[ir0.TemplateArgDecl(type=ir0.TypeType())],
                                             main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(type=ir0.TypeType())],
                                                                                        patterns=None,
@@ -828,6 +834,7 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
             forwarded_vars_types.append(then_writer.parent_arbitrary_arg.type)
 
         then_template_defn = ir0.TemplateDefn(name=writer.new_id(),
+                                              description='(meta)function wrapping the code after an if-else statement',
                                               args=forwarded_vars_args,
                                               main_definition=ir0.TemplateSpecialization(args=forwarded_vars_args,
                                                                                          patterns=None,
@@ -888,6 +895,7 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
 
     fun_defn = ir0.TemplateDefn(main_definition=None,
                                 name=writer.new_id(),
+                                description='(meta)function generated for an if-else statement',
                                 args=forwarded_vars_args + [ir0.TemplateArgDecl(type=ir0.BoolType())],
                                 specializations=[if_branch_specialization, else_branch_specialization])
     writer.write(fun_defn)
@@ -978,6 +986,7 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
                                                 body=then_writer.elems)
 
     template_defn = ir0.TemplateDefn(name=writer.new_id(),
+                                     description='(meta)function wrapping an unpacking assignment',
                                      args=[rhs_var_arg_decl] + forwarded_vars_args,
                                      main_definition=main_definition,
                                      specializations=[specialization])
@@ -1050,6 +1059,7 @@ def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter
 
         writer.write(ir0.TemplateDefn(main_definition=main_definition,
                                       name=function_defn.name,
+                                      description=function_defn.description,
                                       args=args,
                                       specializations=[]))
     except (AssertionError, TypeError) as e:  # pragma: no cover
@@ -1082,6 +1092,7 @@ def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer
                                                                          message=error_message)])
                        for custom_error_type, error_message in check_if_error_defn.error_types_and_messages]
     writer.write(ir0.TemplateDefn(name='CheckIfError',
+                                  description='',
                                   main_definition=main_definition,
                                   specializations=specializations,
                                   args=main_definition.args))

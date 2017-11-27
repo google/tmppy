@@ -96,13 +96,16 @@ class TemplateDefn(TemplateBodyElement):
                  args: List[TemplateArgDecl],
                  main_definition: Optional[TemplateSpecialization],
                  specializations: List[TemplateSpecialization],
-                 name: Optional[str] = None):
+                 name: str,
+                 description: str):
         assert main_definition or specializations
         assert not main_definition or main_definition.patterns is None
+        assert '\n' not in description
         self.name = name
         self.args = args
         self.main_definition = main_definition
         self.specializations = specializations
+        self.description = description
 
 class Literal(Expr):
     def __init__(self, value, kind: ExprKind):

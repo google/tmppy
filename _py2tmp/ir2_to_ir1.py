@@ -388,6 +388,7 @@ def function_defn_to_ir1(function_defn: ir2.FunctionDefn, writer: FunWriter):
     stmts_to_ir1(function_defn.body, stmt_writer)
 
     writer.write(ir1.FunctionDefn(name=function_defn.name,
+                                  description=function_defn.description,
                                   args=[function_arg_decl_to_ir1(arg)
                                         for arg in function_defn.args],
                                   body=stmt_writer.stmts,

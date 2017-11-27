@@ -788,16 +788,21 @@ class IfStmt(Stmt):
 class FunctionDefn:
     def __init__(self,
                  name: str,
+                 description: str,
                  args: List[FunctionArgDecl],
                  body: List[Stmt],
                  return_type: ExprType):
         assert body
         self.name = name
+        self.description = description
         self.args = args
         self.body = body
         self.return_type = return_type
 
     def write(self, writer: Writer, verbose: bool):
+        if self.description:
+            writer.write('# ')
+            writer.writeln(self.description)
         writer.writeln('def %s(%s) -> %s:' % (
             self.name,
             ', '.join('%s: %s' % (arg.name, str(arg.type))
