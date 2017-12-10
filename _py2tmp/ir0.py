@@ -29,25 +29,37 @@ class ExprType:
     def __eq__(self, other) -> bool: ...  # pragma: no cover
 
 class BoolType(ExprType):
+    def __eq__(self, other):
+        return isinstance(other, BoolType)
+
     def __init__(self):
         super().__init__(kind=ExprKind.BOOL)
 
 class Int64Type(ExprType):
+    def __eq__(self, other):
+        return isinstance(other, Int64Type)
+
     def __init__(self):
         super().__init__(kind=ExprKind.INT64)
 
 class TypeType(ExprType):
+    def __eq__(self, other):
+        return isinstance(other, TypeType)
+
     def __init__(self):
         super().__init__(kind=ExprKind.TYPE)
 
 class TemplateType(ExprType):
+    def __eq__(self, other):
+        return isinstance(other, TemplateType) and self.__dict__ == other.__dict__
+
     def __init__(self, argtypes: List[ExprType]):
         super().__init__(kind=ExprKind.TEMPLATE)
         self.argtypes = argtypes
 
 class Expr:
-    def __init__(self, kind: ExprKind):
-        self.kind = kind
+    def __init__(self, type: ExprType):
+        self.type = type
 
     def references_any_of(self, variables: Set[str]) -> bool: ...  # pragma: no cover
 
@@ -60,7 +72,7 @@ class TemplateBodyElement:
 
 class StaticAssert(TemplateBodyElement):
     def __init__(self, expr: Expr, message: str):
-        assert expr.kind == ExprKind.BOOL
+        assert isinstance(expr.type, BoolType)
         self.expr = expr
         self.message = message
 
@@ -69,24 +81,20 @@ class StaticAssert(TemplateBodyElement):
             yield identifier
 
 class ConstantDef(TemplateBodyElement):
-    def __init__(self, name: str, expr: Expr, type: ExprType):
-        assert expr.kind == type.kind
-        assert isinstance(type, BoolType) or isinstance(type, Int64Type)
+    def __init__(self, name: str, expr: Expr):
+        assert isinstance(expr.type, (BoolType, Int64Type))
         self.name = name
         self.expr = expr
-        self.type = type
 
     def get_referenced_identifiers(self):
         for identifier in self.expr.get_referenced_identifiers():
             yield identifier
 
 class Typedef(TemplateBodyElement):
-    def __init__(self, name: str, expr: Expr, type: ExprType):
-        assert type.kind == expr.kind, '%s vs %s' % (type.kind, expr.kind)
-        assert type.kind in (ExprKind.TYPE, ExprKind.TEMPLATE)
+    def __init__(self, name: str, expr: Expr):
+        assert isinstance(expr.type, (TypeType, TemplateType))
         self.name = name
         self.expr = expr
-        self.type = type
 
     def get_referenced_identifiers(self):
         for identifier in self.expr.get_referenced_identifiers():
@@ -147,9 +155,14 @@ class TemplateDefn(TemplateBodyElement):
                 yield identifier
 
 class Literal(Expr):
-    def __init__(self, value, kind: ExprKind):
-        super().__init__(kind)
-        assert value in (True, False) or isinstance(value, int)
+    def __init__(self, value: Union[bool, int]):
+        if isinstance(value, bool):
+            type = BoolType()
+        elif isinstance(value, int):
+            type = Int64Type()
+        else:
+            raise NotImplementedError('Unexpected value: ' + repr(value))
+        super().__init__(type)
         self.value = value
 
     def references_any_of(self, variables: Set[str]):
@@ -169,16 +182,11 @@ class TypeLiteral(Expr):
                  is_local: bool,
                  is_metafunction_that_may_return_error: bool,
                  referenced_locals: List['TypeLiteral'],
-                 kind: Optional[ExprKind] = None,
-                 type: Optional[ExprType] = None):
+                 type: ExprType):
         if is_local:
-            assert type
             assert not referenced_locals
-        assert not (type and kind)
-        if type:
-            kind = type.kind
-        assert not (is_metafunction_that_may_return_error and kind != ExprKind.TEMPLATE)
-        super().__init__(kind=kind)
+        assert not (is_metafunction_that_may_return_error and not isinstance(type, TemplateType))
+        super().__init__(type=type)
         self.cpp_type = cpp_type
         self.is_local = is_local
         self.type = type
@@ -196,28 +204,37 @@ class TypeLiteral(Expr):
 
     @staticmethod
     def for_nonlocal(cpp_type: str,
-                     kind: ExprKind,
+                     type: ExprType,
                      is_metafunction_that_may_return_error: bool,
                      referenced_locals: List['TypeLiteral']):
         return TypeLiteral(cpp_type=cpp_type,
                            is_local=False,
-                           kind=kind,
+                           type=type,
                            is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
                            referenced_locals=referenced_locals)
 
     @staticmethod
     def for_nonlocal_type(cpp_type: str):
         return TypeLiteral.for_nonlocal(cpp_type=cpp_type,
-                                        kind=ExprKind.TYPE,
+                                        type=TypeType(),
                                         is_metafunction_that_may_return_error=False,
                                         referenced_locals=[])
 
     @staticmethod
-    def for_nonlocal_template(cpp_type: str, is_metafunction_that_may_return_error: bool):
+    def for_nonlocal_template(cpp_type: str,
+                              arg_types: List[ExprType],
+                              is_metafunction_that_may_return_error: bool):
         return TypeLiteral.for_nonlocal(cpp_type=cpp_type,
-                                        kind=ExprKind.TEMPLATE,
+                                        type=TemplateType(arg_types),
                                         is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
                                         referenced_locals=[])
+
+    @staticmethod
+    def from_nonlocal_template_defn(template_defn: TemplateDefn,
+                                    is_metafunction_that_may_return_error: bool):
+        return TypeLiteral.for_nonlocal_template(cpp_type=template_defn.name,
+                                                 arg_types=[arg.type for arg in template_defn.args],
+                                                 is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
 
     def references_any_of(self, variables: Set[str]):
         return any(local_var.cpp_type in variables
@@ -238,8 +255,8 @@ class TemplateArgPatternLiteral:
         self.cxx_pattern = cxx_pattern
 
 class UnaryExpr(Expr):
-    def __init__(self, expr: Expr, kind: ExprKind):
-        super().__init__(kind=kind)
+    def __init__(self, expr: Expr, result_type: ExprType):
+        super().__init__(type=result_type)
         self.expr = expr
 
     def references_any_of(self, variables: Set[str]):
@@ -254,8 +271,8 @@ class UnaryExpr(Expr):
             yield identifier
 
 class BinaryExpr(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr, kind: ExprKind):
-        super().__init__(kind=kind)
+    def __init__(self, lhs: Expr, rhs: Expr, result_type: ExprType):
+        super().__init__(type=result_type)
         self.lhs = lhs
         self.rhs = rhs
 
@@ -274,17 +291,21 @@ class BinaryExpr(Expr):
 
 class ComparisonExpr(BinaryExpr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        super().__init__(lhs, rhs, kind=ExprKind.BOOL)
-        assert lhs.kind == rhs.kind
-        assert lhs.kind in (ExprKind.BOOL, ExprKind.INT64)
-        assert op in ('==', '!=', '<', '>', '<=', '>=')
+        assert lhs.type == rhs.type
+        if isinstance(lhs.type, BoolType):
+            assert op == '=='
+        elif isinstance(lhs.type, Int64Type):
+            assert op in ('==', '!=', '<', '>', '<=', '>=')
+        else:
+            raise NotImplementedError('Unexpected type: %s' % str(lhs.type))
+        super().__init__(lhs, rhs, result_type=BoolType())
         self.op = op
 
 class Int64BinaryOpExpr(BinaryExpr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        super().__init__(lhs, rhs, kind=ExprKind.INT64)
-        assert lhs.kind == ExprKind.INT64
-        assert rhs.kind == ExprKind.INT64
+        super().__init__(lhs, rhs, result_type=Int64Type())
+        assert isinstance(lhs.type, Int64Type)
+        assert isinstance(rhs.type, Int64Type)
         assert op in ('+', '-', '*', '/', '%')
         self.op = op
 
@@ -292,15 +313,14 @@ class TemplateInstantiation(Expr):
     def __init__(self,
                  template_expr: Expr,
                  args: List[Expr],
-                 arg_types: List[ExprType],
                  instantiation_might_trigger_static_asserts: bool):
-        assert template_expr.kind == ExprKind.TEMPLATE
-        assert arg_types or not instantiation_might_trigger_static_asserts
-        assert not arg_types or len(arg_types) == len(args)
-        super().__init__(kind=ExprKind.TYPE)
+        assert isinstance(template_expr.type, TemplateType)
+        assert len(template_expr.type.argtypes) == len(args), 'template_expr.type.argtypes: %s, args: %s' % (template_expr.type.argtypes, args)
+        for arg_type, arg_expr in zip(template_expr.type.argtypes, args):
+            assert arg_expr.type == arg_type, '%s vs %s' % (str(arg_expr.type), str(arg_type))
+        super().__init__(type=TypeType())
         self.template_expr = template_expr
         self.args = args
-        self.arg_types = arg_types
         self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
 
     def references_any_of(self, variables: Set[str]):
@@ -320,18 +340,17 @@ class TemplateInstantiation(Expr):
                     yield identifier
 
 class ClassMemberAccess(UnaryExpr):
-    def __init__(self, class_type_expr: Expr, member_name: str, member_kind: ExprKind):
-        super().__init__(class_type_expr, kind=member_kind)
+    def __init__(self, class_type_expr: Expr, member_name: str, member_type: ExprType):
+        super().__init__(class_type_expr, result_type=member_type)
         self.member_name = member_name
-        self.member_kind = member_kind
 
 class NotExpr(UnaryExpr):
     def __init__(self, expr: Expr):
-        super().__init__(expr, kind=ExprKind.BOOL)
+        super().__init__(expr, result_type=BoolType())
 
 class UnaryMinusExpr(UnaryExpr):
     def __init__(self, expr: Expr):
-        super().__init__(expr, kind=ExprKind.INT64)
+        super().__init__(expr, result_type=Int64Type())
 
 class Header:
     def __init__(self, content: List[Union[TemplateDefn, StaticAssert, ConstantDef, Typedef]]):

@@ -342,6 +342,7 @@ class FunctionCall(Expr):
     def __init__(self, fun: VarReference, args: List[VarReference]):
         assert isinstance(fun.type, FunctionType)
         assert len(fun.type.argtypes) == len(args)
+        assert args
         super().__init__(type=fun.type.returns)
         self.fun = fun
         self.args = args

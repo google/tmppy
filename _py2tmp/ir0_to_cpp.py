@@ -129,12 +129,12 @@ def static_assert_to_cpp(assert_stmt: ir0.StaticAssert,
 def constant_def_to_cpp(constant_def: ir0.ConstantDef,
                         enclosing_function_defn_args: List[ir0.TemplateArgDecl],
                         writer: Writer):
-    if isinstance(constant_def.type, ir0.BoolType):
+    if isinstance(constant_def.expr.type, ir0.BoolType):
         type_cpp = 'bool'
-    elif isinstance(constant_def.type, ir0.Int64Type):
+    elif isinstance(constant_def.expr.type, ir0.Int64Type):
         type_cpp = 'int64_t'
     else:
-        raise NotImplementedError('Unexpected expression type: %s' % constant_def.type)
+        raise NotImplementedError('Unexpected expression type: %s' % constant_def.expr.type)
 
     name = constant_def.name
     cpp_meta_expr = expr_to_cpp(constant_def.expr, enclosing_function_defn_args, writer)
@@ -146,16 +146,16 @@ def typedef_to_cpp(typedef: ir0.Typedef,
                    enclosing_function_defn_args: List[ir0.TemplateArgDecl],
                    writer: Writer):
     name = typedef.name
-    if typedef.type.kind == ir0.ExprKind.TYPE:
+    if typedef.expr.type.kind == ir0.ExprKind.TYPE:
         cpp_meta_expr = expr_to_cpp(typedef.expr, enclosing_function_defn_args, writer)
         writer.write_template_body_elem('''\
             using {name} = {cpp_meta_expr};
             '''.format(**locals()))
-    elif typedef.type.kind == ir0.ExprKind.TEMPLATE:
-        assert isinstance(typedef.type, ir0.TemplateType)
+    elif typedef.expr.type.kind == ir0.ExprKind.TEMPLATE:
+        assert isinstance(typedef.expr.type, ir0.TemplateType)
 
         template_args = [ir0.TemplateArgDecl(type=arg_type, name=writer.new_id())
-                         for arg_type in typedef.type.argtypes]
+                         for arg_type in typedef.expr.type.argtypes]
         template_args_decl = ', '.join(template_arg_decl_to_cpp(arg)
                                        for arg in template_args)
 
@@ -163,11 +163,9 @@ def typedef_to_cpp(typedef: ir0.Typedef,
                                                                 args=[ir0.TypeLiteral.for_local(type=arg.type,
                                                                                                 cpp_type=arg.name)
                                                                       for arg in template_args],
-                                                                arg_types=[arg.type
-                                                                             for arg in template_args],
                                                                 # TODO: use static analysis to determine when it's
-                                                                  # safe to set this to False.
-                                                                  instantiation_might_trigger_static_asserts=True)
+                                                                # safe to set this to False.
+                                                                instantiation_might_trigger_static_asserts=True)
 
         cpp_meta_expr = template_instantiation_to_cpp(template_instantiation_expr, enclosing_function_defn_args, writer)
 
@@ -176,7 +174,7 @@ def typedef_to_cpp(typedef: ir0.Typedef,
             using {name} = {cpp_meta_expr};
             '''.format(**locals()))
     else:
-        raise NotImplementedError('Unexpected expression type kind: %s' % typedef.type.kind)
+        raise NotImplementedError('Unexpected expression type kind: %s' % typedef.expr.type.kind)
 
 def _type_to_template_param_declaration(type: ir0.ExprType):
     if type.kind == ir0.ExprKind.BOOL:
@@ -308,14 +306,14 @@ def int64_binary_op_expr_to_cpp(expr: ir0.Int64BinaryOpExpr,
 
 def _select_best_arg_decl_for_select1st(args: List[ir0.TemplateArgDecl]):
     for arg in args:
-        if arg.type.kind != ir0.ExprKind.TEMPLATE:
+        if not isinstance(arg.type, ir0.TemplateType):
             return arg
     return args[0]
 
 def _select_best_arg_expr_index_for_select1st(args: List[ir0.Expr]):
     assert args
     for i, arg in enumerate(args):
-        if arg.kind != ir0.ExprKind.TEMPLATE:
+        if not isinstance(arg.type, ir0.TemplateType):
             return i
     return 0
 
@@ -340,10 +338,8 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
             arg_decl = _select_best_arg_decl_for_select1st(enclosing_function_defn_args)
             arg_index = _select_best_arg_expr_index_for_select1st(args)
             arg_to_replace = args[arg_index]
-            arg_to_replace_type = instantiation_expr.arg_types[arg_index]
-            assert arg_to_replace.kind == arg_to_replace_type.kind
 
-            if arg_decl.type.kind != ir0.ExprKind.TEMPLATE and arg_to_replace.kind != ir0.ExprKind.TEMPLATE:
+            if arg_decl.type.kind != ir0.ExprKind.TEMPLATE and arg_to_replace.type.kind != ir0.ExprKind.TEMPLATE:
                 # We use lambdas here just to make sure we collect code coverage of each "branch". They are not necessary.
                 select1st_variant = {
                     (ir0.ExprKind.BOOL, ir0.ExprKind.BOOL):  lambda: 'Select1stBoolBool',
@@ -355,12 +351,12 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
                     (ir0.ExprKind.TYPE, ir0.ExprKind.BOOL):  lambda: 'Select1stTypeBool',
                     (ir0.ExprKind.TYPE, ir0.ExprKind.INT64): lambda: 'Select1stTypeInt64',
                     (ir0.ExprKind.TYPE, ir0.ExprKind.TYPE):  lambda: 'Select1stTypeType',
-                }[(arg_to_replace.kind, arg_decl.type.kind)]()
+                }[(arg_to_replace.type.kind, arg_decl.type.kind)]()
             else:
                 # We need to define a new Select1st variant for the desired function type.
                 select1st_variant = writer.new_id()
                 forwarded_param_id = writer.new_id()
-                template_param_decl1 = _type_to_template_param_declaration(type=arg_to_replace_type)
+                template_param_decl1 = _type_to_template_param_declaration(type=arg_to_replace.type)
                 template_param_decl2 = _type_to_template_param_declaration(type=arg_decl.type)
 
                 if isinstance(writer, ToplevelWriter):
@@ -368,18 +364,16 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
                 else:
                     assert isinstance(writer, TemplateElemWriter)
                     select1st_variant_body_writer = TemplateElemWriter(writer.toplevel_writer)
-                if arg_to_replace.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
+                if arg_to_replace.type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
                     select1st_variant_body = ir0.ConstantDef(name='value',
                                                              expr=ir0.TypeLiteral.for_local(cpp_type=forwarded_param_id,
-                                                                                            type=arg_to_replace_type),
-                                                             type=arg_to_replace_type)
+                                                                                            type=arg_to_replace.type))
                     constant_def_to_cpp(select1st_variant_body, enclosing_function_defn_args, select1st_variant_body_writer)
                 else:
-                    assert arg_to_replace.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE)
+                    assert arg_to_replace.type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE)
                     select1st_variant_body = ir0.Typedef(name='value',
                                                          expr=ir0.TypeLiteral.for_local(cpp_type=forwarded_param_id,
-                                                                                        type=arg_to_replace_type),
-                                                         type=arg_to_replace_type)
+                                                                                        type=arg_to_replace.type))
                     typedef_to_cpp(select1st_variant_body, enclosing_function_defn_args, select1st_variant_body_writer)
 
                 select1st_variant_body_str = ''.join(select1st_variant_body_writer.strings)
@@ -391,17 +385,16 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
                     }};
                     '''.format(**locals()))
 
-            select1st_type = ir0.TemplateType(argtypes=[arg_to_replace_type, arg_decl.type])
+            select1st_type = ir0.TemplateType(argtypes=[arg_to_replace.type, arg_decl.type])
             select1st_instantiation = ir0.TemplateInstantiation(template_expr=ir0.TypeLiteral.for_local(cpp_type=select1st_variant,
                                                                                                         type=select1st_type),
                                                                 args=[arg_to_replace,
                                                                       ir0.TypeLiteral.for_local(cpp_type=arg_decl.name,
                                                                                                 type=arg_decl.type)],
-                                                                arg_types=[],
                                                                 instantiation_might_trigger_static_asserts=False)
             new_arg = ir0.ClassMemberAccess(class_type_expr=select1st_instantiation,
                                             member_name='value',
-                                            member_kind=arg_to_replace.kind)
+                                            member_type=arg_to_replace.type)
 
             args = args[:arg_index] + [new_arg] + args[arg_index + 1:]
 
@@ -431,21 +424,21 @@ def class_member_access_to_cpp(expr: ir0.ClassMemberAccess,
     else:
         cpp_fun = expr_to_cpp(expr.expr, enclosing_function_defn_args, writer)
     member_name = expr.member_name
-    if expr.member_kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
+    if isinstance(expr.type, (ir0.BoolType, ir0.Int64Type)):
         cpp_str_template = '{cpp_fun}::{member_name}'
-    elif expr.member_kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
-        if omit_typename or (expr.member_kind == ir0.ExprKind.TEMPLATE and not parent_expr_is_template_instantiation):
+    elif isinstance(expr.type, (ir0.TypeType, ir0.TemplateType)):
+        if omit_typename or (isinstance(expr.type, ir0.TemplateType) and not parent_expr_is_template_instantiation):
             maybe_typename = ''
         else:
             maybe_typename = 'typename '
-        if expr.member_kind == ir0.ExprKind.TEMPLATE:
+        if isinstance(expr.type, ir0.TemplateType):
             maybe_template = 'template '
         else:
             maybe_template = ''
 
         cpp_str_template = '{maybe_typename}{cpp_fun}::{maybe_template}{member_name}'
     else:
-        raise NotImplementedError('Member kind: %s' % expr.member_kind)
+        raise NotImplementedError('Member type: %s' % expr.type.__class__.__name__)
     return cpp_str_template.format(**locals())
 
 def not_expr_to_cpp(expr: ir0.NotExpr,
