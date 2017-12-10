@@ -40,7 +40,7 @@ def ir_to_string(ir_elem, line_indent=''):
 
     if ir_elem is None:
         return 'None'
-    elif isinstance(ir_elem, (str, bool, Enum)):
+    elif isinstance(ir_elem, (str, bool, int, Enum)):
         return repr(ir_elem)
     elif isinstance(ir_elem, list):
         return ('['
@@ -73,7 +73,11 @@ def clang_format(cxx_source: str, code_style='LLVM') -> str:
     if p.returncode != 0:  # pragma: no cover
         raise Exception('clang-format exited with error code %s. Command was: %s. Error:\n%s' % (p.returncode, command, stderr))
     assert isinstance(stdout, str)
-    return stdout
+
+    if stdout != '' and stdout[-1] != '\n':
+        return stdout + '\n'
+    else:
+        return stdout
 
 def replace_identifiers(cpp_type, replacements):
     last_index = 0

@@ -14,6 +14,7 @@
 
 from typing import List, Set, Optional, Iterable, Union, Dict
 from enum import Enum
+import re
 
 class ExprKind(Enum):
     BOOL = 1
@@ -52,14 +53,20 @@ class Expr:
 
     def get_free_vars(self) -> Iterable['TypeLiteral']: ...  # pragma: no cover
 
+    def get_referenced_identifiers(self) -> Iterable[str]: ...  # pragma: no cover
+
 class TemplateBodyElement:
-    pass
+    def get_referenced_identifiers(self) -> Iterable[str]: ...  # pragma: no cover
 
 class StaticAssert(TemplateBodyElement):
     def __init__(self, expr: Expr, message: str):
         assert expr.kind == ExprKind.BOOL
         self.expr = expr
         self.message = message
+
+    def get_referenced_identifiers(self):
+        for identifier in self.expr.get_referenced_identifiers():
+            yield identifier
 
 class ConstantDef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr, type: ExprType):
@@ -69,6 +76,10 @@ class ConstantDef(TemplateBodyElement):
         self.expr = expr
         self.type = type
 
+    def get_referenced_identifiers(self):
+        for identifier in self.expr.get_referenced_identifiers():
+            yield identifier
+
 class Typedef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr, type: ExprType):
         assert type.kind == expr.kind, '%s vs %s' % (type.kind, expr.kind)
@@ -77,10 +88,21 @@ class Typedef(TemplateBodyElement):
         self.expr = expr
         self.type = type
 
+    def get_referenced_identifiers(self):
+        for identifier in self.expr.get_referenced_identifiers():
+            yield identifier
+
 class TemplateArgDecl:
     def __init__(self, type: ExprType, name: str = ''):
         self.type = type
         self.name = name
+
+_non_identifier_char_pattern = re.compile('[^a-zA-Z0-9_]+')
+
+def _extract_identifiers(s: str):
+    for match in re.split(_non_identifier_char_pattern, s):
+        if match and not match[0] in '0123456789':
+            yield match
 
 class TemplateSpecialization:
     def __init__(self,
@@ -90,6 +112,15 @@ class TemplateSpecialization:
         self.args = args
         self.patterns = patterns
         self.body = body
+      
+    def get_referenced_identifiers(self):
+        if self.patterns:
+            for type_pattern in self.patterns:
+                for identifier in _extract_identifiers(type_pattern.cxx_pattern):
+                    yield identifier
+        for elem in self.body:
+            for identifier in elem.get_referenced_identifiers():
+                yield identifier
 
 class TemplateDefn(TemplateBodyElement):
     def __init__(self,
@@ -107,6 +138,14 @@ class TemplateDefn(TemplateBodyElement):
         self.specializations = specializations
         self.description = description
 
+    def get_referenced_identifiers(self):
+        if self.main_definition:
+            for identifier in self.main_definition.get_referenced_identifiers():
+                yield identifier
+        for specialization in self.specializations:
+            for identifier in specialization.get_referenced_identifiers():
+                yield identifier
+
 class Literal(Expr):
     def __init__(self, value, kind: ExprKind):
         super().__init__(kind)
@@ -117,6 +156,10 @@ class Literal(Expr):
         return False
 
     def get_free_vars(self):
+        if False:
+            yield
+
+    def get_referenced_identifiers(self):
         if False:
             yield
 
@@ -186,45 +229,64 @@ class TypeLiteral(Expr):
         for local_var in self.referenced_locals:
             yield local_var
 
+    def get_referenced_identifiers(self):
+        for identifier in _extract_identifiers(self.cpp_type):
+            yield identifier
+
 class TemplateArgPatternLiteral:
     def __init__(self, cxx_pattern: str = None):
         self.cxx_pattern = cxx_pattern
 
-class ComparisonExpr(Expr):
+class UnaryExpr(Expr):
+    def __init__(self, expr: Expr, kind: ExprKind):
+        super().__init__(kind=kind)
+        self.expr = expr
+
+    def references_any_of(self, variables: Set[str]):
+        return self.expr.references_any_of(variables)
+
+    def get_free_vars(self):
+        for var in self.expr.get_free_vars():
+            yield var
+
+    def get_referenced_identifiers(self):
+        for identifier in self.expr.get_referenced_identifiers():
+            yield identifier
+
+class BinaryExpr(Expr):
+    def __init__(self, lhs: Expr, rhs: Expr, kind: ExprKind):
+        super().__init__(kind=kind)
+        self.lhs = lhs
+        self.rhs = rhs
+
+    def references_any_of(self, variables: Set[str]):
+        return self.lhs.references_any_of(variables) or self.rhs.references_any_of(variables)
+
+    def get_free_vars(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_vars():
+                yield var
+
+    def get_referenced_identifiers(self):
+        for expr in (self.lhs, self.rhs):
+            for identifier in expr.get_referenced_identifiers():
+                yield identifier
+
+class ComparisonExpr(BinaryExpr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        super().__init__(kind=ExprKind.BOOL)
+        super().__init__(lhs, rhs, kind=ExprKind.BOOL)
         assert lhs.kind == rhs.kind
         assert lhs.kind in (ExprKind.BOOL, ExprKind.INT64)
         assert op in ('==', '!=', '<', '>', '<=', '>=')
-        self.lhs = lhs
-        self.rhs = rhs
         self.op = op
 
-    def references_any_of(self, variables: Set[str]):
-        return self.lhs.references_any_of(variables) or self.rhs.references_any_of(variables)
-
-    def get_free_vars(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_vars():
-                yield var
-
-class Int64BinaryOpExpr(Expr):
+class Int64BinaryOpExpr(BinaryExpr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        super().__init__(kind=ExprKind.INT64)
+        super().__init__(lhs, rhs, kind=ExprKind.INT64)
         assert lhs.kind == ExprKind.INT64
         assert rhs.kind == ExprKind.INT64
         assert op in ('+', '-', '*', '/', '%')
-        self.lhs = lhs
-        self.rhs = rhs
         self.op = op
-
-    def references_any_of(self, variables: Set[str]):
-        return self.lhs.references_any_of(variables) or self.rhs.references_any_of(variables)
-
-    def get_free_vars(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_vars():
-                yield var
 
 class TemplateInstantiation(Expr):
     def __init__(self,
@@ -251,43 +313,25 @@ class TemplateInstantiation(Expr):
                 for var in expr.get_free_vars():
                     yield var
 
-class ClassMemberAccess(Expr):
+    def get_referenced_identifiers(self):
+        for exprs in ((self.template_expr,), self.args):
+            for expr in exprs:
+                for identifier in expr.get_referenced_identifiers():
+                    yield identifier
+
+class ClassMemberAccess(UnaryExpr):
     def __init__(self, class_type_expr: Expr, member_name: str, member_kind: ExprKind):
-        super().__init__(kind=member_kind)
-        self.class_type_expr = class_type_expr
+        super().__init__(class_type_expr, kind=member_kind)
         self.member_name = member_name
         self.member_kind = member_kind
 
-    def references_any_of(self, variables: Set[str]):
-        return self.class_type_expr.references_any_of(variables)
-
-    def get_free_vars(self):
-        for var in self.class_type_expr.get_free_vars():
-            yield var
-
-class NotExpr(Expr):
+class NotExpr(UnaryExpr):
     def __init__(self, expr: Expr):
-        super().__init__(kind=ExprKind.BOOL)
-        self.expr = expr
+        super().__init__(expr, kind=ExprKind.BOOL)
 
-    def references_any_of(self, variables: Set[str]):
-        return self.expr.references_any_of(variables)
-
-    def get_free_vars(self):
-        for var in self.expr.get_free_vars():
-            yield var
-
-class UnaryMinusExpr(Expr):
+class UnaryMinusExpr(UnaryExpr):
     def __init__(self, expr: Expr):
-        super().__init__(kind=ExprKind.INT64)
-        self.expr = expr
-
-    def references_any_of(self, variables: Set[str]):
-        return self.expr.references_any_of(variables)
-
-    def get_free_vars(self):
-        for var in self.expr.get_free_vars():
-            yield var
+        super().__init__(expr, kind=ExprKind.INT64)
 
 class Header:
     def __init__(self, content: List[Union[TemplateDefn, StaticAssert, ConstantDef, Typedef]]):

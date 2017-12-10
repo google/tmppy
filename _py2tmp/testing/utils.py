@@ -24,19 +24,22 @@ import sys
 import itertools
 import subprocess
 from functools import wraps
+import difflib
 
 import pytest
 
 import py2tmp_test_config as config
 import typed_ast.ast3 as ast
-from _py2tmp import ast_to_ir3
-from _py2tmp import ir3_to_ir2
-from _py2tmp import ir2_to_ir1
-from _py2tmp import ir1_to_ir0
-from _py2tmp import ir0_to_cpp
-from _py2tmp import ir0
-from _py2tmp import utils
-
+from _py2tmp import (
+    ast_to_ir3,
+    ir3_to_ir2,
+    ir2_to_ir1,
+    ir1_to_ir0,
+    optimize_ir0,
+    ir0_to_cpp,
+    ir0,
+    utils,
+)
 
 def pretty_print_command(command):
     return ' '.join('"' + x + '"' for x in command)
@@ -597,9 +600,13 @@ def expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cxx_source):
 
 def _get_function_body(f):
     source_code, _ = inspect.getsourcelines(f)
-    assert source_code[0].startswith('@'), source_code[0]
-    assert source_code[1].endswith('():\n'), source_code[1]
-    source_code = source_code[2:]
+
+    # Skip the annotation and the line where the function is defined.
+    expected_line = 'def %s():\n' % f.__name__
+    while source_code[0] != expected_line:
+        source_code = source_code[1:]
+    source_code = source_code[1:]
+
     # The body of some tests is a multiline string because they would otherwise cause the pytest test file to fail
     # parsing.
     if source_code[0].strip() == '\'\'\'' and source_code[-1].strip() == '\'\'\'':
@@ -620,15 +627,7 @@ def _convert_tmppy_source_to_ir(python_source, identifier_generator):
     module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2, identifier_generator)
     return module_ir2, module_ir1
 
-def _convert_ir_to_cpp(module_ir, identifier_generator):
-    header = ir1_to_ir0.module_to_ir0(module_ir, identifier_generator)
-
-    result = ir0_to_cpp.header_to_cpp(header, identifier_generator)
-    result = utils.clang_format(result)
-
-    return result
-
-def _convert_to_cpp_expecting_success(tmppy_source):
+def _convert_to_cpp_expecting_success(tmppy_source, optimize=False):
     identifier_generator = create_identifier_generator()
     try:
         module_ir2, module_ir1 = _convert_tmppy_source_to_ir(tmppy_source, identifier_generator)
@@ -649,7 +648,16 @@ def _convert_to_cpp_expecting_success(tmppy_source):
             pytrace=False)
 
     try:
-        return module_ir2, module_ir1, _convert_ir_to_cpp(module_ir1, identifier_generator)
+
+        header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
+
+        if optimize:
+            header = optimize_ir0.optimize_header(header, identifier_generator)
+
+        cpp_source = ir0_to_cpp.header_to_cpp(header, identifier_generator)
+        cpp_source = utils.clang_format(cpp_source)
+
+        return module_ir2, module_ir1, cpp_source
     except ast_to_ir3.CompilationError as e1:
         e = e1
     if e:
@@ -680,6 +688,49 @@ def assert_compilation_succeeds(f):
         module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
         expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cpp_source)
     return wrapper
+
+def assert_code_optimizes_to(expected_cpp_source: str):
+    def eval(f):
+        @wraps(f)
+        def wrapper():
+            tmppy_source = _get_function_body(f)
+            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, optimize=True)
+
+            assert expected_cpp_source[0] == '\n'
+            if cpp_source != expected_cpp_source[1:]:
+                pytest.fail(
+                    textwrap.dedent('''\
+                        The generated code didn't match the expected code.
+                        
+                        TMPPy source:
+                        {tmppy_source}
+                        
+                        TMPPy IR2:
+                        {tmppy_ir2}
+                        
+                        TMPPy IR1:
+                        {tmppy_ir1}
+                        
+                        Generated C++ source:
+                        {cpp_source}
+                        
+                        Expected C++ source:
+                        {expected_cpp_source}
+                        
+                        Diff:
+                        {cpp_source_diff}
+                        ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                                    tmppy_ir2=str(module_ir2),
+                                    tmppy_ir1=str(module_ir1),
+                                    cpp_source=str(cpp_source),
+                                    expected_cpp_source=str(expected_cpp_source[1:]),
+                                    cpp_source_diff=''.join(difflib.unified_diff(expected_cpp_source[1:].splitlines(True),
+                                                                                 cpp_source.splitlines(True),
+                                                                                 fromfile='expected.h',
+                                                                                 tofile='actual.h'))),
+                    pytrace=False)
+        return wrapper
+    return eval
 
 def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_error_desc_regex: str):
     def eval(f):

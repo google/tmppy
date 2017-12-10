@@ -15,12 +15,15 @@
 import itertools
 import typed_ast.ast3 as ast
 
-from _py2tmp import ast_to_ir3
-from _py2tmp import ir3_to_ir2
-from _py2tmp import ir2_to_ir1
-from _py2tmp import ir1_to_ir0
-from _py2tmp import ir0_to_cpp
-from _py2tmp import utils
+from _py2tmp import (
+    ast_to_ir3,
+    ir3_to_ir2,
+    ir2_to_ir1,
+    ir1_to_ir0,
+    optimize_ir0,
+    ir0_to_cpp,
+    utils,
+)
 
 import argparse
 
@@ -53,6 +56,13 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
     header_ir0 = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
     if verbose:
         print('TMPPy IR0:')
+        print(utils.ir_to_string(header_ir0))
+        print()
+
+    header_ir0 = optimize_ir0.optimize_header(header_ir0, identifier_generator)
+
+    if verbose:
+        print('TMPPy IR0 after optimization:')
         print(utils.ir_to_string(header_ir0))
         print()
 

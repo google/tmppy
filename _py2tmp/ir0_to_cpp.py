@@ -424,12 +424,12 @@ def class_member_access_to_cpp(expr: ir0.ClassMemberAccess,
                                writer: Writer,
                                omit_typename: bool = False,
                                parent_expr_is_template_instantiation: bool = False):
-    if isinstance(expr.class_type_expr, ir0.TemplateInstantiation):
-        cpp_fun = template_instantiation_to_cpp(expr.class_type_expr, enclosing_function_defn_args, writer, omit_typename=True)
-    elif isinstance(expr.class_type_expr, ir0.ClassMemberAccess):
-        cpp_fun = class_member_access_to_cpp(expr.class_type_expr, enclosing_function_defn_args, writer, omit_typename=True)
+    if isinstance(expr.expr, ir0.TemplateInstantiation):
+        cpp_fun = template_instantiation_to_cpp(expr.expr, enclosing_function_defn_args, writer, omit_typename=True)
+    elif isinstance(expr.expr, ir0.ClassMemberAccess):
+        cpp_fun = class_member_access_to_cpp(expr.expr, enclosing_function_defn_args, writer, omit_typename=True)
     else:
-        cpp_fun = expr_to_cpp(expr.class_type_expr, enclosing_function_defn_args, writer)
+        cpp_fun = expr_to_cpp(expr.expr, enclosing_function_defn_args, writer)
     member_name = expr.member_name
     if expr.member_kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
         cpp_str_template = '{cpp_fun}::{member_name}'
