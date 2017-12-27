@@ -311,7 +311,8 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
                                        main_definition=main_definition,
                                        specializations=specializations,
                                        name=writer.new_id(),
-                                       description='(meta)function wrapping a match expression')
+                                       description='(meta)function wrapping a match expression',
+                                       result_element_names=['value', 'type', 'error'])
     writer.write(helper_function)
 
     helper_function_reference = ir0.TypeLiteral.from_nonlocal_template_defn(helper_function,
@@ -454,7 +455,8 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
                                             args=[template_arg_decl],
                                             main_definition=ir0.TemplateSpecialization(args=[template_arg_decl],
                                                                                        patterns=None,
-                                                                                       body=helper_template_body_writer.elems))
+                                                                                       body=helper_template_body_writer.elems),
+                                            result_element_names=['type', 'value', 'error'])
 
     if not captured_vars:
         # z = [f(x)
@@ -503,7 +505,8 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
                                                         args=captured_vars_as_template_args,
                                                         main_definition=ir0.TemplateSpecialization(args=captured_vars_as_template_args,
                                                                                                    patterns=None,
-                                                                                                   body=[helper_template_defn]))
+                                                                                                   body=[helper_template_defn]),
+                                                        result_element_names=['value', 'type', 'error'])
 
         writer.write(helper_wrapper_template_defn)
         helper_template_expr = ir0.ClassMemberAccess(class_type_expr=ir0.TemplateInstantiation(template_expr=ir0.TypeLiteral.from_nonlocal_template_defn(helper_wrapper_template_defn,
@@ -704,7 +707,9 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
                                        specializations=[],
                                        main_definition=ir0.TemplateSpecialization(args=arg_decls,
                                                                                   patterns=None,
-                                                                                  body=holder_template_writer.elems))
+                                                                                  body=holder_template_writer.elems),
+                                       result_element_names=[arg.name
+                                                             for arg in custom_type.arg_types])
     writer.write(holder_template)
 
     constructor_fn_typedef = ir0.Typedef(name='type',
@@ -721,7 +726,8 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
                                       main_definition=ir0.TemplateSpecialization(args=arg_decls,
                                                                                  patterns=None,
                                                                                  body=[constructor_fn_typedef,
-                                                                                           constructor_fn_error_typedef]))
+                                                                                           constructor_fn_error_typedef]),
+                                      result_element_names=['type', 'error'])
     writer.write(constructor_fn)
 
     writer.set_holder_template_name_for_error(custom_type.name, holder_template_id)
@@ -740,7 +746,8 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
                                                                                                 ', '.join(arg.name
                                                                                                           for arg in custom_type.arg_types)))],
                                                                                         body=[ir0.ConstantDef(name='value',
-                                                                                                              expr=ir0.Literal(value=True))])])
+                                                                                                              expr=ir0.Literal(value=True))])],
+                                            result_element_names=['value'])
 
     writer.write(is_instance_template)
     writer.set_is_instance_template_name_for_error(custom_type.name, is_instance_template.name)
@@ -812,7 +819,8 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
                                               main_definition=ir0.TemplateSpecialization(args=forwarded_vars_args,
                                                                                          patterns=None,
                                                                                          body=then_writer.elems),
-                                              specializations=[])
+                                              specializations=[],
+                                              result_element_names=['value', 'type', 'error'])
         writer.write(then_template_defn)
 
         then_function_call_expr, then_function_call_error_expr = _create_metafunction_call(ir0.TypeLiteral.from_nonlocal_template_defn(then_template_defn,
@@ -869,7 +877,8 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
                                 name=writer.new_id(),
                                 description='(meta)function generated for an if-else statement',
                                 args=forwarded_vars_args + [ir0.TemplateArgDecl(type=ir0.BoolType())],
-                                specializations=[if_branch_specialization, else_branch_specialization])
+                                specializations=[if_branch_specialization, else_branch_specialization],
+                                result_element_names=['value', 'type', 'error'])
     writer.write(fun_defn)
     function_call_expr, function_call_error_expr = _create_metafunction_call(ir0.TypeLiteral.from_nonlocal_template_defn(fun_defn,
                                                                                                                          is_metafunction_that_may_return_error=True),
@@ -960,7 +969,8 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
                                      description='(meta)function wrapping an unpacking assignment',
                                      args=[rhs_var_arg_decl] + forwarded_vars_args,
                                      main_definition=main_definition,
-                                     specializations=[specialization])
+                                     specializations=[specialization],
+                                     result_element_names=['value', 'type', 'error'])
     writer.write(template_defn)
 
     function_call_expr, function_call_error_expr = _create_metafunction_call(ir0.TypeLiteral.from_nonlocal_template_defn(template_defn,
@@ -1016,22 +1026,29 @@ def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter
                                                        name=writer.new_id())
             args = [parent_arbitrary_arg]
 
+        return_type = type_to_ir0(function_defn.return_type)
         body_writer = TemplateBodyWriter(writer,
                                          parent_arbitrary_arg=parent_arbitrary_arg,
-                                         parent_return_type=type_to_ir0(function_defn.return_type))
+                                         parent_return_type=return_type)
         stmts_to_ir0(function_defn.body,
-                        write_continuation_fun_call=None,
-                        writer=body_writer)
+                     write_continuation_fun_call=None,
+                     writer=body_writer)
 
         main_definition = _create_metafunction_specialization(args=args,
                                                               patterns=None,
                                                               body=body_writer.elems)
 
+        if return_type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
+          result_element_names = ['value', 'error']
+        else:
+          result_element_names = ['type', 'error']
+
         writer.write(ir0.TemplateDefn(main_definition=main_definition,
                                       name=function_defn.name,
                                       description=function_defn.description,
                                       args=args,
-                                      specializations=[]))
+                                      specializations=[],
+                                      result_element_names=result_element_names))
     except (AssertionError, TypeError) as e:  # pragma: no cover
         print('While converting a function defn to low IR:\n' + str(ir1.Module(body=[function_defn])))
         raise e
@@ -1063,7 +1080,8 @@ def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer
                                   description='',
                                   main_definition=main_definition,
                                   specializations=specializations,
-                                  args=main_definition.args))
+                                  args=main_definition.args,
+                                  result_element_names=['type']))
 
 def module_to_ir0(module: ir1.Module, identifier_generator: Iterator[str]):
     writer = ToplevelWriter(identifier_generator)

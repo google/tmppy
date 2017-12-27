@@ -107,7 +107,7 @@ class TemplateSpecialization:
         self.args = tuple(args)
         self.patterns = tuple(patterns) if patterns is not None else None
         self.body = tuple(body)
-      
+
     def get_referenced_identifiers(self):
         if self.patterns:
             for type_pattern in self.patterns:
@@ -123,7 +123,8 @@ class TemplateDefn(TemplateBodyElement):
                  main_definition: Optional[TemplateSpecialization],
                  specializations: List[TemplateSpecialization],
                  name: str,
-                 description: str):
+                 description: str,
+                 result_element_names: List[str]):
         assert main_definition or specializations
         assert not main_definition or main_definition.patterns is None
         assert '\n' not in description
@@ -132,6 +133,7 @@ class TemplateDefn(TemplateBodyElement):
         self.main_definition = main_definition
         self.specializations = tuple(specializations)
         self.description = description
+        self.result_element_names = tuple(sorted(result_element_names))
 
     def get_referenced_identifiers(self):
         if self.main_definition:

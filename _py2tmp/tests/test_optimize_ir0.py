@@ -28,15 +28,12 @@ template <typename TmppyInternal_1> struct TmppyInternal_0 {
   static constexpr bool TmppyInternal_3 = std::is_same<
       typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
       TmppyInternal_2>::value;
-  static constexpr bool TmppyInternal_4 = !(TmppyInternal_3);
-  static constexpr bool value = TmppyInternal_4;
+  static constexpr bool value = !(TmppyInternal_3);
   using error = TmppyInternal_2;
 };
 template <int64_t TmppyInternal_5> struct inc {
   static constexpr int64_t TmppyInternal_6 = 1LL;
-  static constexpr int64_t TmppyInternal_7 =
-      (TmppyInternal_5) + (TmppyInternal_6);
-  static constexpr int64_t value = TmppyInternal_7;
+  static constexpr int64_t value = (TmppyInternal_5) + (TmppyInternal_6);
   using error = void;
 };
 ''')
@@ -58,28 +55,21 @@ template <typename TmppyInternal_1> struct TmppyInternal_0 {
   static constexpr bool TmppyInternal_3 = std::is_same<
       typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
       TmppyInternal_2>::value;
-  static constexpr bool TmppyInternal_4 = !(TmppyInternal_3);
-  static constexpr bool value = TmppyInternal_4;
+  static constexpr bool value = !(TmppyInternal_3);
   using error = TmppyInternal_2;
 };
 template <int64_t TmppyInternal_5> struct f {
   static constexpr int64_t TmppyInternal_7 = 2LL;
-  static constexpr int64_t TmppyInternal_8 = 1LL;
-  static constexpr int64_t TmppyInternal_9 =
-      (TmppyInternal_5) + (TmppyInternal_8);
-  static constexpr int64_t TmppyInternal_10 =
+  static constexpr int64_t TmppyInternal_9 = (TmppyInternal_5) + (1LL);
+  static constexpr int64_t TmppyInternal_6 =
       (TmppyInternal_7) * (TmppyInternal_9);
-  static constexpr int64_t TmppyInternal_6 = TmppyInternal_10;
-  using TmppyInternal_17 = int *;
-  using TmppyInternal_16 = TmppyInternal_17;
+  using TmppyInternal_16 = int *;
   static constexpr bool TmppyInternal_20 =
       (TmppyInternal_6) == (TmppyInternal_6);
   static constexpr bool TmppyInternal_21 = std::is_same<
       typename Select1stTypeInt64<TmppyInternal_16, TmppyInternal_5>::value,
       TmppyInternal_16>::value;
-  static constexpr bool TmppyInternal_22 =
-      (TmppyInternal_20) == (TmppyInternal_21);
-  static constexpr bool value = TmppyInternal_22;
+  static constexpr bool value = (TmppyInternal_20) == (TmppyInternal_21);
   using error = void;
 };
 ''')
@@ -110,14 +100,11 @@ template <typename TmppyInternal_1> struct TmppyInternal_0 {
   static constexpr bool TmppyInternal_3 = std::is_same<
       typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
       TmppyInternal_2>::value;
-  static constexpr bool TmppyInternal_4 = !(TmppyInternal_3);
-  static constexpr bool value = TmppyInternal_4;
+  static constexpr bool value = !(TmppyInternal_3);
   using error = TmppyInternal_2;
 };
 template <int64_t TmppyInternal_5, int64_t TmppyInternal_6> struct plus {
-  static constexpr int64_t TmppyInternal_7 =
-      (TmppyInternal_5) + (TmppyInternal_6);
-  static constexpr int64_t value = TmppyInternal_7;
+  static constexpr int64_t value = (TmppyInternal_5) + (TmppyInternal_6);
   using error = void;
 };
 // (meta)function wrapping the code after an if-else statement
@@ -186,8 +173,7 @@ template <typename TmppyInternal_1> struct TmppyInternal_0 {
   static constexpr bool TmppyInternal_3 = std::is_same<
       typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
       TmppyInternal_2>::value;
-  static constexpr bool TmppyInternal_4 = !(TmppyInternal_3);
-  static constexpr bool value = TmppyInternal_4;
+  static constexpr bool value = !(TmppyInternal_3);
   using error = TmppyInternal_2;
 };
 // (meta)function wrapping the code after an if-else statement
@@ -211,8 +197,7 @@ struct TmppyInternal_15<TmppyInternal_9, TmppyInternal_8, false> {
 };
 // (meta)function generated for an if-else statement
 template <bool TmppyInternal_5> struct TmppyInternal_16<TmppyInternal_5, true> {
-  static constexpr int64_t TmppyInternal_6 = 3LL;
-  static constexpr int64_t value = TmppyInternal_6;
+  static constexpr int64_t value = 3LL;
   using error = void;
 };
 // (meta)function generated for an if-else statement

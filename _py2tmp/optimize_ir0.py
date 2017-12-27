@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import defaultdict
 from _py2tmp import ir0, utils, transform_ir0
 import networkx as nx
-from typing import List, Union, Dict, Set, Iterable
+from typing import List, Tuple, Union, Dict, Set, Iterable
 
 class ExprSimplifyingTransformation(transform_ir0.Transformation):
     def transform_expr(self, expr: ir0.Expr, writer: transform_ir0.Writer, split_nontrivial_exprs=True) -> ir0.Expr:
@@ -47,6 +48,7 @@ def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generato
 class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
     def transform_template_body_elems(self,
                                       elems: List[ir0.TemplateBodyElement],
+                                      result_element_names: Tuple[str],
                                       toplevel_writer: transform_ir0.ToplevelWriter):
 
         name_by_expr = dict()  # type: Dict[ir0.Expr, str]
@@ -68,7 +70,7 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
                     name_by_expr[elem.expr] = elem.name
 
         # Add back "result elements" if they were deduped.
-        for result_elem_name in ('value', 'type', 'error'):
+        for result_elem_name in result_element_names:
             if result_elem_name in replacements:
                 type = type_by_name[result_elem_name]
                 if type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
@@ -91,11 +93,162 @@ def perform_common_subexpression_normalization(template_defn: ir0.TemplateDefn,
     [template_defn] = writer.elems
     return template_defn
 
+class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
+    def __init__(self, var: str, replacement_expr: ir0.Expr):
+        self.var = var
+        self.replacement_expr = replacement_expr
+
+    def transform_type_literal(self, type_literal: ir0.TypeLiteral, writer: transform_ir0.Writer):
+        if type_literal.cpp_type == self.var:
+            return self.replacement_expr
+
+        if self.var in type_literal.get_referenced_identifiers():
+            # TODO: implement this.
+            raise NotImplementedError('The replacement of "%s" in "%s" is not implemented yet' % (self.var, type_literal.cpp_type))
+
+        return type_literal
+
+def replace_var_with_expr(elem: ir0.TemplateBodyElement, var: str, expr: ir0.Expr) -> ir0.TemplateBodyElement:
+    toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[])
+    writer = transform_ir0.TemplateBodyWriter(toplevel_writer)
+    ReplaceVarWithExprTransformation(var, expr).transform_template_body_elem(elem, writer)
+    assert not toplevel_writer.elems
+    [elem] = writer.elems
+    return elem
+
+def _can_trigger_static_asserts(stmt: ir0.TemplateBodyElement):
+    if isinstance(stmt, ir0.StaticAssert):
+        return True
+    elif isinstance(stmt, (ir0.Typedef, ir0.ConstantDef)):
+        return isinstance(stmt.expr, ir0.TemplateInstantiation) and stmt.expr.instantiation_might_trigger_static_asserts
+    elif isinstance(stmt, ir0.TemplateDefn):
+        specializations = ()
+        if stmt.main_definition:
+            specializations = (stmt.main_definition,)
+        if stmt.specializations:
+            specializations = specializations + tuple(stmt.specializations)
+
+        for specialization in specializations:
+            return any(_can_trigger_static_asserts(elem)
+                       for elem in specialization.body)
+    else:
+        raise NotImplementedError('Unexpected STMT: %s' % stmt.__class__.__name__)
+
+class ConstantFoldingTransformation(transform_ir0.Transformation):
+    def __init__(self, inline_template_instantiations_with_multiple_references: bool):
+        super().__init__()
+        self.inline_template_instantiations_with_multiple_references = inline_template_instantiations_with_multiple_references
+
+    def transform_template_body_elems(self,
+                                      stmts: Tuple[ir0.TemplateBodyElement],
+                                      result_element_names: Tuple[str],
+                                      writer: transform_ir0.ToplevelWriter):
+        stmts = list(stmts)
+
+        # stmt[var_name_to_defining_stmt_index['x']] is the stmt that defines 'x'
+        var_name_to_defining_stmt_index = {stmt.name: i
+                                           for i, stmt in enumerate(stmts)
+                                           if isinstance(stmt, (ir0.ConstantDef, ir0.Typedef))}
+
+        # remaining_uses_of_var_by_stmt_index[i]['x'] is the number of remaining VarReferences referencing 'x' in
+        # stmts[i].
+        remaining_uses_of_var_by_stmt_index = [defaultdict(lambda: 0)
+                                               for stmt in stmts]
+        # remaining_uses_of_var['x'] = sum(uses['x'] for uses in remaining_uses_of_var_by_stmt_index), possibly +1 if
+        # it's a result element (e.g. "type").
+        remaining_uses_of_var = defaultdict(lambda: 0)
+        # referenced_vars_by_stmt_index[i] are all the names of vars referenced in stmt[i]
+        referenced_vars_by_stmt_index = [set() for stmt in stmts]
+        # referenced_var_list_by_stmt_index[i] are all the names of vars referenced in stmt[i], in order (but only with
+        # the first occurrence of each var)
+        referenced_var_list_by_stmt_index = [[] for stmt in stmts]
+        for i, stmt in enumerate(stmts):
+            for identifier in stmt.get_referenced_identifiers():
+                if identifier in var_name_to_defining_stmt_index:
+                    remaining_uses_of_var[identifier] = remaining_uses_of_var[identifier] + 1
+                    remaining_uses_of_var_by_stmt_index[i][identifier] = remaining_uses_of_var_by_stmt_index[i][identifier] + 1
+                    if identifier not in referenced_vars_by_stmt_index[i]:
+                        referenced_vars_by_stmt_index[i].add(identifier)
+                        referenced_var_list_by_stmt_index[i].append(identifier)
+
+        for var in result_element_names:
+            if var in var_name_to_defining_stmt_index:
+                remaining_uses_of_var[var] = remaining_uses_of_var[var] + 1
+
+        # can_trigger_static_asserts_by_stmt_index[i] describes whether stmts[i] can trigger static asserts.
+        can_trigger_static_asserts_by_stmt_index = [_can_trigger_static_asserts(stmt)
+                                                    for stmt in stmts]
+
+        # Start inlining (from the last statement to the first)
+        for i, stmt in reversed(list(enumerate(stmts))):
+            if isinstance(stmt, (ir0.ConstantDef, ir0.Typedef)) and remaining_uses_of_var[stmt.name] == 0:
+                # All references have been inlined, no need to emit this assignment.
+                stmts[i] = None
+                continue
+
+            referenced_var_list = referenced_var_list_by_stmt_index[i]
+            while referenced_var_list:
+                var = referenced_var_list[-1]
+                defining_stmt_index = var_name_to_defining_stmt_index[var]
+                defining_stmt = stmts[defining_stmt_index]
+                assert isinstance(defining_stmt, (ir0.ConstantDef, ir0.Typedef))
+
+                can_inline_var = (not can_trigger_static_asserts_by_stmt_index[defining_stmt_index]
+                                  or all((not can_trigger_static_asserts_by_stmt_index[crossed_stmt_index]
+                                          # If all references have been inlined, we won't emit this assignment; so we
+                                          # can disregard it in the crossing calculation.
+                                          or (isinstance(stmts[crossed_stmt_index], (ir0.ConstantDef, ir0.Typedef))
+                                              and remaining_uses_of_var[stmts[crossed_stmt_index].name] == 0))
+                                         for crossed_stmt_index in range(defining_stmt_index + 1, i)))
+
+                if self.inline_template_instantiations_with_multiple_references and isinstance(defining_stmt.expr, ir0.TemplateInstantiation):
+                    want_to_inline_var = True
+                else:
+                    want_to_inline_var = (remaining_uses_of_var[var] == 1)
+
+                if not (can_inline_var and want_to_inline_var):
+                    referenced_var_list.pop()
+                    continue
+
+                # Actually inline `var' into `stmt`.
+                stmt = replace_var_with_expr(stmt, var, defining_stmt.expr)
+                stmts[i] = stmt
+
+                num_replacements = remaining_uses_of_var_by_stmt_index[i][var]
+                remaining_uses_of_var[var] = remaining_uses_of_var[var] - num_replacements
+                remaining_uses_of_var_by_stmt_index[i][var] = 0
+                for var2, num_uses_in_replacement_expr in remaining_uses_of_var_by_stmt_index[defining_stmt_index].items():
+                    remaining_uses_of_var[var2] = remaining_uses_of_var[var2] + num_uses_in_replacement_expr * num_replacements
+                    remaining_uses_of_var_by_stmt_index[i][var2] = remaining_uses_of_var_by_stmt_index[i][var2] + num_uses_in_replacement_expr * num_replacements
+
+                referenced_var_list_by_stmt_index[i].pop()
+                referenced_vars_by_stmt_index[i].remove(var)
+                for var in referenced_var_list_by_stmt_index[defining_stmt_index]:
+                    if var not in referenced_vars_by_stmt_index[i]:
+                        referenced_vars_by_stmt_index[i].add(var)
+                        referenced_var_list_by_stmt_index[i].append(var)
+
+                can_trigger_static_asserts_by_stmt_index[i] = can_trigger_static_asserts_by_stmt_index[i] or _can_trigger_static_asserts(defining_stmt)
+
+        return [stmt
+                for stmt in stmts
+                if stmt is not None]
+
+def perform_constant_folding(template_defn: ir0.TemplateDefn,
+                             identifier_generator: Iterable[str],
+                             inline_template_instantiations_with_multiple_references: bool):
+    writer = transform_ir0.ToplevelWriter(identifier_generator)
+    transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
+    transformation.transform_template_defn(template_defn, writer)
+    [template_defn] = writer.elems
+    return template_defn
+
 def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn,
                                                  identifier_generator: Iterable[str],
                                                  inline_template_instantiations_with_multiple_references: bool):
     template_defn = normalize_template_defn(template_defn, identifier_generator)
     template_defn = perform_common_subexpression_normalization(template_defn, identifier_generator)
+    template_defn = perform_constant_folding(template_defn, identifier_generator, inline_template_instantiations_with_multiple_references)
 
     return template_defn
 
