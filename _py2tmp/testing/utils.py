@@ -236,7 +236,7 @@ def expect_cpp_code_compile_error_helper(check_error_fun, tmppy_source, module_i
 
     try_remove_temporary_file(source_file_name)
 
-def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, module_ir2, module_ir1, cxx_source):
+def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, module_ir2, module_ir1, cxx_source, optimized):
     """
     Tests that the given source produces the expected error during compilation.
 
@@ -517,7 +517,7 @@ def expect_cpp_code_compile_error(
 
     expect_cpp_code_compile_error_helper(check_error, tmppy_source, module_ir2, module_ir1, cxx_source)
 
-def expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cxx_source):
+def expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cxx_source, optimized):
     """
     Tests that the given source compiles and runs successfully.
 
@@ -627,7 +627,7 @@ def _convert_tmppy_source_to_ir(python_source, identifier_generator):
     module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2, identifier_generator)
     return module_ir2, module_ir1
 
-def _convert_to_cpp_expecting_success(tmppy_source, optimize=False):
+def _convert_to_cpp_expecting_success(tmppy_source, optimize):
     identifier_generator = create_identifier_generator()
     try:
         module_ir2, module_ir1 = _convert_tmppy_source_to_ir(tmppy_source, identifier_generator)
@@ -648,7 +648,6 @@ def _convert_to_cpp_expecting_success(tmppy_source, optimize=False):
             pytrace=False)
 
     try:
-
         header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
 
         if optimize:
@@ -685,8 +684,10 @@ def assert_compilation_succeeds(f):
     @wraps(f)
     def wrapper():
         tmppy_source = _get_function_body(f)
-        module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-        expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cpp_source)
+        for optimize in (False, True):
+            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, optimize=optimize)
+            expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cpp_source, optimized=optimize)
+
     return wrapper
 
 def assert_code_optimizes_to(expected_cpp_source: str):
@@ -737,14 +738,17 @@ def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_e
         @wraps(f)
         def wrapper():
             tmppy_source = _get_function_body(f)
-            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-            expect_cpp_code_compile_error(
-                expected_py2tmp_error_regex,
-                expected_py2tmp_error_desc_regex,
-                tmppy_source,
-                module_ir2,
-                module_ir1,
-                cpp_source)
+            for optimize in (False, True):
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, optimize=optimize)
+                expect_cpp_code_compile_error(
+                    expected_py2tmp_error_regex,
+                    expected_py2tmp_error_desc_regex,
+                    tmppy_source,
+                    module_ir2,
+                    module_ir1,
+                    cpp_source,
+                    optimized=optimize)
+
         return wrapper
     return eval
 
@@ -754,13 +758,15 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str):
         @wraps(f)
         def wrapper():
             tmppy_source = _get_function_body(f)
-            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-            expect_cpp_code_generic_compile_error(
-                expected_error_regex,
-                tmppy_source,
-                module_ir2,
-                module_ir1,
-                cpp_source)
+            for optimize in (False, True):
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, optimize)
+                expect_cpp_code_generic_compile_error(
+                    expected_error_regex,
+                    tmppy_source,
+                    module_ir2,
+                    module_ir1,
+                    cpp_source,
+                    optimized=optimize)
         return wrapper
     return eval
 
@@ -770,13 +776,15 @@ def assert_compilation_fails_with_static_assert_error(expected_error_regex: str)
         @wraps(f)
         def wrapper():
             tmppy_source = _get_function_body(f)
-            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-            expect_cpp_code_generic_compile_error(
-                r'(error: static assertion failed: |error: static_assert failed .)' + expected_error_regex,
-                tmppy_source,
-                module_ir2,
-                module_ir1,
-                cpp_source)
+            for optimize in (False, True):
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, optimize)
+                expect_cpp_code_generic_compile_error(
+                    r'(error: static assertion failed: |error: static_assert failed .)' + expected_error_regex,
+                    tmppy_source,
+                    module_ir2,
+                    module_ir1,
+                    cpp_source,
+                    optimized=optimize)
         return wrapper
     return eval
 
@@ -930,7 +938,8 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
         def wrapper():
             tmppy_source = _get_function_body(f)
             try:
-                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                for optimize in (False, True):
+                    module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, optimize=optimize)
                 e = None
             except ir0.CodegenError as e1:
                 e = e1

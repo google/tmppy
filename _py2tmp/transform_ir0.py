@@ -22,19 +22,24 @@ class Writer:
 
     def new_id(self) -> str: ...  # pragma: no cover
 
-    def new_constant_or_typedef(self, expr: ir0.Expr, type: ir0.ExprType) -> ir0.TypeLiteral:
-        assert type.kind == expr.kind
-        assert expr.kind != ir0.ExprKind.TEMPLATE
+    def new_constant_or_typedef(self, expr: ir0.Expr) -> ir0.TypeLiteral:
+        assert expr.type.kind != ir0.ExprKind.TEMPLATE
 
         id = self.new_id()
-        if expr.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
-            self.write(ir0.ConstantDef(name=id, expr=expr, type=type))
-        elif expr.kind == ir0.ExprKind.TYPE:
-            self.write(ir0.Typedef(name=id, expr=expr, type=type))
-        else:
-            raise NotImplementedError('Unexpected kind: ' + str(expr.kind))
 
-        return ir0.TypeLiteral.for_local(cpp_type=id, type=type)
+        # TODO: remove.
+        assert id is not None
+
+        if expr.type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
+            self.write(ir0.ConstantDef(name=id, expr=expr))
+        elif expr.type.kind == ir0.ExprKind.TYPE:
+            self.write(ir0.Typedef(name=id, expr=expr))
+        else:
+            raise NotImplementedError('Unexpected kind: ' + str(expr.type.kind))
+
+        return ir0.TypeLiteral.for_local(cpp_type=id, type=expr.type)
+
+    def get_toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
 
 class ToplevelWriter(Writer):
     def __init__(self, identifier_generator: Iterable[str]):
@@ -47,16 +52,25 @@ class ToplevelWriter(Writer):
     def new_id(self):
         return next(self.identifier_generator)
 
+    def get_toplevel_writer(self):
+        return self
+
 class TemplateBodyWriter(Writer):
     def __init__(self, toplevel_writer: ToplevelWriter):
         self.toplevel_writer = toplevel_writer
         self.elems = []  # type: List[ir0.TemplateBodyElement]
+
+    def new_id(self):
+        return self.toplevel_writer.new_id()
 
     def write_toplevel_elem(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
         self.toplevel_writer.write(elem)
 
     def write(self, elem: ir0.TemplateBodyElement):
         self.elems.append(elem)
+
+    def get_toplevel_writer(self):
+        return self.toplevel_writer
 
 class Transformation:
     def transform_header(self, header: ir0.Header, identifier_generator: Iterable[str]) -> ir0.Header:
@@ -86,33 +100,34 @@ class Transformation:
                                       description=template_defn.description))
 
     def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: Writer):
-        writer.write(ir0.StaticAssert(expr=self.transform_expr(static_assert.expr, ir0.BoolType(), writer),
+        writer.write(ir0.StaticAssert(expr=self.transform_expr(static_assert.expr, writer),
                                       message=static_assert.message))
 
     def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: Writer):
         writer.write(ir0.ConstantDef(name=constant_def.name,
-                                     expr=self.transform_expr(constant_def.expr, constant_def.type, writer),
-                                     type=constant_def.type))
+                                     expr=self.transform_expr(constant_def.expr, writer)))
 
     def transform_typedef(self, typedef: ir0.Typedef, writer: Writer):
         writer.write(ir0.Typedef(name=typedef.name,
-                                 expr=self.transform_expr(typedef.expr, ir0.TypeType(), writer),
-                                 type=typedef.type))
+                                 expr=self.transform_expr(typedef.expr, writer)))
 
     def transform_template_arg_decl(self, arg_decl: ir0.TemplateArgDecl) -> ir0.TemplateArgDecl:
         return arg_decl
 
-    def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: Writer) -> ir0.TemplateSpecialization:
-        assert isinstance(writer, ToplevelWriter)
+    def transform_template_body_elems(self, elems: List[ir0.TemplateBodyElement], writer: ToplevelWriter) -> List[ir0.TemplateBodyElement]:
         body_writer = TemplateBodyWriter(writer)
-        for elem in specialization.body:
+        for elem in elems:
             self.transform_template_body_elem(elem, body_writer)
+        return body_writer.elems
+
+    def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: Writer) -> ir0.TemplateSpecialization:
+        toplevel_writer = writer.get_toplevel_writer()
 
         return ir0.TemplateSpecialization(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in specialization.args],
                                           patterns=[self.transform_pattern(pattern) for pattern in specialization.patterns] if specialization.patterns is not None else None,
-                                          body=body_writer.elems)
+                                          body=self.transform_template_body_elems(specialization.body, toplevel_writer))
 
-    def transform_expr(self, expr: ir0.Expr, type: ir0.ExprType, writer: Writer) -> ir0.Expr:
+    def transform_expr(self, expr: ir0.Expr, writer: Writer) -> ir0.Expr:
         if isinstance(expr, ir0.Literal):
             return self.transform_literal(expr, writer)
         elif isinstance(expr, ir0.TypeLiteral):
@@ -151,18 +166,26 @@ class Transformation:
         return literal
 
     def transform_type_literal(self, type_literal: ir0.TypeLiteral, writer: Writer) -> ir0.Expr:
-        return type_literal
+        return self._transform_type_literal_default_impl(type_literal, writer)
+
+    def _transform_type_literal_default_impl(self, type_literal: ir0.TypeLiteral, writer: Writer) -> ir0.TypeLiteral:
+        return ir0.TypeLiteral(cpp_type=type_literal.cpp_type,
+                               is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
+                               referenced_locals=[self._transform_type_literal_default_impl(literal, writer)
+                                                  for literal in type_literal.referenced_locals],
+                               type=type_literal.type,
+                               is_local=type_literal.is_local)
 
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: Writer) -> ir0.Expr:
         return ir0.ClassMemberAccess(class_type_expr=self.transform_expr(class_member_access.expr, writer),
                                      member_name=class_member_access.member_name,
-                                     member_kind=class_member_access.member_kind)
+                                     member_type=class_member_access.type)
 
     def transform_not_expr(self, not_expr: ir0.NotExpr, writer: Writer) -> ir0.Expr:
-        return ir0.NotExpr(self.transform_expr(not_expr.expr, ir0.BoolType(), writer))
+        return ir0.NotExpr(self.transform_expr(not_expr.expr, writer))
 
     def transform_unary_minus_expr(self, unary_minus: ir0.UnaryMinusExpr, writer: Writer) -> ir0.Expr:
-        return ir0.UnaryMinusExpr(self.transform_expr(unary_minus.expr, ir0.Int64Type(), writer))
+        return ir0.UnaryMinusExpr(self.transform_expr(unary_minus.expr, writer))
 
     def transform_comparison_expr(self, comparison: ir0.ComparisonExpr, writer: Writer) -> ir0.Expr:
         return ir0.ComparisonExpr(lhs=self.transform_expr(comparison.lhs, writer),
@@ -176,7 +199,5 @@ class Transformation:
 
     def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: Writer) -> ir0.Expr:
         return ir0.TemplateInstantiation(template_expr=self.transform_expr(template_instantiation.template_expr, writer),
-                                         args=[self.transform_expr(arg, writer)
-                                               for arg in template_instantiation.args],
-                                         arg_types=template_instantiation.arg_types,
+                                         args=[self.transform_expr(arg, writer) for arg in template_instantiation.args],
                                          instantiation_might_trigger_static_asserts=template_instantiation.instantiation_might_trigger_static_asserts)
