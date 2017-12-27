@@ -13,40 +13,27 @@
 # limitations under the License.
 
 from typing import List, Iterable, Optional, Dict
+from _py2tmp import utils
 
-class ExprType:
+class ExprType(utils.ValueType):
     def __str__(self) -> str: ...  # pragma: no cover
-
-    def __eq__(self, other) -> bool: ...  # pragma: no cover
 
 class BoolType(ExprType):
     def __str__(self):
         return 'bool'
-
-    def __eq__(self, other):
-        return isinstance(other, BoolType)
 
 # A type with no values. This is the return type of functions that never return.
 class BottomType(ExprType):
     def __str__(self):
         return 'BottomType'
 
-    def __eq__(self, other):
-        return isinstance(other, BottomType)
-
 class IntType(ExprType):
     def __str__(self):
         return 'int'
 
-    def __eq__(self, other):
-        return isinstance(other, IntType)
-
 class TypeType(ExprType):
     def __str__(self):
         return 'Type'
-
-    def __eq__(self, other):
-        return isinstance(other, TypeType)
 
 class FunctionType(ExprType):
     def __init__(self, argtypes: List[ExprType], returns: ExprType):
@@ -59,9 +46,6 @@ class FunctionType(ExprType):
                       for arg in self.argtypes),
             str(self.returns))
 
-    def __eq__(self, other):
-        return isinstance(other, FunctionType) and self.__dict__ == other.__dict__
-
 class ListType(ExprType):
     def __init__(self, elem_type: ExprType):
         assert not isinstance(elem_type, FunctionType)
@@ -69,9 +53,6 @@ class ListType(ExprType):
 
     def __str__(self):
         return "List[%s]" % str(self.elem_type)
-
-    def __eq__(self, other):
-        return isinstance(other, ListType) and self.__dict__ == other.__dict__
 
 class SetType(ExprType):
     def __init__(self, elem_type: ExprType):
@@ -81,16 +62,10 @@ class SetType(ExprType):
     def __str__(self):
         return "Set[%s]" % str(self.elem_type)
 
-    def __eq__(self, other):
-        return isinstance(other, SetType) and self.__dict__ == other.__dict__
-
 class CustomTypeArgDecl:
     def __init__(self, name: str, type: ExprType):
         self.name = name
         self.type = type
-
-    def __eq__(self, other):
-        return isinstance(other, CustomTypeArgDecl) and self.__dict__ == other.__dict__
 
 class CustomType(ExprType):
     def __init__(self,
@@ -106,9 +81,6 @@ class CustomType(ExprType):
 
     def __str__(self):
         return self.name
-
-    def __eq__(self, other):
-        return isinstance(other, CustomType) and self.__dict__ == other.__dict__
 
 class Expr:
     def __init__(self, type: ExprType):

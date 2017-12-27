@@ -14,6 +14,7 @@
 
 from typing import List, Iterable, Optional, Union, Dict, Tuple
 from contextlib import contextmanager
+from _py2tmp import utils
 
 class Writer:
     def __init__(self):
@@ -40,44 +41,27 @@ class Writer:
         yield
         self.current_indent = old_indent
 
-class ExprType:
-    def __eq__(self, other) -> bool: ...  # pragma: no cover
-
+class ExprType(utils.ValueType):
     def __str__(self) -> str: ...  # pragma: no cover
 
 class BoolType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, BoolType)
-
     def __str__(self):
         return 'bool'
 
 # A type with no values. This is the return type of functions that never return.
 class BottomType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, BottomType)
-
     def __str__(self):
         return 'BottomType'
 
 class IntType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, IntType)
-
     def __str__(self):
         return 'int'
 
 class TypeType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, TypeType)
-
     def __str__(self):
         return 'Type'
 
 class ErrorOrVoidType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, ErrorOrVoidType)
-
     def __str__(self):
         return 'ErrorOrVoid'
 
@@ -85,9 +69,6 @@ class FunctionType(ExprType):
     def __init__(self, argtypes: List[ExprType], returns: ExprType):
         self.argtypes = argtypes
         self.returns = returns
-
-    def __eq__(self, other):
-        return isinstance(other, FunctionType) and self.__dict__ == other.__dict__
 
     def __str__(self):
         return 'Callable[[%s], %s]' % (
@@ -100,19 +81,13 @@ class ListType(ExprType):
         assert not isinstance(elem_type, FunctionType)
         self.elem_type = elem_type
 
-    def __eq__(self, other):
-        return isinstance(other, ListType) and self.__dict__ == other.__dict__
-
     def __str__(self):
         return 'List[%s]' % str(self.elem_type)
 
-class CustomTypeArgDecl:
+class CustomTypeArgDecl(utils.ValueType):
     def __init__(self, name: str, type: ExprType):
         self.name = name
         self.type = type
-
-    def __eq__(self, other):
-        return isinstance(other, CustomTypeArgDecl) and self.__dict__ == other.__dict__
 
     def __str__(self):
         return '%s: %s' % (self.name, str(self.type))
@@ -121,9 +96,6 @@ class CustomType(ExprType):
     def __init__(self, name: str, arg_types: List[CustomTypeArgDecl]):
         self.name = name
         self.arg_types = arg_types
-
-    def __eq__(self, other):
-        return isinstance(other, CustomType) and self.__dict__ == other.__dict__
 
     def __str__(self):
         return self.name
@@ -368,7 +340,8 @@ class FunctionCall(Expr):
 class EqualityComparison(Expr):
     def __init__(self, lhs: VarReference, rhs: VarReference):
         super().__init__(type=BoolType())
-        assert (lhs.type == ErrorOrVoidType() and rhs.type == TypeType()) or (lhs.type == rhs.type), '%s vs %s' % (str(lhs.type), str(rhs.type))
+        assert (lhs.type == ErrorOrVoidType() and rhs.type == TypeType()) or (lhs.type == rhs.type), '%s (%s) vs %s (%s)' % (
+            str(lhs.type), lhs.type.__dict__, str(rhs.type), rhs.type.__dict__)
         assert not isinstance(lhs.type, FunctionType)
         self.lhs = lhs
         self.rhs = rhs

@@ -18,6 +18,16 @@ from enum import Enum
 
 import typed_ast.ast3 as ast
 
+class ValueType:
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self._key() == other._key()
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def _key(self):
+        return tuple(sorted(self.__dict__.items()))
+
 def ast_to_string(ast_node, line_indent=''):
     next_line_indent = line_indent + '  '
 
@@ -42,7 +52,7 @@ def ir_to_string(ir_elem, line_indent=''):
         return 'None'
     elif isinstance(ir_elem, (str, bool, int, Enum)):
         return repr(ir_elem)
-    elif isinstance(ir_elem, list):
+    elif isinstance(ir_elem, (list, tuple)):
         return ('['
                 + ','.join('\n' + next_line_indent + ir_to_string(child_node, next_line_indent)
                            for child_node in ir_elem)

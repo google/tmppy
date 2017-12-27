@@ -396,7 +396,7 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
                                             member_name='value',
                                             member_type=arg_to_replace.type)
 
-            args = args[:arg_index] + [new_arg] + args[arg_index + 1:]
+            args = args[:arg_index] + (new_arg,) + args[arg_index + 1:]
 
     template_params = ', '.join(expr_to_cpp(arg, enclosing_function_defn_args, writer)
                                 for arg in args)

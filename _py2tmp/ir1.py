@@ -14,6 +14,7 @@
 
 from typing import List, Iterable, Optional, Union, Dict, Tuple
 from contextlib import contextmanager
+from _py2tmp import utils
 
 class Writer:
     def __init__(self):
@@ -40,54 +41,34 @@ class Writer:
         yield
         self.current_indent = old_indent
 
-class ExprType:
-    def __eq__(self, other) -> bool: ...  # pragma: no cover
-
+class ExprType(utils.ValueType):
     def __str__(self) -> str: ...  # pragma: no cover
 
 class BoolType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, BoolType)
-
     def __str__(self):
         return 'bool'
 
 # A type with no values. This is the return type of functions that never return.
 class BottomType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, BottomType)
-
     def __str__(self):
         return 'BottomType'
 
 class IntType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, IntType)
-
     def __str__(self):
         return 'int'
 
 class TypeType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, TypeType)
-
     def __str__(self):
         return 'Type'
 
 class ErrorOrVoidType(ExprType):
-    def __eq__(self, other):
-        return isinstance(other, ErrorOrVoidType)
-
     def __str__(self):
         return 'ErrorOrVoid'
 
 class FunctionType(ExprType):
     def __init__(self, argtypes: List[ExprType], returns: ExprType):
-        self.argtypes = argtypes
+        self.argtypes = tuple(argtypes)
         self.returns = returns
-
-    def __eq__(self, other):
-        return isinstance(other, FunctionType) and self.__dict__ == other.__dict__
 
     def __str__(self):
         return 'Callable[[%s], %s]' % (
@@ -95,13 +76,10 @@ class FunctionType(ExprType):
                       for arg in self.argtypes),
             str(self.returns))
 
-class CustomTypeArgDecl:
+class CustomTypeArgDecl(utils.ValueType):
     def __init__(self, name: str, type: ExprType):
         self.name = name
         self.type = type
-
-    def __eq__(self, other):
-        return isinstance(other, CustomTypeArgDecl) and self.__dict__ == other.__dict__
 
     def __str__(self):
         return '%s: %s' % (self.name, str(self.type))
@@ -109,10 +87,7 @@ class CustomTypeArgDecl:
 class CustomType(ExprType):
     def __init__(self, name: str, arg_types: List[CustomTypeArgDecl]):
         self.name = name
-        self.arg_types = arg_types
-
-    def __eq__(self, other):
-        return isinstance(other, CustomType) and self.__dict__ == other.__dict__
+        self.arg_types = tuple(arg_types)
 
     def __str__(self):
         return self.name
@@ -171,8 +146,8 @@ class MatchCase:
                  type_patterns: List[str],
                  matched_var_names: List[str],
                  expr: 'FunctionCall'):
-        self.type_patterns = type_patterns
-        self.matched_var_names = matched_var_names
+        self.type_patterns = tuple(type_patterns)
+        self.matched_var_names = tuple(matched_var_names)
         self.expr = expr
 
     def is_main_definition(self):
@@ -193,8 +168,8 @@ class MatchExpr(Expr):
         for match_case in match_cases:
             assert len(match_case.type_patterns) == len(matched_vars)
         super().__init__(type=match_cases[0].expr.type)
-        self.matched_vars = matched_vars
-        self.match_cases = match_cases
+        self.matched_vars = tuple(matched_vars)
+        self.match_cases = tuple(match_cases)
 
         assert len([match_case
                     for match_case in match_cases
@@ -262,7 +237,7 @@ class TemplateInstantiation(Expr):
                  instantiation_might_trigger_static_asserts: bool):
         super().__init__(type=TypeType())
         self.template_name = template_name
-        self.args = args
+        self.args = tuple(args)
         self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
 
     def get_free_variables(self):
@@ -305,7 +280,7 @@ class FunctionCall(Expr):
         assert args
         super().__init__(type=fun.type.returns)
         self.fun = fun
-        self.args = args
+        self.args = tuple(args)
 
     def get_free_variables(self):
         for var in self.fun.get_free_variables():
@@ -599,7 +574,7 @@ class Assignment(Stmt):
                  lhs: VarReference,
                  rhs: Expr,
                  lhs2: Optional[VarReference] = None):
-        assert lhs.type == rhs.type
+        assert lhs.type == rhs.type, 'Different types: %s vs %s' % (str(lhs.type.__dict__), str(rhs.type.__dict__))
         if lhs2:
             assert isinstance(lhs2.type, ErrorOrVoidType)
             assert isinstance(rhs, (MatchExpr, FunctionCall, ListComprehensionExpr))
@@ -633,7 +608,7 @@ class UnpackingAssignment(Stmt):
                  error_message: str):
         assert isinstance(rhs.type, TypeType)
         assert lhs_list
-        self.lhs_list = lhs_list
+        self.lhs_list = tuple(lhs_list)
         self.rhs = rhs
         self.error_message = error_message
 
@@ -684,8 +659,8 @@ class IfStmt(Stmt):
         assert cond.type == BoolType()
         assert if_stmts
         self.cond = cond
-        self.if_stmts = if_stmts
-        self.else_stmts = else_stmts
+        self.if_stmts = tuple(if_stmts)
+        self.else_stmts = tuple(else_stmts)
 
     def get_free_variables(self):
         for var in self.cond.get_free_variables():
@@ -721,8 +696,8 @@ class FunctionDefn:
         assert body
         self.name = name
         self.description = description
-        self.args = args
-        self.body = body
+        self.args = tuple(args)
+        self.body = tuple(body)
         self.return_type = return_type
 
     def write(self, writer: Writer, verbose: bool):
@@ -741,7 +716,7 @@ class FunctionDefn:
 
 class CheckIfErrorDefn:
     def __init__(self, error_types_and_messages: List[Tuple[CustomType, str]]):
-        self.error_types_and_messages = error_types_and_messages
+        self.error_types_and_messages = tuple(error_types_and_messages)
 
     def write(self, writer: Writer, verbose: bool):
         writer.writeln('def check_if_error(x):')
@@ -757,7 +732,7 @@ class CheckIfErrorDefn:
 class Module:
     def __init__(self,
                  body: List[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]]):
-        self.body = body
+        self.body = tuple(body)
 
     def __str__(self):
         writer = Writer()
