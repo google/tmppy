@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _py2tmp import ir0, transform_ir0
+from _py2tmp import ir0, utils, transform_ir0
 import networkx as nx
-from typing import Dict, Iterable
+from typing import List, Union, Dict, Set, Iterable
 
 class ExprSimplifyingTransformation(transform_ir0.Transformation):
     def transform_expr(self, expr: ir0.Expr, writer: transform_ir0.Writer, split_nontrivial_exprs=True) -> ir0.Expr:
@@ -44,12 +44,76 @@ def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generato
 
     return new_template_defn
 
+class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
+    def transform_template_body_elems(self,
+                                      elems: List[ir0.TemplateBodyElement],
+                                      toplevel_writer: transform_ir0.ToplevelWriter):
+
+        name_by_expr = dict()  # type: Dict[ir0.Expr, str]
+        replacements = dict()  # type: Dict[str, str]
+        type_by_name = dict()  # type: Dict[str, ir0.ExprType]
+
+        result_elems = []
+        for elem in elems:
+            writer = transform_ir0.TemplateBodyWriter(toplevel_writer)
+            NameReplacementTransformation(replacements).transform_template_body_elem(elem, writer)
+            [elem] = writer.elems
+
+            if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.expr in name_by_expr:
+                replacements[elem.name] = name_by_expr[elem.expr]
+                type_by_name[elem.name] = elem.expr.type
+            else:
+                result_elems.append(elem)
+                if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)):
+                    name_by_expr[elem.expr] = elem.name
+
+        # Add back "result elements" if they were deduped.
+        for result_elem_name in ('value', 'type', 'error'):
+            if result_elem_name in replacements:
+                type = type_by_name[result_elem_name]
+                if type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
+                    result_elems.append(ir0.ConstantDef(name=result_elem_name,
+                                                        expr=ir0.TypeLiteral.for_local(cpp_type=replacements[result_elem_name],
+                                                                                       type=type)))
+                elif type.kind == ir0.ExprKind.TYPE:
+                    result_elems.append(ir0.Typedef(name=result_elem_name,
+                                                    expr=ir0.TypeLiteral.for_local(cpp_type=replacements[result_elem_name],
+                                                                                   type=type)))
+                else:
+                    raise NotImplementedError('Unexpected kind: %s' % str(type.kind))
+
+        return result_elems
+
+def perform_common_subexpression_normalization(template_defn: ir0.TemplateDefn,
+                       identifier_generator: Iterable[str]):
+    writer = transform_ir0.ToplevelWriter(identifier_generator)
+    CommonSubexpressionEliminationTransformation().transform_template_defn(template_defn, writer)
+    [template_defn] = writer.elems
+    return template_defn
+
 def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn,
                                                  identifier_generator: Iterable[str],
                                                  inline_template_instantiations_with_multiple_references: bool):
     template_defn = normalize_template_defn(template_defn, identifier_generator)
+    template_defn = perform_common_subexpression_normalization(template_defn, identifier_generator)
 
     return template_defn
+
+class NameReplacementTransformation(transform_ir0.Transformation):
+    def __init__(self, replacements: Dict[str, str]):
+        super().__init__()
+        self.replacements = replacements
+
+    def transform_pattern(self, pattern: ir0.TemplateArgPatternLiteral):
+        return ir0.TemplateArgPatternLiteral(cxx_pattern=utils.replace_identifiers(pattern.cxx_pattern, self.replacements))
+
+    def transform_type_literal(self, type_literal: ir0.TypeLiteral, writer: transform_ir0.Writer):
+        return ir0.TypeLiteral(cpp_type=utils.replace_identifiers(type_literal.cpp_type, self.replacements),
+                               is_local=type_literal.is_local,
+                               is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
+                               referenced_locals=[self.transform_type_literal(referenced_literal, writer)
+                                                  for referenced_literal in type_literal.referenced_locals],
+                               type=type_literal.type)
 
 def optimize_header(header: ir0.Header, identifier_generator: Iterable[str]):
     template_dependency_graph = nx.DiGraph()
