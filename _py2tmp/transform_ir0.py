@@ -23,16 +23,10 @@ class Writer:
     def new_id(self) -> str: ...  # pragma: no cover
 
     def new_constant_or_typedef(self, expr: ir0.Expr) -> ir0.TypeLiteral:
-        assert expr.type.kind != ir0.ExprKind.TEMPLATE
-
         id = self.new_id()
-
-        # TODO: remove.
-        assert id is not None
-
         if expr.type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
             self.write(ir0.ConstantDef(name=id, expr=expr))
-        elif expr.type.kind == ir0.ExprKind.TYPE:
+        elif expr.type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
             self.write(ir0.Typedef(name=id, expr=expr))
         else:
             raise NotImplementedError('Unexpected kind: ' + str(expr.type.kind))

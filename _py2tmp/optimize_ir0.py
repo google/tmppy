@@ -11,11 +11,42 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import difflib
 from collections import defaultdict
-from _py2tmp import ir0, utils, transform_ir0
+from _py2tmp import ir0, utils, transform_ir0, ir0_to_cpp
 import networkx as nx
-from typing import List, Tuple, Union, Dict, Set, Iterable
+from typing import List, Tuple, Union, Dict, Set, Iterator, Callable
+
+def template_defn_to_cpp(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
+    writer = ir0_to_cpp.ToplevelWriter(identifier_generator)
+    ir0_to_cpp.template_defn_to_cpp(template_defn, enclosing_function_defn_args=[], writer=writer)
+    return utils.clang_format(''.join(writer.strings))
+
+def compare_optimized_cpp_to_original(original_cpp: str, optimized_cpp: str, optimization_name: str, other_context: str = ''):
+    if original_cpp != optimized_cpp:
+        diff = ''.join(difflib.unified_diff(original_cpp.splitlines(True),
+                                            optimized_cpp.splitlines(True),
+                                            fromfile='before.h',
+                                            tofile='after.h'))
+        print('Original C++:\n' + original_cpp + '\n' + other_context
+              + 'After ' + optimization_name + '():\n' + optimized_cpp + '\n'
+              + 'Diff:\n' + diff + '\n')
+
+def apply_optimization(template_defn: ir0.TemplateDefn,
+                       identifier_generator: Iterator[str],
+                       optimization: Callable[[], ir0.TemplateDefn],
+                       optimization_name: str,
+                       verbose: bool,
+                       other_context: Callable[[], str] = lambda: ''):
+    new_template_defn = optimization()
+
+    if verbose:
+        original_cpp = template_defn_to_cpp(template_defn, identifier_generator)
+        optimized_cpp = template_defn_to_cpp(new_template_defn, identifier_generator)
+        compare_optimized_cpp_to_original(original_cpp, optimized_cpp, optimization_name=optimization_name, other_context=other_context())
+
+    return new_template_defn
+
 
 class ExprSimplifyingTransformation(transform_ir0.Transformation):
     def transform_expr(self, expr: ir0.Expr, writer: transform_ir0.Writer, split_nontrivial_exprs=True) -> ir0.Expr:
@@ -34,7 +65,7 @@ class ExprSimplifyingTransformation(transform_ir0.Transformation):
         writer.write(ir0.Typedef(name=typedef.name,
                                  expr=self.transform_expr(typedef.expr, writer, split_nontrivial_exprs=False)))
 
-def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generator: Iterable[str]):
+def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
     '''Converts template_defn to an equivalent TemplateDefn where all expressions contain 0 or 1 operations.
 
     Unlike other constants/typedefs, the exprs that initialize "result" and "error" will always have 0 operations.
@@ -87,7 +118,7 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
         return result_elems
 
 def perform_common_subexpression_normalization(template_defn: ir0.TemplateDefn,
-                       identifier_generator: Iterable[str]):
+                       identifier_generator: Iterator[str]):
     writer = transform_ir0.ToplevelWriter(identifier_generator)
     CommonSubexpressionEliminationTransformation().transform_template_defn(template_defn, writer)
     [template_defn] = writer.elems
@@ -102,11 +133,24 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
         if type_literal.cpp_type == self.var:
             return self.replacement_expr
 
-        if self.var in type_literal.get_referenced_identifiers():
-            # TODO: implement this.
-            raise NotImplementedError('The replacement of "%s" in "%s" is not implemented yet' % (self.var, type_literal.cpp_type))
+        if self.var not in type_literal.get_referenced_identifiers():
+            return type_literal
 
-        return type_literal
+        if isinstance(self.replacement_expr, ir0.TypeLiteral):
+            referenced_locals = []
+            for referenced_local in type_literal.referenced_locals:
+                if referenced_local.cpp_type != self.var:
+                    referenced_locals.append(referenced_local)
+            for referenced_local in self.replacement_expr.referenced_locals:
+                referenced_locals.append(referenced_local)
+            return ir0.TypeLiteral(cpp_type=utils.replace_identifiers(type_literal.cpp_type, {self.var: self.replacement_expr.cpp_type}),
+                                   is_local=type_literal.is_local and self.replacement_expr.is_local,
+                                   is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error or self.replacement_expr.is_metafunction_that_may_return_error,
+                                   referenced_locals=referenced_locals,
+                                   type=type_literal.type)
+
+        # TODO: implement this.
+        raise NotImplementedError('The replacement of "%s" in "%s" is not implemented yet' % (self.var, type_literal.cpp_type))
 
 def replace_var_with_expr(elem: ir0.TemplateBodyElement, var: str, expr: ir0.Expr) -> ir0.TemplateBodyElement:
     toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[])
@@ -235,7 +279,7 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                 if stmt is not None]
 
 def perform_constant_folding(template_defn: ir0.TemplateDefn,
-                             identifier_generator: Iterable[str],
+                             identifier_generator: Iterator[str],
                              inline_template_instantiations_with_multiple_references: bool):
     writer = transform_ir0.ToplevelWriter(identifier_generator)
     transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
@@ -244,11 +288,28 @@ def perform_constant_folding(template_defn: ir0.TemplateDefn,
     return template_defn
 
 def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn,
-                                                 identifier_generator: Iterable[str],
-                                                 inline_template_instantiations_with_multiple_references: bool):
-    template_defn = normalize_template_defn(template_defn, identifier_generator)
-    template_defn = perform_common_subexpression_normalization(template_defn, identifier_generator)
-    template_defn = perform_constant_folding(template_defn, identifier_generator, inline_template_instantiations_with_multiple_references)
+                                                 identifier_generator: Iterator[str],
+                                                 inline_template_instantiations_with_multiple_references: bool,
+                                                 verbose: bool):
+    template_defn = apply_optimization(template_defn,
+                                       identifier_generator,
+                                       optimization=lambda: normalize_template_defn(template_defn, identifier_generator),
+                                       optimization_name='normalize_template_defn()',
+                                       verbose=verbose)
+
+    template_defn = apply_optimization(template_defn,
+                                       identifier_generator,
+                                       optimization=lambda: perform_common_subexpression_normalization(template_defn, identifier_generator),
+                                       optimization_name='perform_common_subexpression_normalization()',
+                                       verbose=verbose)
+
+    template_defn = apply_optimization(template_defn,
+                                       identifier_generator,
+                                       optimization=lambda: perform_constant_folding(template_defn,
+                                                                                     identifier_generator,
+                                                                                     inline_template_instantiations_with_multiple_references),
+                                       optimization_name='perform_constant_folding()',
+                                       verbose=verbose)
 
     return template_defn
 
@@ -268,7 +329,104 @@ class NameReplacementTransformation(transform_ir0.Transformation):
                                                   for referenced_literal in type_literal.referenced_locals],
                                type=type_literal.type)
 
-def optimize_header(header: ir0.Header, identifier_generator: Iterable[str]):
+    def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: transform_ir0.Writer):
+        writer.write(ir0.ConstantDef(name=self._transform_name(constant_def.name),
+                                     expr=self.transform_expr(constant_def.expr, writer)))
+
+    def transform_typedef(self, typedef: ir0.Typedef, writer: transform_ir0.Writer):
+        writer.write(ir0.Typedef(name=self._transform_name(typedef.name),
+                                 expr=self.transform_expr(typedef.expr, writer)))
+
+    def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
+        writer.write(ir0.TemplateDefn(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args],
+                                      main_definition=self.transform_template_specialization(template_defn.main_definition, template_defn.result_element_names, writer) if template_defn.main_definition is not None else None,
+                                      specializations=[self.transform_template_specialization(specialization, template_defn.result_element_names, writer) for specialization in template_defn.specializations],
+                                      name=self._transform_name(template_defn.name),
+                                      description=template_defn.description,
+                                      result_element_names=template_defn.result_element_names))
+
+    def transform_template_arg_decl(self, arg_decl: ir0.TemplateArgDecl):
+        return ir0.TemplateArgDecl(type=arg_decl.type,
+                                   name=self._transform_name(arg_decl.name))
+
+    def _transform_name(self, name: str):
+        if name in self.replacements:
+            return self.replacements[name]
+        else:
+            return name
+
+class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
+    def __init__(self, inlineable_templates_by_name: Dict[str, ir0.TemplateDefn]):
+        super().__init__()
+        self.inlineable_templates_by_name = inlineable_templates_by_name
+
+    def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
+        assert isinstance(writer, transform_ir0.TemplateBodyWriter)
+        if (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
+                and isinstance(class_member_access.expr.template_expr, ir0.TypeLiteral)
+                and class_member_access.expr.template_expr.cpp_type in self.inlineable_templates_by_name):
+            template_instantiation = class_member_access.expr
+            template_defn_to_inline = self.inlineable_templates_by_name[template_instantiation.template_expr.cpp_type]
+            assert not template_defn_to_inline.specializations
+            assert not template_defn_to_inline.main_definition.patterns
+
+            new_var_name_by_old_var_name = dict()  # type: Dict[str, str]
+            for arg_decl, arg_expr in zip(template_defn_to_inline.main_definition.args, template_instantiation.args):
+                if arg_decl.name:
+                    var = writer.new_constant_or_typedef(arg_expr)
+                    new_var_name_by_old_var_name[arg_decl.name] = var.cpp_type
+
+            for elem in template_defn_to_inline.main_definition.body:
+                if isinstance(elem, ir0.TemplateDefn):
+                    new_var_name_by_old_var_name[elem.name] = writer.new_id()
+                elif isinstance(elem, ir0.ConstantDef):
+                    new_var_name_by_old_var_name[elem.name] = writer.new_id()
+                elif isinstance(elem, ir0.Typedef):
+                    new_var_name_by_old_var_name[elem.name] = writer.new_id()
+                elif isinstance(elem, ir0.StaticAssert):
+                    pass
+                else:
+                    raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
+
+            transformation = NameReplacementTransformation(new_var_name_by_old_var_name)
+            for elem in template_defn_to_inline.main_definition.body:
+                transformation.transform_template_body_elem(elem, writer)
+
+            return ir0.TypeLiteral.for_local(cpp_type=new_var_name_by_old_var_name[class_member_access.member_name],
+                                             type=class_member_access.type)
+        else:
+            return super().transform_class_member_access(class_member_access, writer)
+
+def perform_template_inlining(template_defn: ir0.TemplateDefn,
+                              inlineable_refs: Set[str],
+                              template_defn_by_name: Dict[str, ir0.TemplateDefn],
+                              identifier_generator: Iterator[str],
+                              verbose: bool):
+    template_defn = perform_local_optimizations_on_template_defn(template_defn,
+                                                                 identifier_generator,
+                                                                 inline_template_instantiations_with_multiple_references=True,
+                                                                 verbose=verbose)
+
+    def perform_optimization():
+        transformation = TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
+                                                                      for template_name in inlineable_refs})
+
+        writer = transform_ir0.ToplevelWriter(identifier_generator)
+        transformation.transform_template_defn(template_defn, writer)
+        [new_template_defn] = writer.elems
+        return new_template_defn
+
+    template_defn = apply_optimization(template_defn,
+                                       identifier_generator,
+                                       optimization=perform_optimization,
+                                       optimization_name='TemplateInstantiationInliningTransformation',
+                                       other_context=lambda: 'Inlined template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
+                                                                                                for template_name in inlineable_refs) + '\n',
+                                       verbose=verbose)
+
+    return template_defn
+
+def optimize_header(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool = False):
     template_dependency_graph = nx.DiGraph()
 
     new_template_defns = {elem.name: elem
@@ -294,9 +452,21 @@ def optimize_header(header: ir0.Header, identifier_generator: Iterable[str]):
         for node in connected_component:
             template_defn = new_template_defns[node]
 
+            inlineable_refs = {other_node
+                               for other_node in template_dependency_graph.successors(node)
+                               if not template_dependency_graph_transitive_closure.has_edge(other_node, node)
+                               and not new_template_defns[other_node].specializations}
+            if inlineable_refs:
+                template_defn = perform_template_inlining(template_defn,
+                                                          inlineable_refs,
+                                                          new_template_defns,
+                                                          identifier_generator,
+                                                          verbose=verbose)
+
             template_defn = perform_local_optimizations_on_template_defn(template_defn,
                                                                          identifier_generator,
-                                                                         inline_template_instantiations_with_multiple_references=False)
+                                                                         inline_template_instantiations_with_multiple_references=False,
+                                                                         verbose=verbose)
             new_template_defns[node] = template_defn
 
     new_elems = []

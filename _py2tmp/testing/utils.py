@@ -649,7 +649,7 @@ def _convert_to_cpp_expecting_success(tmppy_source):
 
     try:
         header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
-        header = optimize_ir0.optimize_header(header, identifier_generator)
+        header = optimize_ir0.optimize_header(header, identifier_generator, verbose=False)
         cpp_source = ir0_to_cpp.header_to_cpp(header, identifier_generator)
         cpp_source = utils.clang_format(cpp_source)
 
