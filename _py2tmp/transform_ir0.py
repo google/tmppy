@@ -88,8 +88,8 @@ class Transformation:
 
     def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: Writer):
         writer.write(ir0.TemplateDefn(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args],
-                                      main_definition=self.transform_template_specialization(template_defn.main_definition, template_defn.result_element_names, writer) if template_defn.main_definition is not None else None,
-                                      specializations=[self.transform_template_specialization(specialization, template_defn.result_element_names, writer) for specialization in template_defn.specializations],
+                                      main_definition=self.transform_template_specialization(template_defn.main_definition, writer) if template_defn.main_definition is not None else None,
+                                      specializations=[self.transform_template_specialization(specialization, writer) for specialization in template_defn.specializations],
                                       name=template_defn.name,
                                       description=template_defn.description,
                                       result_element_names=template_defn.result_element_names))
@@ -111,19 +111,18 @@ class Transformation:
 
     def transform_template_body_elems(self,
                                       elems: List[ir0.TemplateBodyElement],
-                                      result_element_names: Tuple[str],
                                       writer: ToplevelWriter) -> List[ir0.TemplateBodyElement]:
         body_writer = TemplateBodyWriter(writer)
         for elem in elems:
             self.transform_template_body_elem(elem, body_writer)
         return body_writer.elems
 
-    def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, result_element_names: Tuple[str], writer: Writer) -> ir0.TemplateSpecialization:
+    def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: Writer) -> ir0.TemplateSpecialization:
         toplevel_writer = writer.get_toplevel_writer()
 
         return ir0.TemplateSpecialization(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in specialization.args],
                                           patterns=[self.transform_pattern(pattern) for pattern in specialization.patterns] if specialization.patterns is not None else None,
-                                          body=self.transform_template_body_elems(specialization.body, result_element_names, toplevel_writer))
+                                          body=self.transform_template_body_elems(specialization.body, toplevel_writer))
 
     def transform_expr(self, expr: ir0.Expr, writer: Writer) -> ir0.Expr:
         if isinstance(expr, ir0.Literal):

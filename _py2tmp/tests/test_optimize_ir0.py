@@ -24,16 +24,14 @@ template <int64_t TmppyInternal_5> struct inc;
 template <typename> struct CheckIfError { using type = void; };
 // The is_error (meta)function
 template <typename TmppyInternal_1> struct TmppyInternal_0 {
-  using TmppyInternal_2 = void;
-  static constexpr bool TmppyInternal_3 = std::is_same<
-      typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
-      TmppyInternal_2>::value;
-  static constexpr bool value = !(TmppyInternal_3);
-  using error = TmppyInternal_2;
+  using error = void;
+  static constexpr bool value =
+      !(std::is_same<
+          typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
+          void>::value);
 };
 template <int64_t TmppyInternal_5> struct inc {
-  static constexpr int64_t TmppyInternal_6 = 1LL;
-  static constexpr int64_t value = (TmppyInternal_5) + (TmppyInternal_6);
+  static constexpr int64_t value = (TmppyInternal_5) + (1LL);
   using error = void;
 };
 ''')
@@ -51,25 +49,19 @@ template <int64_t TmppyInternal_5> struct f;
 template <typename> struct CheckIfError { using type = void; };
 // The is_error (meta)function
 template <typename TmppyInternal_1> struct TmppyInternal_0 {
-  using TmppyInternal_2 = void;
-  static constexpr bool TmppyInternal_3 = std::is_same<
-      typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
-      TmppyInternal_2>::value;
-  static constexpr bool value = !(TmppyInternal_3);
-  using error = TmppyInternal_2;
+  using error = void;
+  static constexpr bool value =
+      !(std::is_same<
+          typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
+          void>::value);
 };
 template <int64_t TmppyInternal_5> struct f {
-  static constexpr int64_t TmppyInternal_7 = 2LL;
-  static constexpr int64_t TmppyInternal_9 = (TmppyInternal_5) + (1LL);
-  static constexpr int64_t TmppyInternal_6 =
-      (TmppyInternal_7) * (TmppyInternal_9);
-  using TmppyInternal_16 = int *;
-  static constexpr bool TmppyInternal_20 =
-      (TmppyInternal_6) == (TmppyInternal_6);
-  static constexpr bool TmppyInternal_21 = std::is_same<
-      typename Select1stTypeInt64<TmppyInternal_16, TmppyInternal_5>::value,
-      TmppyInternal_16>::value;
-  static constexpr bool value = (TmppyInternal_20) == (TmppyInternal_21);
+  static constexpr int64_t TmppyInternal_10 =
+      (2LL) * ((TmppyInternal_5) + (1LL));
+  static constexpr bool value =
+      ((TmppyInternal_10) == (TmppyInternal_10)) ==
+      (std::is_same<typename Select1stTypeInt64<int *, TmppyInternal_5>::value,
+                    int *>::value);
   using error = void;
 };
 ''')
@@ -96,12 +88,11 @@ template <int64_t TmppyInternal_5> struct inc;
 template <typename> struct CheckIfError { using type = void; };
 // The is_error (meta)function
 template <typename TmppyInternal_1> struct TmppyInternal_0 {
-  using TmppyInternal_2 = void;
-  static constexpr bool TmppyInternal_3 = std::is_same<
-      typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
-      TmppyInternal_2>::value;
-  static constexpr bool value = !(TmppyInternal_3);
-  using error = TmppyInternal_2;
+  using error = void;
+  static constexpr bool value =
+      !(std::is_same<
+          typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
+          void>::value);
 };
 template <int64_t TmppyInternal_5, int64_t TmppyInternal_6> struct plus {
   static constexpr int64_t value = (TmppyInternal_5) + (TmppyInternal_6);
@@ -109,8 +100,8 @@ template <int64_t TmppyInternal_5, int64_t TmppyInternal_6> struct plus {
 };
 // (meta)function wrapping the code after an if-else statement
 template <int64_t TmppyInternal_9> struct TmppyInternal_12 {
-  static constexpr int64_t value = TmppyInternal_9;
   using error = void;
+  static constexpr int64_t value = TmppyInternal_9;
 };
 // (meta)function generated for an if-else statement
 template <typename TmppyInternal_10, int64_t TmppyInternal_9>
@@ -121,27 +112,20 @@ struct TmppyInternal_13<TmppyInternal_10, TmppyInternal_9, true> {
 // (meta)function generated for an if-else statement
 template <typename TmppyInternal_10, int64_t TmppyInternal_9>
 struct TmppyInternal_13<TmppyInternal_10, TmppyInternal_9, false> {
-  static constexpr int64_t TmppyInternal_14 = TmppyInternal_9;
-  static constexpr int64_t value = TmppyInternal_14;
   using error = void;
+  static constexpr int64_t value = TmppyInternal_9;
 };
 template <int64_t TmppyInternal_5> struct inc {
-  static constexpr int64_t TmppyInternal_20 = TmppyInternal_5;
-  static constexpr int64_t TmppyInternal_21 = 1LL;
-  using TmppyInternal_23 = void;
-  static constexpr int64_t TmppyInternal_9 =
-      (TmppyInternal_20) + (TmppyInternal_21);
-  using TmppyInternal_10 = TmppyInternal_23;
-  static constexpr bool TmppyInternal_30 = std::is_same<
-      typename Select1stTypeInt64<TmppyInternal_10, TmppyInternal_5>::value,
-      TmppyInternal_23>::value;
-  static constexpr bool TmppyInternal_11 = !(TmppyInternal_30);
+  static constexpr int64_t TmppyInternal_22 = (TmppyInternal_5) + (1LL);
+  static constexpr bool TmppyInternal_30 =
+      !(std::is_same<typename Select1stTypeInt64<void, TmppyInternal_5>::value,
+                     void>::value);
   static constexpr int64_t value = TmppyInternal_13<
-      typename Select1stTypeInt64<TmppyInternal_10, TmppyInternal_5>::value,
-      TmppyInternal_9, TmppyInternal_11>::value;
+      typename Select1stTypeInt64<void, TmppyInternal_5>::value,
+      TmppyInternal_22, TmppyInternal_30>::value;
   using error = typename TmppyInternal_13<
-      typename Select1stTypeInt64<TmppyInternal_10, TmppyInternal_5>::value,
-      TmppyInternal_9, TmppyInternal_11>::error;
+      typename Select1stTypeInt64<void, TmppyInternal_5>::value,
+      TmppyInternal_22, TmppyInternal_30>::error;
 };
 ''')
 def test_optimization_two_functions_with_call():
@@ -168,17 +152,16 @@ template <bool TmppyInternal_5> struct g;
 template <typename> struct CheckIfError { using type = void; };
 // The is_error (meta)function
 template <typename TmppyInternal_1> struct TmppyInternal_0 {
-  using TmppyInternal_2 = void;
-  static constexpr bool TmppyInternal_3 = std::is_same<
-      typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
-      TmppyInternal_2>::value;
-  static constexpr bool value = !(TmppyInternal_3);
-  using error = TmppyInternal_2;
+  using error = void;
+  static constexpr bool value =
+      !(std::is_same<
+          typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
+          void>::value);
 };
 // (meta)function wrapping the code after an if-else statement
 template <int64_t TmppyInternal_8> struct TmppyInternal_14 {
-  static constexpr int64_t value = TmppyInternal_8;
   using error = void;
+  static constexpr int64_t value = TmppyInternal_8;
 };
 // (meta)function generated for an if-else statement
 template <typename TmppyInternal_9, int64_t TmppyInternal_8>
@@ -189,9 +172,8 @@ struct TmppyInternal_15<TmppyInternal_9, TmppyInternal_8, true> {
 // (meta)function generated for an if-else statement
 template <typename TmppyInternal_9, int64_t TmppyInternal_8>
 struct TmppyInternal_15<TmppyInternal_9, TmppyInternal_8, false> {
-  static constexpr int64_t TmppyInternal_19 = TmppyInternal_8;
-  static constexpr int64_t value = TmppyInternal_19;
   using error = void;
+  static constexpr int64_t value = TmppyInternal_8;
 };
 // (meta)function generated for an if-else statement
 template <bool TmppyInternal_5> struct TmppyInternal_16<TmppyInternal_5, true> {
@@ -201,22 +183,20 @@ template <bool TmppyInternal_5> struct TmppyInternal_16<TmppyInternal_5, true> {
 // (meta)function generated for an if-else statement
 template <bool TmppyInternal_5>
 struct TmppyInternal_16<TmppyInternal_5, false> {
-  static constexpr bool TmppyInternal_7 = true;
   static constexpr int64_t TmppyInternal_8 =
-      g<Select1stBoolBool<TmppyInternal_7, TmppyInternal_5>::value>::value;
-  using TmppyInternal_9 = typename g<
-      Select1stBoolBool<TmppyInternal_7, TmppyInternal_5>::value>::error;
-  using TmppyInternal_37 = void;
-  static constexpr bool TmppyInternal_38 = std::is_same<
-      typename Select1stTypeBool<TmppyInternal_9, TmppyInternal_5>::value,
-      TmppyInternal_37>::value;
-  static constexpr bool TmppyInternal_10 = !(TmppyInternal_38);
+      g<Select1stBoolBool<true, TmppyInternal_5>::value>::value;
+  using TmppyInternal_9 =
+      typename g<Select1stBoolBool<true, TmppyInternal_5>::value>::error;
+  static constexpr bool TmppyInternal_33 =
+      !(std::is_same<
+          typename Select1stTypeBool<TmppyInternal_9, TmppyInternal_5>::value,
+          void>::value);
   static constexpr int64_t value = TmppyInternal_15<
       typename Select1stTypeBool<TmppyInternal_9, TmppyInternal_5>::value,
-      TmppyInternal_8, TmppyInternal_10>::value;
+      TmppyInternal_8, TmppyInternal_33>::value;
   using error = typename TmppyInternal_15<
       typename Select1stTypeBool<TmppyInternal_9, TmppyInternal_5>::value,
-      TmppyInternal_8, TmppyInternal_10>::error;
+      TmppyInternal_8, TmppyInternal_33>::error;
 };
 template <bool TmppyInternal_5> struct f {
   static constexpr int64_t value = TmppyInternal_16<
@@ -228,8 +208,8 @@ template <bool TmppyInternal_5> struct f {
 };
 // (meta)function wrapping the code after an if-else statement
 template <int64_t TmppyInternal_11> struct TmppyInternal_17 {
-  static constexpr int64_t value = TmppyInternal_11;
   using error = void;
+  static constexpr int64_t value = TmppyInternal_11;
 };
 // (meta)function generated for an if-else statement
 template <typename TmppyInternal_12, int64_t TmppyInternal_11>
@@ -240,26 +220,24 @@ struct TmppyInternal_18<TmppyInternal_12, TmppyInternal_11, true> {
 // (meta)function generated for an if-else statement
 template <typename TmppyInternal_12, int64_t TmppyInternal_11>
 struct TmppyInternal_18<TmppyInternal_12, TmppyInternal_11, false> {
-  static constexpr int64_t TmppyInternal_25 = TmppyInternal_11;
-  static constexpr int64_t value = TmppyInternal_25;
   using error = void;
+  static constexpr int64_t value = TmppyInternal_11;
 };
 template <bool TmppyInternal_5> struct g {
   static constexpr int64_t TmppyInternal_11 =
       f<Select1stBoolBool<TmppyInternal_5, TmppyInternal_5>::value>::value;
   using TmppyInternal_12 = typename f<
       Select1stBoolBool<TmppyInternal_5, TmppyInternal_5>::value>::error;
-  using TmppyInternal_32 = void;
-  static constexpr bool TmppyInternal_33 = std::is_same<
-      typename Select1stTypeBool<TmppyInternal_12, TmppyInternal_5>::value,
-      TmppyInternal_32>::value;
-  static constexpr bool TmppyInternal_13 = !(TmppyInternal_33);
+  static constexpr bool TmppyInternal_36 =
+      !(std::is_same<
+          typename Select1stTypeBool<TmppyInternal_12, TmppyInternal_5>::value,
+          void>::value);
   static constexpr int64_t value = TmppyInternal_18<
       typename Select1stTypeBool<TmppyInternal_12, TmppyInternal_5>::value,
-      TmppyInternal_11, TmppyInternal_13>::value;
+      TmppyInternal_11, TmppyInternal_36>::value;
   using error = typename TmppyInternal_18<
       typename Select1stTypeBool<TmppyInternal_12, TmppyInternal_5>::value,
-      TmppyInternal_11, TmppyInternal_13>::error;
+      TmppyInternal_11, TmppyInternal_36>::error;
 };
 ''')
 def test_optimization_of_mutually_recursive_functions():

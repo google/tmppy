@@ -76,15 +76,56 @@ def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generato
 
     return new_template_defn
 
+def create_var_to_var_assignment(lhs: str, rhs: str, type: ir0.ExprType):
+  if type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
+    return ir0.ConstantDef(name=lhs,
+                           expr=ir0.TypeLiteral.for_local(cpp_type=rhs,
+                                                          type=type))
+  elif type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
+    return ir0.Typedef(name=lhs,
+                       expr=ir0.TypeLiteral.for_local(cpp_type=rhs,
+                                                      type=type))
+  else:
+    raise NotImplementedError('Unexpected kind: %s' % str(type.kind))
+
 class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
-    def transform_template_body_elems(self,
-                                      elems: List[ir0.TemplateBodyElement],
-                                      result_element_names: Tuple[str],
-                                      toplevel_writer: transform_ir0.ToplevelWriter):
+    def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
+      writer.write(ir0.TemplateDefn(args=template_defn.args,
+                                    main_definition=self._transform_template_specialization(template_defn.main_definition, template_defn.result_element_names, writer) if template_defn.main_definition is not None else None,
+                                    specializations=[self._transform_template_specialization(specialization, template_defn.result_element_names, writer) for specialization in template_defn.specializations],
+                                    name=template_defn.name,
+                                    description=template_defn.description,
+                                    result_element_names=template_defn.result_element_names))
+
+    def _transform_template_specialization(self,
+                                           specialization: ir0.TemplateSpecialization,
+                                           result_element_names: Tuple[str],
+                                           writer: transform_ir0.Writer) -> ir0.TemplateSpecialization:
+      toplevel_writer = writer.get_toplevel_writer()
+
+      return ir0.TemplateSpecialization(args=specialization.args,
+                                        patterns=specialization.patterns,
+                                        body=self._transform_template_body_elems(specialization.body,
+                                                                                 result_element_names,
+                                                                                 specialization.args,
+                                                                                 toplevel_writer))
+
+    def _transform_template_body_elems(self,
+                                       elems: List[ir0.TemplateBodyElement],
+                                       result_element_names: Tuple[str],
+                                       template_specialization_args: Tuple[ir0.TemplateArgDecl],
+                                       toplevel_writer: transform_ir0.ToplevelWriter):
 
         name_by_expr = dict()  # type: Dict[ir0.Expr, str]
         replacements = dict()  # type: Dict[str, str]
         type_by_name = dict()  # type: Dict[str, ir0.ExprType]
+
+        # First we process all args, so that we'll remove assignments of the form:
+        # x1 = arg1
+        for arg in template_specialization_args:
+          name_by_expr[ir0.TypeLiteral.for_local(cpp_type=arg.name,
+                                                 type=arg.type)] = arg.name
+          type_by_name[arg.name] = arg.type
 
         result_elems = []
         for elem in elems:
@@ -100,22 +141,33 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
                 if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)):
                     name_by_expr[elem.expr] = elem.name
 
-        # Add back "result elements" if they were deduped.
-        for result_elem_name in result_element_names:
-            if result_elem_name in replacements:
-                type = type_by_name[result_elem_name]
-                if type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
-                    result_elems.append(ir0.ConstantDef(name=result_elem_name,
-                                                        expr=ir0.TypeLiteral.for_local(cpp_type=replacements[result_elem_name],
-                                                                                       type=type)))
-                elif type.kind == ir0.ExprKind.TYPE:
-                    result_elems.append(ir0.Typedef(name=result_elem_name,
-                                                    expr=ir0.TypeLiteral.for_local(cpp_type=replacements[result_elem_name],
-                                                                                   type=type)))
-                else:
-                    raise NotImplementedError('Unexpected kind: %s' % str(type.kind))
+        additional_result_elems = []
 
-        return result_elems
+        # This second pass will rename "result elements" back to the correct names if they were deduped.
+        replacements2 = dict()
+        arg_names = {arg.name for arg in template_specialization_args}
+        for result_elem_name in result_element_names:
+          if result_elem_name in replacements:
+            replacement = replacements[result_elem_name]
+            if replacement in replacements2:
+              # We've already added a replacement in `replacements2`, so we need to emit an extra "assignment" assigning
+              # a result element to another.
+              additional_result_elems.append(create_var_to_var_assignment(lhs=result_elem_name,
+                                                                          rhs=replacements2[replacement],
+                                                                          type=type_by_name[replacement]))
+            elif replacement in arg_names:
+              # We've eliminated the assignment to the result var against the definition of an argument.
+              # So we need to add it back.
+              additional_result_elems.append(create_var_to_var_assignment(lhs=result_elem_name,
+                                                                          rhs=replacement,
+                                                                          type=type_by_name[replacement]))
+            else:
+              replacements2[replacement] = result_elem_name
+
+        result_elems = NameReplacementTransformation(replacements2).transform_template_body_elems(result_elems,
+                                                                                                  toplevel_writer)
+
+        return result_elems + additional_result_elems
 
 def perform_common_subexpression_normalization(template_defn: ir0.TemplateDefn,
                        identifier_generator: Iterator[str]):
@@ -183,10 +235,29 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
         super().__init__()
         self.inline_template_instantiations_with_multiple_references = inline_template_instantiations_with_multiple_references
 
-    def transform_template_body_elems(self,
-                                      stmts: Tuple[ir0.TemplateBodyElement],
-                                      result_element_names: Tuple[str],
-                                      writer: transform_ir0.ToplevelWriter):
+    def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
+      writer.write(ir0.TemplateDefn(args=template_defn.args,
+                                    main_definition=self._transform_template_specialization(template_defn.main_definition,
+                                                                                            template_defn.result_element_names)
+                                        if template_defn.main_definition is not None else None,
+                                    specializations=[self._transform_template_specialization(specialization,
+                                                                                             template_defn.result_element_names)
+                                                     for specialization in template_defn.specializations],
+                                    name=template_defn.name,
+                                    description=template_defn.description,
+                                    result_element_names=template_defn.result_element_names))
+
+    def _transform_template_specialization(self,
+                                          specialization: ir0.TemplateSpecialization,
+                                          result_element_names: Tuple[str]) -> ir0.TemplateSpecialization:
+      return ir0.TemplateSpecialization(args=specialization.args,
+                                        patterns=specialization.patterns,
+                                        body=self._transform_template_body_elems(specialization.body,
+                                                                                 result_element_names))
+
+    def _transform_template_body_elems(self,
+                                       stmts: Tuple[ir0.TemplateBodyElement],
+                                       result_element_names: Tuple[str]):
         stmts = list(stmts)
 
         # stmt[var_name_to_defining_stmt_index['x']] is the stmt that defines 'x'
@@ -247,6 +318,10 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
 
                 if self.inline_template_instantiations_with_multiple_references and isinstance(defining_stmt.expr, ir0.TemplateInstantiation):
                     want_to_inline_var = True
+                elif isinstance(defining_stmt.expr, ir0.Literal):
+                    want_to_inline_var = True
+                elif isinstance(defining_stmt.expr, ir0.TypeLiteral) and len(list(defining_stmt.expr.get_referenced_identifiers())) <= 1:
+                    want_to_inline_var = True
                 else:
                     want_to_inline_var = (remaining_uses_of_var[var] == 1)
 
@@ -259,11 +334,19 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                 stmts[i] = stmt
 
                 num_replacements = remaining_uses_of_var_by_stmt_index[i][var]
-                remaining_uses_of_var[var] = remaining_uses_of_var[var] - num_replacements
-                remaining_uses_of_var_by_stmt_index[i][var] = 0
+
                 for var2, num_uses_in_replacement_expr in remaining_uses_of_var_by_stmt_index[defining_stmt_index].items():
                     remaining_uses_of_var[var2] = remaining_uses_of_var[var2] + num_uses_in_replacement_expr * num_replacements
                     remaining_uses_of_var_by_stmt_index[i][var2] = remaining_uses_of_var_by_stmt_index[i][var2] + num_uses_in_replacement_expr * num_replacements
+
+                if num_replacements > 0:
+                  self._decrease_remaining_uses(remaining_uses_of_var,
+                                                remaining_uses_of_var_by_stmt_index,
+                                                referenced_vars_by_stmt_index,
+                                                var_name_to_defining_stmt_index,
+                                                var=var,
+                                                from_stmt_index=i,
+                                                by=num_replacements)
 
                 referenced_var_list_by_stmt_index[i].pop()
                 referenced_vars_by_stmt_index[i].remove(var)
@@ -277,6 +360,31 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
         return [stmt
                 for stmt in stmts
                 if stmt is not None]
+
+    def _decrease_remaining_uses(self,
+                                 remaining_uses_of_var: Dict[str, int],
+                                 remaining_uses_of_var_by_stmt_index: List[Dict[str, int]],
+                                 referenced_vars_by_stmt_index: List[Set[str]],
+                                 var_name_to_defining_stmt_index: Dict[str, int],
+                                 var: str,
+                                 from_stmt_index: int,
+                                 by: int):
+      assert by > 0
+      remaining_uses_of_var[var] -= by
+      remaining_uses_of_var_by_stmt_index[from_stmt_index][var] -= by
+
+      if remaining_uses_of_var[var] == 0:
+        # The assignment to `var` will be eliminated. So we also need to decrement the uses of the variables referenced
+        # in this assignment.
+        stmt_index_defining_var = var_name_to_defining_stmt_index[var]
+        for referenced_var in referenced_vars_by_stmt_index[stmt_index_defining_var]:
+          self._decrease_remaining_uses(remaining_uses_of_var,
+                                        remaining_uses_of_var_by_stmt_index,
+                                        referenced_vars_by_stmt_index,
+                                        var_name_to_defining_stmt_index,
+                                        var=referenced_var,
+                                        from_stmt_index=stmt_index_defining_var,
+                                        by=remaining_uses_of_var_by_stmt_index[stmt_index_defining_var][referenced_var])
 
 def perform_constant_folding(template_defn: ir0.TemplateDefn,
                              identifier_generator: Iterator[str],
@@ -339,8 +447,8 @@ class NameReplacementTransformation(transform_ir0.Transformation):
 
     def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
         writer.write(ir0.TemplateDefn(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args],
-                                      main_definition=self.transform_template_specialization(template_defn.main_definition, template_defn.result_element_names, writer) if template_defn.main_definition is not None else None,
-                                      specializations=[self.transform_template_specialization(specialization, template_defn.result_element_names, writer) for specialization in template_defn.specializations],
+                                      main_definition=self.transform_template_specialization(template_defn.main_definition, writer) if template_defn.main_definition is not None else None,
+                                      specializations=[self.transform_template_specialization(specialization, writer) for specialization in template_defn.specializations],
                                       name=self._transform_name(template_defn.name),
                                       description=template_defn.description,
                                       result_element_names=template_defn.result_element_names))
@@ -449,7 +557,7 @@ def optimize_header(header: ir0.Header, identifier_generator: Iterator[str], ver
 
     for connected_component_index in nx.topological_sort(condensed_graph, reverse=True):
         connected_component = condensed_graph.node[connected_component_index]['members']
-        for node in connected_component:
+        for node in sorted(connected_component, key=lambda node: new_template_defns[node].name):
             template_defn = new_template_defns[node]
 
             inlineable_refs = {other_node
