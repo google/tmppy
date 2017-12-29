@@ -18,17 +18,8 @@ from py2tmp.testing import *
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename> struct CheckIfError;
-template <typename TmppyInternal_1> struct TmppyInternal_0;
 template <int64_t TmppyInternal_5> struct inc;
 template <typename> struct CheckIfError { using type = void; };
-// The is_error (meta)function
-template <typename TmppyInternal_1> struct TmppyInternal_0 {
-  using error = void;
-  static constexpr bool value =
-      !(std::is_same<
-          typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
-          void>::value);
-};
 template <int64_t TmppyInternal_5> struct inc {
   static constexpr int64_t value = (TmppyInternal_5) + (1LL);
   using error = void;
@@ -38,22 +29,12 @@ def test_optimization_one_function():
     def inc(n: int):
         return n + 1
 
-# TODO: change the expected output once optimization is implemented.
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename> struct CheckIfError;
-template <typename TmppyInternal_1> struct TmppyInternal_0;
 template <int64_t TmppyInternal_5> struct f;
 template <typename> struct CheckIfError { using type = void; };
-// The is_error (meta)function
-template <typename TmppyInternal_1> struct TmppyInternal_0 {
-  using error = void;
-  static constexpr bool value =
-      !(std::is_same<
-          typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
-          void>::value);
-};
 template <int64_t TmppyInternal_5> struct f {
   static constexpr int64_t TmppyInternal_10 =
       (2LL) * ((TmppyInternal_5) + (1LL));
@@ -73,56 +54,31 @@ def test_common_subexpression_elimination():
         t2 = Type('int*')
         return (x1 == x2) == (t1 == t2)
 
-# TODO: change the expected output once optimization is implemented.
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename> struct CheckIfError;
-template <typename TmppyInternal_1> struct TmppyInternal_0;
-template <int64_t TmppyInternal_5, int64_t TmppyInternal_6> struct plus;
 template <int64_t TmppyInternal_5> struct inc;
 template <typename> struct CheckIfError { using type = void; };
-// The is_error (meta)function
-template <typename TmppyInternal_1> struct TmppyInternal_0 {
-  using error = void;
-  static constexpr bool value =
-      !(std::is_same<
-          typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
-          void>::value);
-};
-template <int64_t TmppyInternal_5, int64_t TmppyInternal_6> struct plus {
-  static constexpr int64_t value = (TmppyInternal_5) + (TmppyInternal_6);
-  using error = void;
-};
 template <int64_t TmppyInternal_5> struct inc {
   using error = void;
   static constexpr int64_t value = (TmppyInternal_5) + (1LL);
 };
 ''')
 def test_optimization_two_functions_with_call():
-    def plus(n: int, m: int):
+    def _plus(n: int, m: int):
         return n + m
     def inc(n: int):
-        return plus(n, 1)
+        return _plus(n, 1)
 
-# TODO: change the expected output once optimization is implemented.
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename> struct CheckIfError;
-template <typename TmppyInternal_1> struct TmppyInternal_0;
 template <bool TmppyInternal_5, bool> struct TmppyInternal_10;
 template <bool TmppyInternal_5> struct f;
 template <bool TmppyInternal_5> struct g;
 template <typename> struct CheckIfError { using type = void; };
-// The is_error (meta)function
-template <typename TmppyInternal_1> struct TmppyInternal_0 {
-  using error = void;
-  static constexpr bool value =
-      !(std::is_same<
-          typename Select1stTypeType<TmppyInternal_1, TmppyInternal_1>::value,
-          void>::value);
-};
 // (meta)function generated for an if-else statement
 template <bool TmppyInternal_5> struct TmppyInternal_10<TmppyInternal_5, true> {
   static constexpr int64_t value = 3LL;

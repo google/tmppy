@@ -1050,7 +1050,8 @@ def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter
                                       specializations=[],
                                       result_element_names=result_element_names))
     except (AssertionError, TypeError) as e:  # pragma: no cover
-        print('While converting a function defn to low IR:\n' + str(ir1.Module(body=[function_defn])))
+        print('While converting a function defn to low IR:\n' + str(ir1.Module(body=[function_defn],
+                                                                               public_names=set())))
         raise e
 
 def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer: ToplevelWriter):
@@ -1085,6 +1086,7 @@ def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer
 
 def module_to_ir0(module: ir1.Module, identifier_generator: Iterator[str]):
     writer = ToplevelWriter(identifier_generator)
+    public_names = module.public_names.copy()
     for toplevel_elem in module.body:
         if isinstance(toplevel_elem, ir1.FunctionDefn):
             function_defn_to_ir0(toplevel_elem, writer)
@@ -1096,7 +1098,9 @@ def module_to_ir0(module: ir1.Module, identifier_generator: Iterator[str]):
             custom_type_defn_to_ir0(toplevel_elem, writer)
         elif isinstance(toplevel_elem, ir1.CheckIfErrorDefn):
             check_if_error_defn_to_ir0(toplevel_elem, writer)
+            public_names.add('CheckIfError')
         else:
             raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
 
-    return ir0.Header(content=writer.elems)
+    return ir0.Header(content=writer.elems,
+                      public_names=public_names)

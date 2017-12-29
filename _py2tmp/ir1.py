@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Optional, Union, Dict, Tuple
+from typing import List, Iterable, Optional, Union, Dict, Tuple, Set
 from contextlib import contextmanager
 from _py2tmp import utils
 
@@ -731,8 +731,10 @@ class CheckIfErrorDefn:
 
 class Module:
     def __init__(self,
-                 body: List[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]]):
+                 body: List[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]],
+                 public_names: Set[str]):
         self.body = tuple(body)
+        self.public_names = public_names
 
     def __str__(self):
         writer = Writer()

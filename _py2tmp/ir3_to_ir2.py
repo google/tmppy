@@ -752,4 +752,5 @@ def module_to_ir2(module: ir3.Module, identifier_generator: Iterator[str]):
     custom_types_defns = [type_to_ir2(type) for type in module.custom_types]
     check_if_error_defn = ir2.CheckIfErrorDefn([(type_to_ir2(type), type.exception_message)
                                                 for type in module.custom_types if type.is_exception_class])
-    return ir2.Module(body=custom_types_defns + [check_if_error_defn] + writer.function_defns + stmt_writer.stmts)
+    return ir2.Module(body=custom_types_defns + [check_if_error_defn] + writer.function_defns + stmt_writer.stmts,
+                      public_names=module.public_names)

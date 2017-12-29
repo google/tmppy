@@ -270,9 +270,15 @@ def module_ast_to_ir3(module_ast_node: ast.Module, filename: str, source_lines: 
         elif isinstance(ast_node, ast.Assert):
             toplevel_assertions.append(assert_ast_to_ir3(ast_node, compilation_context))
 
+    public_names = set()
+    for function_defn in function_defns:
+      if not function_defn.name.startswith('_'):
+        public_names.add(function_defn.name)
+
     return ir3.Module(function_defns=function_defns,
                       assertions=toplevel_assertions,
-                      custom_types=custom_types)
+                      custom_types=custom_types,
+                      public_names=public_names)
 
 def match_expression_ast_to_ir3(ast_node: ast.Call, compilation_context: CompilationContext):
     assert isinstance(ast_node.func, ast.Call)

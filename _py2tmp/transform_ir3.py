@@ -21,7 +21,8 @@ class Transformation:
                                           for function_defn in module.function_defns],
                           assertions=[self.transform_assert(assertion)
                                       for assertion in module.assertions],
-                          custom_types=module.custom_types)
+                          custom_types=module.custom_types,
+                          public_names=module.public_names)
 
     def transform_function_defn(self, function_defn: ir3.FunctionDefn) -> ir3.FunctionDefn:
         return ir3.FunctionDefn(name=function_defn.name,

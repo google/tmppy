@@ -545,13 +545,12 @@ def perform_template_inlining(template_defn: ir0.TemplateDefn,
 
     return template_defn
 
-def optimize_header(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool = False):
-    template_dependency_graph = nx.DiGraph()
-
+def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool):
     new_template_defns = {elem.name: elem
                           for elem in header.content
                           if isinstance(elem, ir0.TemplateDefn)} # type: Dict[str, ir0.TemplateDefn]
 
+    template_dependency_graph = nx.DiGraph()
     for elem in header.content:
         if isinstance(elem, ir0.TemplateDefn):
             template_dependency_graph.add_node(elem.name)
@@ -595,4 +594,46 @@ def optimize_header(header: ir0.Header, identifier_generator: Iterator[str], ver
         else:
             new_elems.append(elem)
 
-    return ir0.Header(new_elems)
+    return ir0.Header(content=new_elems,
+                      public_names=header.public_names)
+
+def optimize_header_second_pass(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool):
+  template_defns_by_name = {elem.name: elem
+                            for elem in header.content
+                            if isinstance(elem, ir0.TemplateDefn)} # type: Dict[str, ir0.TemplateDefn]
+
+  template_dependency_graph = nx.DiGraph()
+  for elem in header.content:
+    if isinstance(elem, ir0.TemplateDefn):
+      elem_name = elem.name
+    else:
+      # We'll use a dummy name for non-template toplevel elems.
+      elem_name = ''
+
+    template_dependency_graph.add_node(elem_name)
+
+    if elem_name in header.public_names:
+      # We also add an edge from the node '' to all public template defns, so that we can use '' as a source below.
+      template_dependency_graph.add_edge('', elem_name)
+
+    for identifier in elem.get_referenced_identifiers():
+      if identifier in template_defns_by_name.keys():
+        template_dependency_graph.add_edge(elem_name, identifier)
+
+  used_templates = nx.single_source_shortest_path(template_dependency_graph, source='').keys()
+
+  new_elems = []
+  for elem in header.content:
+    if isinstance(elem, ir0.TemplateDefn):
+      if elem.name in used_templates:
+        new_elems.append(elem)
+    else:
+      new_elems.append(elem)
+
+  return ir0.Header(content=new_elems,
+                    public_names=header.public_names)
+
+def optimize_header(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool = False):
+    header = optimize_header_first_pass(header, identifier_generator, verbose)
+    header = optimize_header_second_pass(header, identifier_generator, verbose)
+    return header

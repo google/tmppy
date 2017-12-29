@@ -410,4 +410,5 @@ def module_to_ir1(module: ir2.Module, identifier_generator: Iterator[str]):
         else:
             raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
 
-    return ir1.Module(body=writer.elems)
+    return ir1.Module(body=writer.elems,
+                      public_names=module.public_names)

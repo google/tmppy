@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Optional, Dict
+from typing import List, Iterable, Optional, Dict, Set
 from _py2tmp import utils
 
 class ExprType(utils.ValueType):
@@ -540,7 +540,9 @@ class Module:
     def __init__(self,
                  function_defns: List[FunctionDefn],
                  assertions: List[Assert],
-                 custom_types: List[CustomType]):
+                 custom_types: List[CustomType],
+                 public_names: Set[str]):
         self.function_defns = function_defns
         self.assertions = assertions
         self.custom_types = custom_types
+        self.public_names = public_names

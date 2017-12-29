@@ -342,5 +342,8 @@ class UnaryMinusExpr(UnaryExpr):
         super().__init__(expr, result_type=Int64Type())
 
 class Header:
-    def __init__(self, content: List[Union[TemplateDefn, StaticAssert, ConstantDef, Typedef]]):
+    def __init__(self,
+                 content: List[Union[TemplateDefn, StaticAssert, ConstantDef, Typedef]],
+                 public_names: Set[str]):
         self.content = tuple(content)
+        self.public_names = public_names

@@ -72,7 +72,8 @@ class Transformation:
         for elem in header.content:
             self.transform_toplevel_elem(elem, writer)
 
-        return ir0.Header(content=writer.elems)
+        return ir0.Header(content=writer.elems,
+                          public_names=header.public_names)
 
     def transform_toplevel_elem(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef], writer: Writer):
         if isinstance(elem, ir0.TemplateDefn):
