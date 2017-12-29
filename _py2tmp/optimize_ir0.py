@@ -22,6 +22,10 @@ def template_defn_to_cpp(template_defn: ir0.TemplateDefn, identifier_generator: 
     ir0_to_cpp.template_defn_to_cpp(template_defn, enclosing_function_defn_args=[], writer=writer)
     return utils.clang_format(''.join(writer.strings))
 
+def expr_to_cpp(expr: ir0.Expr):
+  writer = ir0_to_cpp.ToplevelWriter(identifier_generator=iter([]))
+  return ir0_to_cpp.expr_to_cpp(expr, enclosing_function_defn_args=[], writer=writer)
+
 def compare_optimized_cpp_to_original(original_cpp: str, optimized_cpp: str, optimization_name: str, other_context: str = ''):
     if original_cpp != optimized_cpp:
         diff = ''.join(difflib.unified_diff(original_cpp.splitlines(True),
@@ -202,7 +206,7 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
                                    type=type_literal.type)
 
         # TODO: implement this.
-        raise NotImplementedError('The replacement of "%s" in "%s" is not implemented yet' % (self.var, type_literal.cpp_type))
+        raise NotImplementedError('The replacement of "%s" with "%s" in "%s" is not implemented yet.' % (self.var, expr_to_cpp(self.replacement_expr), type_literal.cpp_type))
 
 def replace_var_with_expr(elem: ir0.TemplateBodyElement, var: str, expr: ir0.Expr) -> ir0.TemplateBodyElement:
     toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[])
@@ -330,7 +334,14 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                     continue
 
                 # Actually inline `var' into `stmt`.
-                stmt = replace_var_with_expr(stmt, var, defining_stmt.expr)
+                try:
+                  stmt = replace_var_with_expr(stmt, var, defining_stmt.expr)
+                except NotImplementedError as e:
+                  # TODO: remove this once ReplaceVarWithExprTransformation is implemented for the general case (see the
+                  # TODO there).
+                  referenced_var_list.pop()
+                  continue
+
                 stmts[i] = stmt
 
                 num_replacements = remaining_uses_of_var_by_stmt_index[i][var]
