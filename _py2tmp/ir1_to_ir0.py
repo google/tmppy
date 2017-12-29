@@ -27,7 +27,8 @@ class Writer:
 class ToplevelWriter(Writer):
     def __init__(self, identifier_generator: Iterator[str]):
         self.identifier_generator = identifier_generator
-        self.elems = []  # type: List[Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]]
+        self.template_defns = []  # type: List[ir0.TemplateDefn]
+        self.toplevel_content = []  # type: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]]
         self.holder_template_name_for_error = dict()  # type: Dict[str, str]
         self.is_instance_template_name_for_error = dict()  # type: Dict[str, str]
 
@@ -35,7 +36,10 @@ class ToplevelWriter(Writer):
         return next(self.identifier_generator)
 
     def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
-        self.elems.append(elem)
+        if isinstance(elem, ir0.TemplateDefn):
+            self.template_defns.append(elem)
+        else:
+          self.toplevel_content.append(elem)
 
     def set_holder_template_name_for_error(self,
                                            error_name: str,
@@ -1102,5 +1106,6 @@ def module_to_ir0(module: ir1.Module, identifier_generator: Iterator[str]):
         else:
             raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
 
-    return ir0.Header(content=writer.elems,
+    return ir0.Header(template_defns=writer.template_defns,
+                      toplevel_content=writer.toplevel_content,
                       public_names=public_names)

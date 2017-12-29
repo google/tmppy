@@ -38,10 +38,14 @@ class Writer:
 class ToplevelWriter(Writer):
     def __init__(self, identifier_generator: Iterable[str]):
         self.identifier_generator = identifier_generator
-        self.elems = []  # type: List[Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]]
+        self.template_defns = []  # type: List[ir0.TemplateDefn]
+        self.toplevel_elems = []  # type: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]]
 
     def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
-        self.elems.append(elem)
+        if isinstance(elem, ir0.TemplateDefn):
+            self.template_defns.append(elem)
+        else:
+            self.toplevel_elems.append(elem)
 
     def new_id(self):
         return next(self.identifier_generator)
@@ -69,16 +73,18 @@ class TemplateBodyWriter(Writer):
 class Transformation:
     def transform_header(self, header: ir0.Header, identifier_generator: Iterable[str]) -> ir0.Header:
         writer = ToplevelWriter(identifier_generator)
-        for elem in header.content:
+        for template_defn in header.template_defns:
+            self.transform_template_defn(template_defn, writer)
+
+        for elem in header.toplevel_content:
             self.transform_toplevel_elem(elem, writer)
 
-        return ir0.Header(content=writer.elems,
+        return ir0.Header(template_defns=writer.template_defns,
+                          toplevel_content=writer.toplevel_elems,
                           public_names=header.public_names)
 
-    def transform_toplevel_elem(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef], writer: Writer):
-        if isinstance(elem, ir0.TemplateDefn):
-            self.transform_template_defn(elem, writer)
-        elif isinstance(elem, ir0.StaticAssert):
+    def transform_toplevel_elem(self, elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef], writer: Writer):
+        if isinstance(elem, ir0.StaticAssert):
             self.transform_static_assert(elem, writer)
         elif isinstance(elem, ir0.ConstantDef):
             self.transform_constant_def(elem, writer)

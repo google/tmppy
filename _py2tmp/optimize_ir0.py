@@ -13,6 +13,9 @@
 # limitations under the License.
 import difflib
 from collections import defaultdict
+
+import itertools
+
 from _py2tmp import ir0, utils, transform_ir0, ir0_to_cpp
 import networkx as nx
 from typing import List, Tuple, Union, Dict, Set, Iterator, Callable
@@ -76,7 +79,8 @@ def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generato
     '''
     writer = transform_ir0.ToplevelWriter(identifier_generator)
     ExprSimplifyingTransformation().transform_template_defn(template_defn, writer)
-    [new_template_defn] = writer.elems
+    [new_template_defn] = writer.template_defns
+    assert not writer.toplevel_elems
 
     return new_template_defn
 
@@ -177,7 +181,8 @@ def perform_common_subexpression_normalization(template_defn: ir0.TemplateDefn,
                        identifier_generator: Iterator[str]):
     writer = transform_ir0.ToplevelWriter(identifier_generator)
     CommonSubexpressionEliminationTransformation().transform_template_defn(template_defn, writer)
-    [template_defn] = writer.elems
+    [template_defn] = writer.template_defns
+    assert not writer.toplevel_elems
     return template_defn
 
 class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
@@ -212,7 +217,8 @@ def replace_var_with_expr(elem: ir0.TemplateBodyElement, var: str, expr: ir0.Exp
     toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[])
     writer = transform_ir0.TemplateBodyWriter(toplevel_writer)
     ReplaceVarWithExprTransformation(var, expr).transform_template_body_elem(elem, writer)
-    assert not toplevel_writer.elems
+    assert not toplevel_writer.template_defns
+    assert not toplevel_writer.toplevel_elems
     [elem] = writer.elems
     return elem
 
@@ -403,7 +409,8 @@ def perform_constant_folding(template_defn: ir0.TemplateDefn,
     writer = transform_ir0.ToplevelWriter(identifier_generator)
     transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
     transformation.transform_template_defn(template_defn, writer)
-    [template_defn] = writer.elems
+    [template_defn] = writer.template_defns
+    assert not writer.toplevel_elems
     return template_defn
 
 def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn,
@@ -532,7 +539,8 @@ def perform_template_inlining(template_defn: ir0.TemplateDefn,
 
         writer = transform_ir0.ToplevelWriter(identifier_generator)
         transformation.transform_template_defn(template_defn, writer)
-        [new_template_defn] = writer.elems
+        [new_template_defn] = writer.template_defns
+        assert not writer.toplevel_elems
         return new_template_defn
 
     template_defn = apply_optimization(template_defn,
@@ -547,17 +555,15 @@ def perform_template_inlining(template_defn: ir0.TemplateDefn,
 
 def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool):
     new_template_defns = {elem.name: elem
-                          for elem in header.content
-                          if isinstance(elem, ir0.TemplateDefn)} # type: Dict[str, ir0.TemplateDefn]
+                          for elem in header.template_defns}
 
     template_dependency_graph = nx.DiGraph()
-    for elem in header.content:
-        if isinstance(elem, ir0.TemplateDefn):
-            template_dependency_graph.add_node(elem.name)
+    for template_defn in header.template_defns:
+        template_dependency_graph.add_node(template_defn.name)
 
-            for identifier in elem.get_referenced_identifiers():
-                if identifier in new_template_defns.keys():
-                    template_dependency_graph.add_edge(elem.name, identifier)
+        for identifier in template_defn.get_referenced_identifiers():
+            if identifier in new_template_defns.keys():
+                template_dependency_graph.add_edge(template_defn.name, identifier)
 
     condensed_graph = nx.condensation(template_dependency_graph)
     assert isinstance(condensed_graph, nx.DiGraph)
@@ -587,23 +593,17 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
                                                                          verbose=verbose)
             new_template_defns[node] = template_defn
 
-    new_elems = []
-    for elem in header.content:
-        if isinstance(elem, ir0.TemplateDefn):
-            new_elems.append(new_template_defns[elem.name])
-        else:
-            new_elems.append(elem)
-
-    return ir0.Header(content=new_elems,
+    return ir0.Header(template_defns=[new_template_defns[template_defn.name]
+                                      for template_defn in header.template_defns],
+                      toplevel_content=header.toplevel_content,
                       public_names=header.public_names)
 
-def optimize_header_second_pass(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool):
+def optimize_header_second_pass(header: ir0.Header):
   template_defns_by_name = {elem.name: elem
-                            for elem in header.content
-                            if isinstance(elem, ir0.TemplateDefn)} # type: Dict[str, ir0.TemplateDefn]
+                            for elem in header.template_defns}
 
   template_dependency_graph = nx.DiGraph()
-  for elem in header.content:
+  for elem in itertools.chain(header.template_defns, header.toplevel_content):
     if isinstance(elem, ir0.TemplateDefn):
       elem_name = elem.name
     else:
@@ -622,18 +622,13 @@ def optimize_header_second_pass(header: ir0.Header, identifier_generator: Iterat
 
   used_templates = nx.single_source_shortest_path(template_dependency_graph, source='').keys()
 
-  new_elems = []
-  for elem in header.content:
-    if isinstance(elem, ir0.TemplateDefn):
-      if elem.name in used_templates:
-        new_elems.append(elem)
-    else:
-      new_elems.append(elem)
-
-  return ir0.Header(content=new_elems,
+  return ir0.Header(template_defns=[template_defn
+                                    for template_defn in header.template_defns
+                                    if template_defn.name in used_templates],
+                    toplevel_content=header.toplevel_content,
                     public_names=header.public_names)
 
 def optimize_header(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool = False):
     header = optimize_header_first_pass(header, identifier_generator, verbose)
-    header = optimize_header_second_pass(header, identifier_generator, verbose)
+    header = optimize_header_second_pass(header)
     return header

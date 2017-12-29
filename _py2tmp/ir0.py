@@ -343,7 +343,9 @@ class UnaryMinusExpr(UnaryExpr):
 
 class Header:
     def __init__(self,
-                 content: List[Union[TemplateDefn, StaticAssert, ConstantDef, Typedef]],
+                 template_defns: List[TemplateDefn],
+                 toplevel_content: List[Union[StaticAssert, ConstantDef, Typedef]],
                  public_names: Set[str]):
-        self.content = tuple(content)
+        self.template_defns = template_defns
+        self.toplevel_content = tuple(toplevel_content)
         self.public_names = public_names

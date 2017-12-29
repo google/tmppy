@@ -459,18 +459,17 @@ def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
         #include <tmppy/tmppy.h>
         #include <type_traits>
         ''')
-    for elem in header.content:
+    for elem in header.template_defns:
         # TODO: only do this when needed, many of these forward declarations are unnecessary.
-        if isinstance(elem, ir0.TemplateDefn):
-            template_defn_to_cpp_forward_decl(elem,
-                                              enclosing_function_defn_args=[],
-                                              writer=writer)
-    for elem in header.content:
-        if isinstance(elem, ir0.TemplateDefn):
-            template_defn_to_cpp(elem,
-                                 enclosing_function_defn_args=[],
-                                 writer=writer)
-        elif isinstance(elem, ir0.StaticAssert):
+        template_defn_to_cpp_forward_decl(elem,
+                                          enclosing_function_defn_args=[],
+                                          writer=writer)
+    for elem in header.template_defns:
+        template_defn_to_cpp(elem,
+                             enclosing_function_defn_args=[],
+                             writer=writer)
+    for elem in header.toplevel_content:
+        if isinstance(elem, ir0.StaticAssert):
             static_assert_to_cpp(elem,
                                  enclosing_function_defn_args=[],
                                  writer=writer)
