@@ -21,9 +21,21 @@ import networkx as nx
 from typing import List, Tuple, Union, Dict, Set, Iterator, Callable
 
 def template_defn_to_cpp(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
-    writer = ir0_to_cpp.ToplevelWriter(identifier_generator)
-    ir0_to_cpp.template_defn_to_cpp(template_defn, enclosing_function_defn_args=[], writer=writer)
-    return utils.clang_format(''.join(writer.strings))
+  writer = ir0_to_cpp.ToplevelWriter(identifier_generator)
+  ir0_to_cpp.template_defn_to_cpp(template_defn, enclosing_function_defn_args=[], writer=writer)
+  return utils.clang_format(''.join(writer.strings))
+
+def template_body_elems_to_cpp(elems: List[ir0.TemplateBodyElement],
+                               identifier_generator: Iterator[str]):
+  result = ir0_to_cpp.header_to_cpp(ir0.Header(template_defns=[elem
+                                                               for elem in elems
+                                                               if isinstance(elem, ir0.TemplateDefn)],
+                                               toplevel_content=[elem
+                                                                 for elem in elems
+                                                                 if not isinstance(elem, ir0.TemplateDefn)],
+                                               public_names=set()),
+                                    identifier_generator)
+  return utils.clang_format(result)
 
 def expr_to_cpp(expr: ir0.Expr):
   writer = ir0_to_cpp.ToplevelWriter(identifier_generator=iter([]))
@@ -36,7 +48,7 @@ def compare_optimized_cpp_to_original(original_cpp: str, optimized_cpp: str, opt
                                             fromfile='before.h',
                                             tofile='after.h'))
         print('Original C++:\n' + original_cpp + '\n' + other_context
-              + 'After ' + optimization_name + '():\n' + optimized_cpp + '\n'
+              + 'After ' + optimization_name + ':\n' + optimized_cpp + '\n'
               + 'Diff:\n' + diff + '\n')
 
 def apply_optimization(template_defn: ir0.TemplateDefn,
@@ -53,6 +65,21 @@ def apply_optimization(template_defn: ir0.TemplateDefn,
         compare_optimized_cpp_to_original(original_cpp, optimized_cpp, optimization_name=optimization_name, other_context=other_context())
 
     return new_template_defn
+
+def apply_toplevel_elems_optimization(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
+                                      identifier_generator: Iterator[str],
+                                      optimization: Callable[[], List[ir0.TemplateBodyElement]],
+                                      optimization_name: str,
+                                      verbose: bool,
+                                      other_context: Callable[[], str] = lambda: ''):
+  new_toplevel_elems = optimization()
+
+  if verbose:
+    original_cpp = template_body_elems_to_cpp(toplevel_elems, identifier_generator)
+    optimized_cpp = template_body_elems_to_cpp(new_toplevel_elems, identifier_generator)
+    compare_optimized_cpp_to_original(original_cpp, optimized_cpp, optimization_name=optimization_name, other_context=other_context())
+
+  return new_toplevel_elems
 
 
 class ExprSimplifyingTransformation(transform_ir0.Transformation):
@@ -73,16 +100,29 @@ class ExprSimplifyingTransformation(transform_ir0.Transformation):
                                  expr=self.transform_expr(typedef.expr, writer, split_nontrivial_exprs=False)))
 
 def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
-    '''Converts template_defn to an equivalent TemplateDefn where all expressions contain 0 or 1 operations.
+  '''Converts template_defn to an equivalent TemplateDefn where all expressions contain 0 or 1 operations.
 
-    Unlike other constants/typedefs, the exprs that initialize "result" and "error" will always have 0 operations.
-    '''
-    writer = transform_ir0.ToplevelWriter(identifier_generator)
-    ExprSimplifyingTransformation().transform_template_defn(template_defn, writer)
-    [new_template_defn] = writer.template_defns
-    assert not writer.toplevel_elems
+  Unlike other constants/typedefs, the exprs that initialize "result" and "error" will always have 0 operations.
+  '''
+  writer = transform_ir0.ToplevelWriter(identifier_generator)
+  ExprSimplifyingTransformation().transform_template_defn(template_defn, writer)
+  [new_template_defn] = writer.template_defns
+  assert not writer.toplevel_elems
 
-    return new_template_defn
+  return new_template_defn
+
+def normalize_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
+                             identifier_generator: Iterator[str]):
+  '''Converts template_defn to an equivalent TemplateDefn where all expressions contain 0 or 1 operations.
+
+  Unlike other constants/typedefs, the exprs that initialize "result" and "error" will always have 0 operations.
+  '''
+  writer = transform_ir0.ToplevelWriter(identifier_generator)
+  for toplevel_elem in toplevel_elems:
+    ExprSimplifyingTransformation().transform_toplevel_elem(toplevel_elem, writer)
+
+  assert not writer.template_defns
+  return writer.toplevel_elems
 
 def create_var_to_var_assignment(lhs: str, rhs: str, type: ir0.ExprType):
   if type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
@@ -177,13 +217,42 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
 
         return result_elems + additional_result_elems
 
+    def _transform_toplevel_elems(self,
+                                  elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
+                                  identifier_generator: Iterator[str]):
+
+      name_by_expr = dict()  # type: Dict[ir0.Expr, str]
+      replacements = dict()  # type: Dict[str, str]
+      type_by_name = dict()  # type: Dict[str, ir0.ExprType]
+
+      result_elems = []
+      for elem in elems:
+        writer = transform_ir0.ToplevelWriter(identifier_generator)
+        NameReplacementTransformation(replacements).transform_toplevel_elem(elem, writer)
+        [elem] = writer.toplevel_elems
+        assert not writer.template_defns
+
+        if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.expr in name_by_expr:
+          replacements[elem.name] = name_by_expr[elem.expr]
+          type_by_name[elem.name] = elem.expr.type
+        else:
+          result_elems.append(elem)
+          if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)):
+            name_by_expr[elem.expr] = elem.name
+
+      return result_elems
+
 def perform_common_subexpression_normalization(template_defn: ir0.TemplateDefn,
-                       identifier_generator: Iterator[str]):
-    writer = transform_ir0.ToplevelWriter(identifier_generator)
-    CommonSubexpressionEliminationTransformation().transform_template_defn(template_defn, writer)
-    [template_defn] = writer.template_defns
-    assert not writer.toplevel_elems
-    return template_defn
+                                               identifier_generator: Iterator[str]):
+  writer = transform_ir0.ToplevelWriter(identifier_generator)
+  CommonSubexpressionEliminationTransformation().transform_template_defn(template_defn, writer)
+  [template_defn] = writer.template_defns
+  assert not writer.toplevel_elems
+  return template_defn
+
+def perform_common_subexpression_normalization_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
+                                                                 identifier_generator: Iterator[str]):
+  return CommonSubexpressionEliminationTransformation()._transform_toplevel_elems(toplevel_elems, identifier_generator)
 
 class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
     def __init__(self, var: str, replacement_expr: ir0.Expr):
@@ -222,23 +291,32 @@ def replace_var_with_expr(elem: ir0.TemplateBodyElement, var: str, expr: ir0.Exp
     [elem] = writer.elems
     return elem
 
-def _can_trigger_static_asserts(stmt: ir0.TemplateBodyElement):
-    if isinstance(stmt, ir0.StaticAssert):
-        return True
-    elif isinstance(stmt, (ir0.Typedef, ir0.ConstantDef)):
-        return isinstance(stmt.expr, ir0.TemplateInstantiation) and stmt.expr.instantiation_might_trigger_static_asserts
-    elif isinstance(stmt, ir0.TemplateDefn):
-        specializations = ()
-        if stmt.main_definition:
-            specializations = (stmt.main_definition,)
-        if stmt.specializations:
-            specializations = specializations + tuple(stmt.specializations)
+class CanTriggerStaticAsserts(transform_ir0.Transformation):
+  def __init__(self):
+    self.can_trigger_static_asserts = False
 
-        for specialization in specializations:
-            return any(_can_trigger_static_asserts(elem)
-                       for elem in specialization.body)
-    else:
-        raise NotImplementedError('Unexpected STMT: %s' % stmt.__class__.__name__)
+  def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
+    self.can_trigger_static_asserts = True
+    return static_assert
+
+  def transform_template_instantiation(self,
+                                       template_instantiation: ir0.TemplateInstantiation,
+                                       writer: transform_ir0.Writer):
+    self.can_trigger_static_asserts |= template_instantiation.instantiation_might_trigger_static_asserts
+    return template_instantiation
+
+  def transform_template_specialization(self,
+                                        specialization: ir0.TemplateSpecialization,
+                                        writer: transform_ir0.Writer):
+    # We don't recurse in inner templates, we assume that evaluating the template definition itself doesn't trigger
+    # static asserts (even though the template might trigger assertions when instantiated).
+    return specialization
+
+def _elem_can_trigger_static_asserts(stmt: ir0.TemplateBodyElement):
+    writer = transform_ir0.ToplevelWriter(identifier_generator=iter([]))
+    transformation = CanTriggerStaticAsserts()
+    transformation.transform_template_body_elems([stmt], writer)
+    return transformation.can_trigger_static_asserts
 
 class ConstantFoldingTransformation(transform_ir0.Transformation):
     def __init__(self, inline_template_instantiations_with_multiple_references: bool):
@@ -301,13 +379,38 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                 remaining_uses_of_var[var] = remaining_uses_of_var[var] + 1
 
         # can_trigger_static_asserts_by_stmt_index[i] describes whether stmts[i] can trigger static asserts.
-        can_trigger_static_asserts_by_stmt_index = [_can_trigger_static_asserts(stmt)
+        can_trigger_static_asserts_by_stmt_index = [_elem_can_trigger_static_asserts(stmt)
                                                     for stmt in stmts]
+        was_inlined_by_stmt_index = [False for stmt in stmts]
+
+        # Disregard "uses" of vars in useless stmts that will be eliminated.
+        already_useless_stmt_indexes = [i
+                                        for i, stmt in enumerate(stmts)
+                                        if isinstance(stmt, (ir0.ConstantDef, ir0.Typedef))
+                                        and remaining_uses_of_var[stmt.name] == 0
+                                        and not can_trigger_static_asserts_by_stmt_index[i]]
+        for i in already_useless_stmt_indexes:
+          for indirectly_unused_var in referenced_var_list_by_stmt_index[i]:
+            assert isinstance(indirectly_unused_var, str)
+            self._decrease_remaining_uses(remaining_uses_of_var,
+                                          remaining_uses_of_var_by_stmt_index,
+                                          referenced_vars_by_stmt_index,
+                                          var_name_to_defining_stmt_index,
+                                          can_trigger_static_asserts_by_stmt_index,
+                                          was_inlined_by_stmt_index,
+                                          indirectly_unused_var,
+                                          i,
+                                          remaining_uses_of_var_by_stmt_index[i][indirectly_unused_var])
+
 
         # Start inlining (from the last statement to the first)
         for i, stmt in reversed(list(enumerate(stmts))):
-            if isinstance(stmt, (ir0.ConstantDef, ir0.Typedef)) and remaining_uses_of_var[stmt.name] == 0:
-                # All references have been inlined, no need to emit this assignment.
+            if (isinstance(stmt, (ir0.ConstantDef, ir0.Typedef))
+                and remaining_uses_of_var[stmt.name] == 0
+                and (not can_trigger_static_asserts_by_stmt_index[i]
+                     or was_inlined_by_stmt_index[i])):
+                # All references have been inlined and this statement can't trigger static asserts, no need to emit this
+                # assignment.
                 stmts[i] = None
                 continue
 
@@ -319,11 +422,12 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                 assert isinstance(defining_stmt, (ir0.ConstantDef, ir0.Typedef))
 
                 can_inline_var = (not can_trigger_static_asserts_by_stmt_index[defining_stmt_index]
-                                  or all((not can_trigger_static_asserts_by_stmt_index[crossed_stmt_index]
-                                          # If all references have been inlined, we won't emit this assignment; so we
-                                          # can disregard it in the crossing calculation.
-                                          or (isinstance(stmts[crossed_stmt_index], (ir0.ConstantDef, ir0.Typedef))
-                                              and remaining_uses_of_var[stmts[crossed_stmt_index].name] == 0))
+                                  or all(not can_trigger_static_asserts_by_stmt_index[crossed_stmt_index]
+                                             # If all references have been inlined, we won't emit this assignment; so we
+                                             # can disregard it in the crossing calculation.
+                                             or (isinstance(stmts[crossed_stmt_index], (ir0.ConstantDef, ir0.Typedef))
+                                                 and remaining_uses_of_var[stmts[crossed_stmt_index].name] == 0
+                                                 and was_inlined_by_stmt_index[crossed_stmt_index])
                                          for crossed_stmt_index in range(defining_stmt_index + 1, i)))
 
                 if self.inline_template_instantiations_with_multiple_references and isinstance(defining_stmt.expr, ir0.TemplateInstantiation):
@@ -349,7 +453,6 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                   continue
 
                 stmts[i] = stmt
-
                 num_replacements = remaining_uses_of_var_by_stmt_index[i][var]
 
                 for var2, num_uses_in_replacement_expr in remaining_uses_of_var_by_stmt_index[defining_stmt_index].items():
@@ -357,10 +460,13 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                     remaining_uses_of_var_by_stmt_index[i][var2] = remaining_uses_of_var_by_stmt_index[i][var2] + num_uses_in_replacement_expr * num_replacements
 
                 if num_replacements > 0:
+                  was_inlined_by_stmt_index[defining_stmt_index] = True
                   self._decrease_remaining_uses(remaining_uses_of_var,
                                                 remaining_uses_of_var_by_stmt_index,
                                                 referenced_vars_by_stmt_index,
                                                 var_name_to_defining_stmt_index,
+                                                can_trigger_static_asserts_by_stmt_index,
+                                                was_inlined_by_stmt_index,
                                                 var=var,
                                                 from_stmt_index=i,
                                                 by=num_replacements)
@@ -372,7 +478,7 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                         referenced_vars_by_stmt_index[i].add(var)
                         referenced_var_list_by_stmt_index[i].append(var)
 
-                can_trigger_static_asserts_by_stmt_index[i] = can_trigger_static_asserts_by_stmt_index[i] or _can_trigger_static_asserts(defining_stmt)
+                can_trigger_static_asserts_by_stmt_index[i] = can_trigger_static_asserts_by_stmt_index[i] or _elem_can_trigger_static_asserts(defining_stmt)
 
         return [stmt
                 for stmt in stmts
@@ -383,6 +489,8 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                                  remaining_uses_of_var_by_stmt_index: List[Dict[str, int]],
                                  referenced_vars_by_stmt_index: List[Set[str]],
                                  var_name_to_defining_stmt_index: Dict[str, int],
+                                 can_trigger_static_asserts_by_stmt_index: List[bool],
+                                 was_inlined_by_stmt_index: List[bool],
                                  var: str,
                                  from_stmt_index: int,
                                  by: int):
@@ -390,15 +498,20 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
       remaining_uses_of_var[var] -= by
       remaining_uses_of_var_by_stmt_index[from_stmt_index][var] -= by
 
-      if remaining_uses_of_var[var] == 0:
+      stmt_index_defining_var = var_name_to_defining_stmt_index[var]
+
+      if remaining_uses_of_var[var] == 0 and (
+          not can_trigger_static_asserts_by_stmt_index[stmt_index_defining_var]
+          or was_inlined_by_stmt_index[stmt_index_defining_var]):
         # The assignment to `var` will be eliminated. So we also need to decrement the uses of the variables referenced
         # in this assignment.
-        stmt_index_defining_var = var_name_to_defining_stmt_index[var]
         for referenced_var in referenced_vars_by_stmt_index[stmt_index_defining_var]:
           self._decrease_remaining_uses(remaining_uses_of_var,
                                         remaining_uses_of_var_by_stmt_index,
                                         referenced_vars_by_stmt_index,
                                         var_name_to_defining_stmt_index,
+                                        can_trigger_static_asserts_by_stmt_index,
+                                        was_inlined_by_stmt_index,
                                         var=referenced_var,
                                         from_stmt_index=stmt_index_defining_var,
                                         by=remaining_uses_of_var_by_stmt_index[stmt_index_defining_var][referenced_var])
@@ -406,12 +519,22 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
 def perform_constant_folding(template_defn: ir0.TemplateDefn,
                              identifier_generator: Iterator[str],
                              inline_template_instantiations_with_multiple_references: bool):
-    writer = transform_ir0.ToplevelWriter(identifier_generator)
-    transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
-    transformation.transform_template_defn(template_defn, writer)
-    [template_defn] = writer.template_defns
-    assert not writer.toplevel_elems
-    return template_defn
+  writer = transform_ir0.ToplevelWriter(identifier_generator)
+  transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
+  transformation.transform_template_defn(template_defn, writer)
+  [template_defn] = writer.template_defns
+  assert not writer.toplevel_elems
+  return template_defn
+
+def perform_constant_folding_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
+                                               identifier_generator: Iterator[str],
+                                               inline_template_instantiations_with_multiple_references: bool):
+  writer = transform_ir0.ToplevelWriter(identifier_generator)
+  transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
+  toplevel_elems = transformation._transform_template_body_elems(toplevel_elems, result_element_names=tuple())
+  assert not writer.template_defns
+  assert not writer.toplevel_elems
+  return toplevel_elems
 
 def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn,
                                                  identifier_generator: Iterator[str],
@@ -439,6 +562,32 @@ def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn
 
     return template_defn
 
+def perform_local_optimizations_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
+                                                  identifier_generator: Iterator[str],
+                                                  inline_template_instantiations_with_multiple_references: bool,
+                                                  verbose: bool):
+  toplevel_elems = apply_toplevel_elems_optimization(toplevel_elems,
+                                                     identifier_generator,
+                                                     optimization=lambda: normalize_toplevel_elems(toplevel_elems, identifier_generator),
+                                                     optimization_name='normalize_toplevel_elems()',
+                                                     verbose=verbose)
+
+  toplevel_elems = apply_toplevel_elems_optimization(toplevel_elems,
+                                                     identifier_generator,
+                                                     optimization=lambda: perform_common_subexpression_normalization_on_toplevel_elems(toplevel_elems, identifier_generator),
+                                                     optimization_name='perform_common_subexpression_normalization_on_toplevel_elems()',
+                                                     verbose=verbose)
+
+  toplevel_elems = apply_toplevel_elems_optimization(toplevel_elems,
+                                                     identifier_generator,
+                                                     optimization=lambda: perform_constant_folding_on_toplevel_elems(toplevel_elems,
+                                                                                                                     identifier_generator,
+                                                                                                                     inline_template_instantiations_with_multiple_references),
+                                                     optimization_name='perform_constant_folding_on_toplevel_elems()',
+                                                     verbose=verbose)
+
+  return toplevel_elems
+
 class NameReplacementTransformation(transform_ir0.Transformation):
     def __init__(self, replacements: Dict[str, str]):
         super().__init__()
@@ -465,8 +614,10 @@ class NameReplacementTransformation(transform_ir0.Transformation):
 
     def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
         writer.write(ir0.TemplateDefn(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args],
-                                      main_definition=self.transform_template_specialization(template_defn.main_definition, writer) if template_defn.main_definition is not None else None,
-                                      specializations=[self.transform_template_specialization(specialization, writer) for specialization in template_defn.specializations],
+                                      main_definition=self.transform_template_specialization(template_defn.main_definition, writer)
+                                          if template_defn.main_definition is not None else None,
+                                      specializations=[self.transform_template_specialization(specialization, writer)
+                                                       for specialization in template_defn.specializations],
                                       name=self._transform_name(template_defn.name),
                                       description=template_defn.description,
                                       result_element_names=template_defn.result_element_names))
@@ -528,30 +679,59 @@ def perform_template_inlining(template_defn: ir0.TemplateDefn,
                               template_defn_by_name: Dict[str, ir0.TemplateDefn],
                               identifier_generator: Iterator[str],
                               verbose: bool):
-    template_defn = perform_local_optimizations_on_template_defn(template_defn,
+  template_defn = perform_local_optimizations_on_template_defn(template_defn,
+                                                               identifier_generator,
+                                                               inline_template_instantiations_with_multiple_references=True,
+                                                               verbose=verbose)
+
+  def perform_optimization():
+    transformation = TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
+                                                                  for template_name in inlineable_refs})
+
+    writer = transform_ir0.ToplevelWriter(identifier_generator)
+    transformation.transform_template_defn(template_defn, writer)
+    [new_template_defn] = writer.template_defns
+    assert not writer.toplevel_elems
+    return new_template_defn
+
+  template_defn = apply_optimization(template_defn,
+                                     identifier_generator,
+                                     optimization=perform_optimization,
+                                     optimization_name='TemplateInstantiationInliningTransformation',
+                                     other_context=lambda: 'Inlined template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
+                                                                                              for template_name in inlineable_refs) + '\n',
+                                     verbose=verbose)
+
+  return template_defn
+
+def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
+                                                inlineable_refs: Set[str],
+                                                template_defn_by_name: Dict[str, ir0.TemplateDefn],
+                                                identifier_generator: Iterator[str],
+                                                verbose: bool):
+  toplevel_elems = perform_local_optimizations_on_toplevel_elems(toplevel_elems,
                                                                  identifier_generator,
                                                                  inline_template_instantiations_with_multiple_references=True,
                                                                  verbose=verbose)
 
-    def perform_optimization():
-        transformation = TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
-                                                                      for template_name in inlineable_refs})
+  def perform_optimization():
+    transformation = TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
+                                                                  for template_name in inlineable_refs})
 
-        writer = transform_ir0.ToplevelWriter(identifier_generator)
-        transformation.transform_template_defn(template_defn, writer)
-        [new_template_defn] = writer.template_defns
-        assert not writer.toplevel_elems
-        return new_template_defn
+    writer = transform_ir0.ToplevelWriter(identifier_generator)
+    elems = transformation.transform_template_body_elems(toplevel_elems, writer)
+    assert not writer.template_defns
+    assert not writer.toplevel_elems
 
-    template_defn = apply_optimization(template_defn,
-                                       identifier_generator,
-                                       optimization=perform_optimization,
-                                       optimization_name='TemplateInstantiationInliningTransformation',
-                                       other_context=lambda: 'Inlined template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
-                                                                                                for template_name in inlineable_refs) + '\n',
-                                       verbose=verbose)
+    return elems
 
-    return template_defn
+  return apply_toplevel_elems_optimization(toplevel_elems,
+                                           identifier_generator,
+                                           optimization=perform_optimization,
+                                           optimization_name='TemplateInstantiationInliningTransformation',
+                                           other_context=lambda: 'Inlined template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
+                                                                                                    for template_name in inlineable_refs) + '\n',
+                                           verbose=verbose)
 
 def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool):
     new_template_defns = {elem.name: elem
@@ -593,9 +773,39 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
                                                                          verbose=verbose)
             new_template_defns[node] = template_defn
 
+    new_toplevel_content = header.toplevel_content
+    inlineable_refs = {template_name
+                       for template_name in new_template_defns.keys()
+                       if not new_template_defns[template_name].specializations
+                       # We won't inline templates that contain inner templates, because that would lead to
+                       # TemplateDefn toplevel_content elements that may depend on non-TemplateDefn toplevel_content
+                       # elements, so we would be unable to perform the usual optimizations that assume that no
+                       # TemplateDefn elements don't depend on toplevel_content elements.
+                       and not any(isinstance(elem, ir0.TemplateDefn)
+                                   for elem in new_template_defns[template_name].main_definition.body)}
+    if inlineable_refs:
+      elems = perform_template_inlining_on_toplevel_elems(new_toplevel_content,
+                                                          inlineable_refs,
+                                                          new_template_defns,
+                                                          identifier_generator,
+                                                          verbose=verbose)
+      additional_toplevel_template_defns = [elem
+                                            for elem in elems
+                                            if isinstance(elem, ir0.TemplateDefn)]
+      new_toplevel_content = [elem
+                              for elem in elems
+                              if not isinstance(elem, ir0.TemplateDefn)]
+    else:
+      additional_toplevel_template_defns = []
+
+    new_toplevel_content = perform_local_optimizations_on_toplevel_elems(new_toplevel_content,
+                                                                         identifier_generator,
+                                                                         inline_template_instantiations_with_multiple_references=False,
+                                                                         verbose=verbose)
+
     return ir0.Header(template_defns=[new_template_defns[template_defn.name]
-                                      for template_defn in header.template_defns],
-                      toplevel_content=header.toplevel_content,
+                                      for template_defn in header.template_defns] + additional_toplevel_template_defns,
+                      toplevel_content=new_toplevel_content,
                       public_names=header.public_names)
 
 def optimize_header_second_pass(header: ir0.Header):

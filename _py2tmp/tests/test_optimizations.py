@@ -33,6 +33,17 @@ def test_optimization_one_function():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename> struct CheckIfError;
+template <typename> struct CheckIfError { using type = void; };
+static_assert(((1LL) + (1LL)) == (2LL),
+              "TMPPy assertion failed: \n<unknown>:1: assert 1 + 1 == 2");
+''')
+def test_optimization_toplevel_code():
+    assert 1 + 1 == 2
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename> struct CheckIfError;
 template <int64_t TmppyInternal_5> struct f;
 template <typename> struct CheckIfError { using type = void; };
 template <int64_t TmppyInternal_5> struct f {
@@ -58,6 +69,36 @@ def test_common_subexpression_elimination():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename> struct CheckIfError;
+template <typename> struct CheckIfError { using type = void; };
+static constexpr int64_t TmppyInternal_9 = (2LL) * ((3LL) + (1LL));
+static_assert(((TmppyInternal_9) == (TmppyInternal_9)) ==
+                  (std::is_same<int *, int *>::value),
+              "TMPPy assertion failed: \n<unknown>:2: assert (2*(3+1) == "
+              "2*(3+1)) == (Type('int*') == Type('int*'))");
+''')
+def test_common_subexpression_elimination_toplevel():
+    from tmppy import Type
+    assert (2*(3+1) == 2*(3+1)) == (Type('int*') == Type('int*'))
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename> struct CheckIfError;
+template <typename> struct CheckIfError { using type = void; };
+static constexpr int64_t TmppyInternal_9 = (2LL) * ((3LL) + (1LL));
+static_assert(((TmppyInternal_9) == (TmppyInternal_9)) ==
+                  (std::is_same<int *, int *>::value),
+              "TMPPy assertion failed: \n<unknown>:2: assert (2*(3 + 1) == "
+              "2*(3 + 1)) == (Type('int*') == Type('int*'))");
+''')
+def test_common_subexpression_elimination_at_toplevel():
+    from tmppy import Type
+    assert (2*(3 + 1) == 2*(3 + 1)) == (Type('int*') == Type('int*'))
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename> struct CheckIfError;
 template <int64_t TmppyInternal_5> struct inc;
 template <typename> struct CheckIfError { using type = void; };
 template <int64_t TmppyInternal_5> struct inc {
@@ -70,6 +111,19 @@ def test_optimization_two_functions_with_call():
         return n + m
     def inc(n: int):
         return _plus(n, 1)
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename> struct CheckIfError;
+template <typename> struct CheckIfError { using type = void; };
+static_assert(((3LL) + (1LL)) == (4LL),
+              "TMPPy assertion failed: \n<unknown>:3: assert _plus(3, 1) == 4");
+''')
+def test_optimization_function_call_at_toplevel():
+    def _plus(n: int, m: int):
+        return n + m
+    assert _plus(3, 1) == 4
 
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
