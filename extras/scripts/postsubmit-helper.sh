@@ -99,7 +99,7 @@ SOURCES_PATH="$PWD"
 
 # This is not needed on Travis CI, but it's sometimes needed when running postsubmit.sh locally, to avoid "import
 # file mismatch" errors.
-rm -rf */tests/__pycache__/ */tests/*.pyc */tests/*/__pycache__/ */tests/*/*.pyc
+rm -rf */__pycache__/ */*.pyc */*/__pycache__/ */*/*.pyc
 
 rm -rf build
 mkdir build
@@ -114,12 +114,9 @@ fi
 echo
 run_make
 
-cd _py2tmp/tests
-run_make
 # We specify the path explicitly because old versions of pytest (e.g. the one in Ubuntu 14.04)
 # don't support the testpaths setting in pytest.ini, so they will ignore it and they would
 # otherwise run no tests.
-py.test -n auto -r a "$SOURCES_PATH"/_py2tmp/tests
-cd ../../
+py.test -n auto -r a "$SOURCES_PATH"/tests
 
 make install
