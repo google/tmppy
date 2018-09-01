@@ -49,10 +49,12 @@ template <typename> struct CheckIfError { using type = void; };
 template <int64_t TmppyInternal_5> struct f {
   static constexpr int64_t TmppyInternal_10 =
       (2LL) * ((TmppyInternal_5) + (1LL));
+  using TmppyInternal_18 = int *;
   static constexpr bool value =
       ((TmppyInternal_10) == (TmppyInternal_10)) ==
-      (std::is_same<typename Select1stTypeInt64<int *, TmppyInternal_5>::value,
-                    int *>::value);
+      (std::is_same<
+          typename Select1stTypeInt64<TmppyInternal_18, TmppyInternal_5>::value,
+          TmppyInternal_18>::value);
   using error = void;
 };
 ''')
@@ -61,8 +63,8 @@ def test_common_subexpression_elimination():
     def f(n: int):
         x1 = 2*(n + 1)
         x2 = 2*(n + 1)
-        t1 = Type('int*')
-        t2 = Type('int*')
+        t1 = Type.pointer(Type('int'))
+        t2 = Type.pointer(Type('int'))
         return (x1 == x2) == (t1 == t2)
 
 @assert_code_optimizes_to(r'''
@@ -71,14 +73,16 @@ def test_common_subexpression_elimination():
 template <typename> struct CheckIfError;
 template <typename> struct CheckIfError { using type = void; };
 static constexpr int64_t TmppyInternal_9 = (2LL) * ((3LL) + (1LL));
-static_assert(((TmppyInternal_9) == (TmppyInternal_9)) ==
-                  (std::is_same<int *, int *>::value),
-              "TMPPy assertion failed: \n<unknown>:2: assert (2*(3+1) == "
-              "2*(3+1)) == (Type('int*') == Type('int*'))");
+using TmppyInternal_17 = int *;
+static_assert(
+    ((TmppyInternal_9) == (TmppyInternal_9)) ==
+        (std::is_same<TmppyInternal_17, TmppyInternal_17>::value),
+    "TMPPy assertion failed: \n<unknown>:2: assert (2*(3+1) == 2*(3+1)) == "
+    "(Type.pointer(Type('int')) == Type.pointer(Type('int')))");
 ''')
 def test_common_subexpression_elimination_toplevel():
     from tmppy import Type
-    assert (2*(3+1) == 2*(3+1)) == (Type('int*') == Type('int*'))
+    assert (2*(3+1) == 2*(3+1)) == (Type.pointer(Type('int')) == Type.pointer(Type('int')))
 
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
@@ -86,14 +90,16 @@ def test_common_subexpression_elimination_toplevel():
 template <typename> struct CheckIfError;
 template <typename> struct CheckIfError { using type = void; };
 static constexpr int64_t TmppyInternal_9 = (2LL) * ((3LL) + (1LL));
-static_assert(((TmppyInternal_9) == (TmppyInternal_9)) ==
-                  (std::is_same<int *, int *>::value),
-              "TMPPy assertion failed: \n<unknown>:2: assert (2*(3 + 1) == "
-              "2*(3 + 1)) == (Type('int*') == Type('int*'))");
+using TmppyInternal_17 = int *;
+static_assert(
+    ((TmppyInternal_9) == (TmppyInternal_9)) ==
+        (std::is_same<TmppyInternal_17, TmppyInternal_17>::value),
+    "TMPPy assertion failed: \n<unknown>:2: assert (2*(3 + 1) == 2*(3 + 1)) == "
+    "(Type.pointer(Type('int')) == Type.pointer(Type('int')))");
 ''')
 def test_common_subexpression_elimination_at_toplevel():
     from tmppy import Type
-    assert (2*(3 + 1) == 2*(3 + 1)) == (Type('int*') == Type('int*'))
+    assert (2*(3 + 1) == 2*(3 + 1)) == (Type.pointer(Type('int')) == Type.pointer(Type('int')))
 
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
@@ -146,16 +152,13 @@ struct TmppyInternal_10<TmppyInternal_5, false> {
   using error = void;
 };
 template <bool TmppyInternal_5> struct f {
-  static constexpr int64_t value = TmppyInternal_10<
-      Select1stBoolBool<TmppyInternal_5, TmppyInternal_5>::value,
-      TmppyInternal_5>::value;
-  using error = typename TmppyInternal_10<
-      Select1stBoolBool<TmppyInternal_5, TmppyInternal_5>::value,
-      TmppyInternal_5>::error;
+  static constexpr int64_t value =
+      TmppyInternal_10<TmppyInternal_5, TmppyInternal_5>::value;
+  using error =
+      typename TmppyInternal_10<TmppyInternal_5, TmppyInternal_5>::error;
 };
 template <bool TmppyInternal_5> struct g {
-  static constexpr int64_t value =
-      f<Select1stBoolBool<TmppyInternal_5, TmppyInternal_5>::value>::value;
+  static constexpr int64_t value = f<TmppyInternal_5>::value;
   using error = void;
 };
 ''')

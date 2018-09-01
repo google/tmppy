@@ -14,23 +14,23 @@
 
 from py2tmp.testing import *
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_attribute_access_success():
     from tmppy import Type
-    assert Type('std::remove_pointer<int*>').type == Type('int')
+    assert Type.template_instantiation('std::remove_pointer', [Type.pointer(Type('int'))]).type == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_attribute_access_on_function_result_expr_success():
     from tmppy import Type
     def f(x: Type):
         return x
-    assert f(Type('std::remove_pointer<int*>')).type == Type('int')
+    assert f(Type.template_instantiation('std::remove_pointer', [Type.pointer(Type('int'))])).type == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_attribute_access_on_local_var_success():
     from tmppy import Type
     def f(x: bool):
-        y = Type('std::remove_pointer<int*>')
+        y = Type.template_instantiation('std::remove_pointer', [Type.pointer(Type('int'))])
         assert y.type == Type('int')
         return True
     assert f(True)

@@ -40,7 +40,7 @@ Using TMPPy, the above can be written as:
         if n == 0:
             return t
         else:
-            return Type('T*', T=add_pointer_multiple(t, n-1))
+            return add_pointer_multiple(Type.pointer(t), n-1)
 
 And this TMPPy code can then be compiled to C++ code equivalent to the metafunction above (without the overhead of e.g. MPL).
 

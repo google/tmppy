@@ -36,7 +36,7 @@ Run tests:
 
 To also collect coverage, add the following flags to the last command:
 
-    --cov-config=$PATH_TO_TMPPY/_py2tmp/.coveragerc --cov=_py2tmp --cov-report html
+    --cov-config=$PATH_TO_TMPPY/.coveragerc --cov=_py2tmp --cov-report html
 
 Note: if your `$PATH_TO_TMPPY` contains a `~` you need to replace it with `$HOME` in this command, or it won't be
 expanded.

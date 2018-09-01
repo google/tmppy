@@ -14,11 +14,11 @@
 
 from py2tmp.testing import *
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_not_false():
     assert not False
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_not_true():
     assert (not True) == False
 
@@ -30,7 +30,7 @@ def test_not_int_error():
 def test_and_toplevel_error():
     assert True and True  # error: The "and" operator is only supported in functions, not at toplevel.
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_and_true_true():
     def f(x: int):
         return True
@@ -41,7 +41,7 @@ def test_and_true_true():
         return True
     assert h(3)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_and_true_false():
     def f(x: int):
         return True
@@ -52,7 +52,7 @@ def test_and_true_false():
         return True
     assert h(3)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_and_false_true():
     def f(x: int):
         return False
@@ -64,7 +64,7 @@ def test_and_false_true():
         return True
     assert h(3)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_and_false_false():
     def f(x: int):
         return False
@@ -93,7 +93,7 @@ def test_and_int_bool_error():
 def test_or_toplevel_error():
     assert True or False  # error: The "or" operator is only supported in functions, not at toplevel.
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_or_false_false():
     def f(x: int):
         return False
@@ -104,7 +104,7 @@ def test_or_false_false():
         return True
     assert h(3)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_or_false_true():
     def f(x: int):
         return False
@@ -115,7 +115,7 @@ def test_or_false_true():
         return True
     assert h(3)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_or_true_false():
     def f(x: int):
         return True
@@ -127,7 +127,7 @@ def test_or_true_false():
         return True
     assert h(3)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_or_true_true():
     def f(x: int):
         return True

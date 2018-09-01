@@ -14,7 +14,7 @@
 
 from py2tmp.testing import *
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_simple_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -22,7 +22,7 @@ def test_custom_class_simple_success():
             self.y = y
     assert MyType(True, 15).x
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_fields_assigned_in_different_order_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -30,7 +30,7 @@ def test_custom_class_fields_assigned_in_different_order_success():
             self.x = x
     assert MyType(True, 15).x
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_constructor_using_keyword_args_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -38,7 +38,7 @@ def test_custom_class_constructor_using_keyword_args_success():
             self.y = y
     assert MyType(x=True, y=15).x
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_constructor_using_keyword_args_fields_in_different_order_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -54,7 +54,7 @@ def test_custom_class_constructor_using_mix_of_keyword_and_non_keyword_args_erro
             self.y = y
     assert MyType(True, y=15).x  # error: Function calls with a mix of keyword and non-keyword arguments are not supported. Please choose either style.
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_used_as_function_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -66,7 +66,7 @@ def test_custom_class_used_as_function_success():
         return f(b)(True, 15).x
     assert g(False)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_variable_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -77,7 +77,7 @@ def test_custom_class_variable_success():
         return v.x
     assert f(True)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_as_function_param_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -87,7 +87,7 @@ def test_custom_class_as_function_param_success():
         return u.x
     assert f(MyType(True, 15))
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_as_function_return_value_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -124,15 +124,15 @@ def test_variable_with_same_name_as_previous_custom_class_error():
 
 @assert_conversion_fails
 def test_custom_type_match_error():
-    from tmppy import match, TypePattern
+    from tmppy import match
     class X:
         def __init__(self, x: bool):
             self.x = x
     def f(b: bool):
-        return match(X(True))({  # error: All arguments passed to match must have type Type, but an argument with type X was specified.
-            TypePattern('T'):
-                lambda T: T,
-        })
+        return match(X(True))(  # error: All arguments passed to match must have type Type, but an argument with type X was specified.
+            lambda x: {
+                x: x,
+            })
 
 @assert_conversion_fails
 def test_custom_type_declared_as_return_type_before_definition_error():
@@ -226,7 +226,7 @@ def test_constructor_call_wrong_keyword_argument_type_expression():
     def g(x: Type):
         return X(x=[x])  # error: Type mismatch for argument x: expected type bool but was: List\[Type\]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_constructor_call_keyword_argument_success():
     from tmppy import Type
     from typing import List

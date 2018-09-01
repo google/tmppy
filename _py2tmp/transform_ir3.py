@@ -131,14 +131,30 @@ class Transformation:
             return self.transform_set_expr(expr)
         elif isinstance(expr, ir3.ListExpr):
             return self.transform_list_expr(expr)
-        elif isinstance(expr, ir3.TypeLiteral):
-            return self.transform_type_literal_expr(expr)
+        elif isinstance(expr, ir3.AtomicTypeLiteral):
+            return self.transform_atomic_type_literal_expr(expr)
         elif isinstance(expr, ir3.BoolLiteral):
             return self.transform_bool_literal_expr(expr)
         elif isinstance(expr, ir3.MatchExpr):
             return self.transform_match_expr(expr)
         elif isinstance(expr, ir3.VarReference):
             return self.transform_var_reference(expr)
+        elif isinstance(expr, ir3.PointerTypeExpr):
+            return self.transform_pointer_type_expr(expr)
+        elif isinstance(expr, ir3.ReferenceTypeExpr):
+            return self.transform_reference_type_expr(expr)
+        elif isinstance(expr, ir3.RvalueReferenceTypeExpr):
+            return self.transform_rvalue_reference_type_expr(expr)
+        elif isinstance(expr, ir3.ConstTypeExpr):
+            return self.transform_const_type_expr(expr)
+        elif isinstance(expr, ir3.ArrayTypeExpr):
+            return self.transform_array_type_expr(expr)
+        elif isinstance(expr, ir3.FunctionTypeExpr):
+            return self.transform_function_type_expr(expr)
+        elif isinstance(expr, ir3.TemplateInstantiationExpr):
+            return self.transform_template_instantiation_expr(expr)
+        elif isinstance(expr, ir3.TemplateMemberAccessExpr):
+            return self.transform_template_member_access_expr(expr)
         else:
             raise NotImplementedError('Unexpected expression: %s' % expr.__class__.__name__)
 
@@ -226,10 +242,36 @@ class Transformation:
                             elem_exprs=[self.transform_expr(elem)
                                         for elem in expr.elem_exprs])
 
-    def transform_type_literal_expr(self, expr: ir3.TypeLiteral) -> ir3.TypeLiteral:
-        return ir3.TypeLiteral(cpp_type=expr.cpp_type,
-                               arg_exprs={arg_name: self.transform_expr(arg_expr)
-                                          for arg_name, arg_expr in expr.arg_exprs.items()})
+    def transform_atomic_type_literal_expr(self, expr: ir3.AtomicTypeLiteral) -> ir3.AtomicTypeLiteral:
+        return expr
+
+    def transform_pointer_type_expr(self, expr: ir3.PointerTypeExpr) -> ir3.PointerTypeExpr:
+        return ir3.PointerTypeExpr(self.transform_expr(expr.type_expr))
+
+    def transform_reference_type_expr(self, expr: ir3.ReferenceTypeExpr) -> ir3.ReferenceTypeExpr:
+        return ir3.ReferenceTypeExpr(self.transform_expr(expr.type_expr))
+
+    def transform_rvalue_reference_type_expr(self, expr: ir3.RvalueReferenceTypeExpr) -> ir3.RvalueReferenceTypeExpr:
+        return ir3.RvalueReferenceTypeExpr(self.transform_expr(expr.type_expr))
+
+    def transform_const_type_expr(self, expr: ir3.ConstTypeExpr) -> ir3.ConstTypeExpr:
+        return ir3.ConstTypeExpr(self.transform_expr(expr.type_expr))
+
+    def transform_array_type_expr(self, expr: ir3.ArrayTypeExpr) -> ir3.ArrayTypeExpr:
+        return ir3.ArrayTypeExpr(self.transform_expr(expr.type_expr))
+
+    def transform_function_type_expr(self, expr: ir3.FunctionTypeExpr) -> ir3.FunctionTypeExpr:
+        return ir3.FunctionTypeExpr(return_type_expr=self.transform_expr(expr.return_type_expr),
+                                    arg_list_expr=self.transform_expr(expr.arg_list_expr))
+
+    def transform_template_instantiation_expr(self, expr: ir3.TemplateInstantiationExpr) -> ir3.TemplateInstantiationExpr:
+        return ir3.TemplateInstantiationExpr(template_atomic_cpp_type=expr.template_atomic_cpp_type,
+                                             arg_list_expr=self.transform_expr(expr.arg_list_expr))
+
+    def transform_template_member_access_expr(self, expr: ir3.TemplateMemberAccessExpr) -> ir3.TemplateMemberAccessExpr:
+        return ir3.TemplateMemberAccessExpr(class_type_expr=self.transform_expr(expr.class_type_expr),
+                                            member_name=expr.member_name,
+                                            arg_list_expr=self.transform_expr(expr.arg_list_expr))
 
     def transform_bool_literal_expr(self, expr: ir3.BoolLiteral) -> ir3.BoolLiteral:
         return expr

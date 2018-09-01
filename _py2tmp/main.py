@@ -54,7 +54,7 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
         print(utils.ir_to_string(module_ir2))
         print()
 
-    module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2, identifier_generator)
+    module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2)
     if verbose:
         print('TMPPy IR1:')
         print(utils.ir_to_string(module_ir1))

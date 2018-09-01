@@ -22,6 +22,7 @@ class ExprKind(Enum):
     INT64 = 2
     TYPE = 3
     TEMPLATE = 4
+    VARIADIC_TYPE = 5
 
 class ExprType(utils.ValueType):
     def __init__(self, kind: ExprKind):
@@ -44,13 +45,17 @@ class TemplateType(ExprType):
         super().__init__(kind=ExprKind.TEMPLATE)
         self.argtypes = tuple(argtypes)
 
+class VariadicType(ExprType):
+    def __init__(self):
+        super().__init__(kind=ExprKind.VARIADIC_TYPE)
+
 class Expr(utils.ValueType):
     def __init__(self, type: ExprType):
         self.type = type
 
     def references_any_of(self, variables: Set[str]) -> bool: ...  # pragma: no cover
 
-    def get_free_vars(self) -> Iterable['TypeLiteral']: ...  # pragma: no cover
+    def get_free_vars(self) -> Iterable['AtomicTypeLiteral']: ...  # pragma: no cover
 
     def get_referenced_identifiers(self) -> Iterable[str]: ...  # pragma: no cover
 
@@ -94,24 +99,20 @@ class TemplateArgDecl:
 
 _non_identifier_char_pattern = re.compile('[^a-zA-Z0-9_]+')
 
-def _extract_identifiers(s: str):
-    for match in re.split(_non_identifier_char_pattern, s):
-        if match and not match[0] in '0123456789':
-            yield match
-
 class TemplateSpecialization:
     def __init__(self,
                  args: List[TemplateArgDecl],
-                 patterns: 'Optional[List[TemplateArgPatternLiteral]]',
+                 patterns: 'Optional[List[Expr]]',
                  body: List[TemplateBodyElement]):
         self.args = tuple(args)
+
         self.patterns = tuple(patterns) if patterns is not None else None
         self.body = tuple(body)
 
     def get_referenced_identifiers(self):
         if self.patterns:
             for type_pattern in self.patterns:
-                for identifier in _extract_identifiers(type_pattern.cxx_pattern):
+                for identifier in type_pattern.get_referenced_identifiers():
                     yield identifier
         for elem in self.body:
             for identifier in elem.get_referenced_identifiers():
@@ -159,89 +160,181 @@ class Literal(Expr):
 
     def get_free_vars(self):
         if False:
-            yield
+            yield  # pragma: no cover
 
     def get_referenced_identifiers(self):
         if False:
-            yield
+            yield  # pragma: no cover
 
-class TypeLiteral(Expr):
+class AtomicTypeLiteral(Expr):
     def __init__(self,
                  cpp_type: str,
                  is_local: bool,
                  is_metafunction_that_may_return_error: bool,
-                 referenced_locals: List['TypeLiteral'],
                  type: ExprType):
-        if is_local:
-            assert not referenced_locals
         assert not (is_metafunction_that_may_return_error and not isinstance(type, TemplateType))
         super().__init__(type=type)
         self.cpp_type = cpp_type
         self.is_local = is_local
         self.type = type
         self.is_metafunction_that_may_return_error = is_metafunction_that_may_return_error
-        self.referenced_locals = tuple(referenced_locals)
 
     @staticmethod
     def for_local(cpp_type: str,
                   type: ExprType):
-        return TypeLiteral(cpp_type=cpp_type,
-                           is_local=True,
-                           type=type,
-                           is_metafunction_that_may_return_error=(type.kind == ExprKind.TEMPLATE),
-                           referenced_locals=[])
+        return AtomicTypeLiteral(cpp_type=cpp_type,
+                                 is_local=True,
+                                 type=type,
+                                 is_metafunction_that_may_return_error=(type.kind == ExprKind.TEMPLATE))
 
     @staticmethod
     def for_nonlocal(cpp_type: str,
                      type: ExprType,
-                     is_metafunction_that_may_return_error: bool,
-                     referenced_locals: List['TypeLiteral']):
-        return TypeLiteral(cpp_type=cpp_type,
-                           is_local=False,
-                           type=type,
-                           is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
-                           referenced_locals=referenced_locals)
+                     is_metafunction_that_may_return_error: bool):
+        return AtomicTypeLiteral(cpp_type=cpp_type,
+                                 is_local=False,
+                                 type=type,
+                                 is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
 
     @staticmethod
     def for_nonlocal_type(cpp_type: str):
-        return TypeLiteral.for_nonlocal(cpp_type=cpp_type,
-                                        type=TypeType(),
-                                        is_metafunction_that_may_return_error=False,
-                                        referenced_locals=[])
+        return AtomicTypeLiteral.for_nonlocal(cpp_type=cpp_type,
+                                              type=TypeType(),
+                                              is_metafunction_that_may_return_error=False)
 
     @staticmethod
     def for_nonlocal_template(cpp_type: str,
                               arg_types: List[ExprType],
                               is_metafunction_that_may_return_error: bool):
-        return TypeLiteral.for_nonlocal(cpp_type=cpp_type,
-                                        type=TemplateType(arg_types),
-                                        is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
-                                        referenced_locals=[])
+        return AtomicTypeLiteral.for_nonlocal(cpp_type=cpp_type,
+                                              type=TemplateType(arg_types),
+                                              is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
 
     @staticmethod
     def from_nonlocal_template_defn(template_defn: TemplateDefn,
                                     is_metafunction_that_may_return_error: bool):
-        return TypeLiteral.for_nonlocal_template(cpp_type=template_defn.name,
-                                                 arg_types=[arg.type for arg in template_defn.args],
-                                                 is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
+        return AtomicTypeLiteral.for_nonlocal_template(cpp_type=template_defn.name,
+                                                       arg_types=[arg.type for arg in template_defn.args],
+                                                       is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
 
     def references_any_of(self, variables: Set[str]):
-        return any(local_var.cpp_type in variables
-                   for local_var in self.referenced_locals)
+        return self.cpp_type in variables
 
     def get_free_vars(self):
         if self.is_local:
             yield self
-        for local_var in self.referenced_locals:
-            yield local_var
 
     def get_referenced_identifiers(self):
-        for identifier in _extract_identifiers(self.cpp_type):
+        yield self.cpp_type
+
+class PointerTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def references_any_of(self, variables: Set[str]):
+        return self.type_expr.references_any_of(variables)
+
+    def get_free_vars(self):
+        for var in self.type_expr.get_free_vars():
+            yield var
+
+    def get_referenced_identifiers(self):
+        for identifier in self.type_expr.get_referenced_identifiers():
             yield identifier
 
-class TemplateArgPatternLiteral:
-    def __init__(self, cxx_pattern: str = None):
-        self.cxx_pattern = cxx_pattern
+class ReferenceTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def references_any_of(self, variables: Set[str]):
+        return self.type_expr.references_any_of(variables)
+
+    def get_free_vars(self):
+        for var in self.type_expr.get_free_vars():
+            yield var
+
+    def get_referenced_identifiers(self):
+        for identifier in self.type_expr.get_referenced_identifiers():
+            yield identifier
+
+class RvalueReferenceTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def references_any_of(self, variables: Set[str]):
+        return self.type_expr.references_any_of(variables)
+
+    def get_free_vars(self):
+        for var in self.type_expr.get_free_vars():
+            yield var
+
+    def get_referenced_identifiers(self):
+        for identifier in self.type_expr.get_referenced_identifiers():
+            yield identifier
+
+class ConstTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def references_any_of(self, variables: Set[str]):
+        return self.type_expr.references_any_of(variables)
+
+    def get_free_vars(self):
+        for var in self.type_expr.get_free_vars():
+            yield var
+
+    def get_referenced_identifiers(self):
+        for identifier in self.type_expr.get_referenced_identifiers():
+            yield identifier
+
+class ArrayTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def references_any_of(self, variables: Set[str]):
+        return self.type_expr.references_any_of(variables)
+
+    def get_free_vars(self):
+        for var in self.type_expr.get_free_vars():
+            yield var
+
+    def get_referenced_identifiers(self):
+        for identifier in self.type_expr.get_referenced_identifiers():
+            yield identifier
+
+class FunctionTypeExpr(Expr):
+    def __init__(self, return_type_expr: Expr, arg_exprs: List[Expr]):
+        assert return_type_expr.type == TypeType(), return_type_expr.type.__class__.__name__
+
+        super().__init__(type=TypeType())
+        self.return_type_expr = return_type_expr
+        self.arg_exprs = tuple(arg_exprs)
+
+    def references_any_of(self, variables: Set[str]):
+        return self.return_type_expr.references_any_of(variables) or any(expr.references_any_of(variables)
+                                                                         for expr in self.arg_exprs)
+
+    def get_free_variables(self):
+        for exprs in (self.return_type_expr,), self.arg_exprs:
+            for expr in exprs:
+                for var in expr.get_free_vars():
+                    yield var
+
+    def get_referenced_identifiers(self):
+        for exprs in (self.return_type_expr,), self.arg_exprs:
+            for expr in exprs:
+                for identifier in expr.get_referenced_identifiers():
+                    yield identifier
 
 class UnaryExpr(Expr):
     def __init__(self, expr: Expr, result_type: ExprType):
@@ -303,10 +396,18 @@ class TemplateInstantiation(Expr):
                  template_expr: Expr,
                  args: List[Expr],
                  instantiation_might_trigger_static_asserts: bool):
-        assert isinstance(template_expr.type, TemplateType)
-        assert len(template_expr.type.argtypes) == len(args), 'template_expr.type.argtypes: %s, args: %s' % (template_expr.type.argtypes, args)
-        for arg_type, arg_expr in zip(template_expr.type.argtypes, args):
-            assert arg_expr.type == arg_type, '%s vs %s' % (str(arg_expr.type), str(arg_type))
+        assert isinstance(template_expr.type, TemplateType), str(template_expr.type)
+
+        if any(type.kind == ExprKind.VARIADIC_TYPE
+               for types in (template_expr.type.argtypes, (arg.type for arg in args))
+               for type in types):
+            # In this case it's fine if the two lists "don't match up"
+            pass
+        else:
+            assert len(template_expr.type.argtypes) == len(args), 'template_expr.type.argtypes: %s, args: %s' % (template_expr.type.argtypes, args)
+            for arg_type, arg_expr in zip(template_expr.type.argtypes, args):
+                assert arg_expr.type == arg_type, '%s vs %s' % (str(arg_expr.type), str(arg_type))
+
         super().__init__(type=TypeType())
         self.template_expr = template_expr
         self.args = tuple(args)
@@ -340,6 +441,10 @@ class NotExpr(UnaryExpr):
 class UnaryMinusExpr(UnaryExpr):
     def __init__(self, expr: Expr):
         super().__init__(expr, result_type=Int64Type())
+
+class VariadicTypeExpansion(UnaryExpr):
+    def __init__(self, expr: Expr):
+        super().__init__(expr, result_type=TypeType())
 
 class Header:
     def __init__(self,

@@ -108,13 +108,15 @@ class VarReference(Expr):
             yield self
 
 class MatchCase:
-    def __init__(self, type_patterns: List[str], matched_var_names: List[str], expr: Expr):
-        self.type_patterns = type_patterns
+    def __init__(self, matched_var_names: Set[str], type_patterns: List[Expr], expr: Expr):
         self.matched_var_names = matched_var_names
+        self.type_patterns = type_patterns
         self.expr = expr
 
     def is_main_definition(self):
-        return set(self.type_patterns) == set(self.matched_var_names)
+        matched_var_names_set = set(self.matched_var_names)
+        return all(isinstance(pattern, VarReference) and pattern.name in matched_var_names_set
+                   for pattern in self.type_patterns)
 
 class MatchExpr(Expr):
     def __init__(self, matched_exprs: List[Expr], match_cases: List[MatchCase]):
@@ -148,16 +150,107 @@ class BoolLiteral(Expr):
 
     def get_free_variables(self):
         if False:
-            yield
+            yield  # pragma: no cover
 
-class TypeLiteral(Expr):
-    def __init__(self, cpp_type: str, arg_exprs: Dict[str, Expr]):
+class AtomicTypeLiteral(Expr):
+    def __init__(self, cpp_type: str):
         super().__init__(type=TypeType())
         self.cpp_type = cpp_type
-        self.arg_exprs = arg_exprs
 
     def get_free_variables(self):
-        for expr in self.arg_exprs.values():
+        if False:
+            yield  # pragma: no cover
+
+class PointerTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def get_free_variables(self):
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+class ReferenceTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def get_free_variables(self):
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+class RvalueReferenceTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def get_free_variables(self):
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+class ConstTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def get_free_variables(self):
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+class ArrayTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def get_free_variables(self):
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+class FunctionTypeExpr(Expr):
+    def __init__(self, return_type_expr: Expr, arg_list_expr: Expr):
+        assert return_type_expr.type == TypeType()
+        assert arg_list_expr.type == ListType(TypeType())
+
+        super().__init__(type=TypeType())
+        self.return_type_expr = return_type_expr
+        self.arg_list_expr = arg_list_expr
+
+    def get_free_variables(self):
+        for expr in (self.return_type_expr, self.arg_list_expr):
+            for var in expr.get_free_variables():
+                yield var
+
+# E.g. TemplateInstantiationExpr('std::vector', [AtomicTypeLiteral('int')]) is the type 'std::vector<int>'.
+class TemplateInstantiationExpr(Expr):
+    def __init__(self, template_atomic_cpp_type: str, arg_list_expr: Expr):
+        assert arg_list_expr.type == ListType(TypeType())
+
+        super().__init__(type=TypeType())
+        self.template_atomic_cpp_type = template_atomic_cpp_type
+        self.arg_list_expr = arg_list_expr
+
+    def get_free_variables(self):
+        for var in self.arg_list_expr.get_free_variables():
+            yield var
+
+# E.g. TemplateMemberAccessExpr(AtomicTypeLiteral('foo'), 'bar', [AtomicTypeLiteral('int')]) is the type 'foo::bar<int>'.
+class TemplateMemberAccessExpr(Expr):
+    def __init__(self, class_type_expr: Expr, member_name: str, arg_list_expr: Expr):
+        assert class_type_expr.type == TypeType()
+        assert arg_list_expr.type == ListType(TypeType())
+
+        super().__init__(type=TypeType())
+        self.class_type_expr = class_type_expr
+        self.member_name = member_name
+        self.arg_list_expr = arg_list_expr
+
+    def get_free_variables(self):
+        for expr in (self.class_type_expr, self.arg_list_expr):
             for var in expr.get_free_variables():
                 yield var
 
@@ -337,7 +430,7 @@ class IntLiteral(Expr):
 
     def get_free_variables(self):
         if False:
-            yield
+            yield  # pragma: no cover
 
 class IntComparisonExpr(Expr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):

@@ -1,6 +1,8 @@
 [run]
+source = _py2tmp,tests
 omit =
-  */tests/*
+  tests/*
+  testing/*
   */testing/*
 # Enable branch coverage
 branch = True

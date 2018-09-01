@@ -26,7 +26,7 @@ def test_empty_set_too_many_arguments_error():
     def f(x: bool):
         return empty_set(bool, bool) # error: empty_set\(\) takes 1 argument. Got: 2
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_empty_set_success():
     from tmppy import empty_set
     assert empty_set(bool) == empty_set(bool)
@@ -62,27 +62,27 @@ def test_set_of_functions_error():
             f
         }
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_of_bools_ok():
     assert {True, False} == {True, False}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_of_bools_with_duplicates_ok():
     assert {True, False, True} == {True, False}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_of_bools_with_different_order_equal():
     assert {True, False} == {False, True}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_of_ints_ok():
     assert {1, 2, 5} == {1, 2, 5}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_of_ints_with_duplicates_ok():
     assert {1, 5, 2, 5} == {1, 2, 5}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_of_ints_with_different_order_equal():
     assert {1, 2, 3} == {3, 2, 1}
 
@@ -90,15 +90,15 @@ def test_set_of_ints_with_different_order_equal():
 def test_set_concat_not_supported_error():
     assert {1} + {2, 3} == {1, 2, 3}  # error: The "\+" operator is only supported for ints and lists, but this value has type Set\[int\].
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_bool_to_bool_ok():
     assert {not x for x in {True, False}} == {True, False}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_bool_to_const_bool_ok():
     assert {True for x in {True, False}} == {True}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_bool_to_int_ok():
     def f(b: bool):
         if b:
@@ -107,7 +107,7 @@ def test_set_comprehension_bool_to_int_ok():
             return -1
     assert {f(x) for x in {True, False}} == {5, -1}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_bool_to_const_int_ok():
     def f(b: bool):
         if b:
@@ -116,7 +116,7 @@ def test_set_comprehension_bool_to_const_int_ok():
             return -1
     assert {1 for x in {True, False}} == {1}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_bool_to_type_ok():
     from tmppy import Type
     def f(b: bool):
@@ -126,7 +126,7 @@ def test_set_comprehension_bool_to_type_ok():
             return Type('float')
     assert {f(x) for x in {True, False}} == {Type('int'), Type('float')}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_bool_to_const_type_ok():
     from tmppy import Type
     def f(b: bool):
@@ -136,62 +136,62 @@ def test_set_comprehension_bool_to_const_type_ok():
             return Type('float')
     assert {Type('int') for x in {True, False}} == {Type('int')}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_bool_to_custom_type_ok():
     class Bool:
         def __init__(self, b: bool):
             self.b = b
     assert {Bool(x) for x in {True, False}} == {Bool(True), Bool(False)}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_bool_to_const_custom_type_ok():
     class Bool:
         def __init__(self, b: bool):
             self.b = b
     assert {Bool(True) for x in {True, False}} == {Bool(True)}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_int_to_bool_ok():
     assert {x <= 2 for x in {1, 2, 3}} == {True, False}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_int_to_const_bool_ok():
     assert {True for x in {1, 2, 3}} == {True}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_int_to_const_int_ok():
     assert {5 for x in {1, 2, 3}} == {5}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_int_to_const_type_ok():
     from tmppy import Type
     assert {Type('float') for x in {1, -1, 0}} == {Type('float')}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_int_to_custom_type_ok():
     class Int:
         def __init__(self, n: int):
             self.n = n
     assert {Int(x) for x in {1, -1, 0, 2}} == {Int(1), Int(-1), Int(0), Int(2)}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_int_to_const_custom_type_ok():
     class Int:
         def __init__(self, n: int):
             self.n = n
     assert {Int(3) for x in {1, -1, 0}} == {Int(3)}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_type_to_bool_ok():
     from tmppy import Type
     assert {x == Type('int') for x in {Type('int'), Type('float')}} == {True, False}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_type_to_const_bool_ok():
     from tmppy import Type
     assert {True for x in {Type('int'), Type('float'), Type('int')}} == {True}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_type_to_int_ok():
     from tmppy import Type
     def f(x: Type):
@@ -203,29 +203,29 @@ def test_set_comprehension_type_to_int_ok():
             return -1
     assert {f(x) for x in {Type('int'), Type('float'), Type('double')}} == {5, 7, -1}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_type_to_const_int_ok():
     from tmppy import Type
     assert {5 for x in {Type('int'), Type('float'), Type('double')}} == {5}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_type_to_type_ok():
     from tmppy import Type
     def f(x: Type):
         if x == Type('int'):
-            return Type('int*')
+            return Type.pointer(Type('int'))
         elif x == Type('float'):
-            return Type('float*')
+            return Type.pointer(Type('float'))
         else:
             return Type('void')
-    assert {f(x) for x in {Type('int'), Type('float'), Type('double')}} == {Type('int*'), Type('float*'), Type('void')}
+    assert {f(x) for x in {Type('int'), Type('float'), Type('double')}} == {Type.pointer(Type('int')), Type.pointer(Type('float')), Type('void')}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_type_to_const_type_ok():
     from tmppy import Type
     assert {Type('float') for x in {Type('int'), Type('float'), Type('double')}} == {Type('float')}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_type_to_custom_type_ok():
     from tmppy import Type
     class TypeWrapper:
@@ -233,7 +233,7 @@ def test_set_comprehension_type_to_custom_type_ok():
             self.x = x
     assert {TypeWrapper(x) for x in {Type('int'), Type('float'), Type('float')}} == {TypeWrapper(Type('int')), TypeWrapper(Type('float'))}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_type_to_const_custom_type_ok():
     from tmppy import Type
     class TypeWrapper:
@@ -241,13 +241,13 @@ def test_set_comprehension_type_to_const_custom_type_ok():
             self.x = x
     assert {TypeWrapper(Type('double')) for x in {Type('int'), Type('float'), Type('float')}} == {TypeWrapper(Type('double'))}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_in_function_using_function_arg_ok():
     def f(k: int):
         return {x * k for x in {1, k, 3}}
     assert f(2) == {2, 4, 6}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_in_function_using_function_variable_ok():
     def f(b: bool):
         k = 2
@@ -267,7 +267,7 @@ def test_set_comprehension_from_bool_set_throws_toplevel():
         return True
     assert {f(x) for x in {True, False, False}} == empty_set(bool)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_from_bool_set_throws_in_function_caught_success():
     class MyError(Exception):
         def __init__(self, b: bool):
@@ -297,7 +297,7 @@ def test_set_comprehension_from_int_set_throws_toplevel():
         return True
     assert {f(x) for x in {0, 1, 2}} == empty_set(bool)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_from_int_set_throws_in_function_caught_success():
     class MyError(Exception):
         def __init__(self, b: bool):
@@ -327,7 +327,7 @@ def test_set_comprehension_from_type_set_throws_toplevel():
         return True
     assert {f(x) for x in {Type('int'), Type('float'), Type('double')}} == empty_set(bool)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_from_type_set_throws_in_function_caught_success():
     from tmppy import Type
     class MyError(Exception):
@@ -361,7 +361,7 @@ def test_set_comprehension_from_custom_type_set_throws_toplevel():
         return True
     assert {f(x) for x in {Int(0), Int(1), Int(2)}} == empty_set(bool)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_comprehension_from_custom_type_set_throws_in_function_caught_success():
     class Int:
         def __init__(self, n: int):
@@ -409,11 +409,11 @@ def test_set_comprehension_transforming_to_function_set_error():
         return b
     assert {f for x in {1, 2}}  # error: Creating sets of functions is not supported. The elements of this set have type: \(bool\) -> bool
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_sum_error():
     assert sum({5, 1, 34}) == 40
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_sum_empty_set_success():
     from tmppy import empty_set
     assert sum(empty_set(int)) == 0
@@ -422,15 +422,15 @@ def test_sum_empty_set_success():
 def test_sum_bool_set_error():
     assert sum({True, False}) == 40  # error: The argument of sum\(\) must have type List\[int\] or Set\[int\]. Got type: Set\[bool\]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_all_success_returns_true():
     assert all({True}) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_all_success_returns_false():
     assert all({True, False}) == False
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_all_empty_set_success():
     from tmppy import empty_set
     assert all(empty_set(bool)) == True
@@ -439,15 +439,15 @@ def test_all_empty_set_success():
 def test_all_int_set_error():
     assert all({1, 3}) == True  # error: The argument of all\(\) must have type List\[bool\] or Set\[bool\]. Got type: Set\[int\]
 
-@assert_compilation_succeeds
-def test_set_any_success_returns_false():
+@assert_compilation_succeeds()
+def test_set_any_success_one_arg_returns_false():
     assert any({False}) == False
 
-@assert_compilation_succeeds
-def test_set_any_success_returns_false():
+@assert_compilation_succeeds()
+def test_set_any_success_two_args_returns_false():
     assert any({False, True}) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_any_empty_set_success():
     from tmppy import empty_set
     assert any(empty_set(bool)) == False
@@ -488,6 +488,6 @@ def test_custom_type_containing_set_equality_error():
             self.s = s
     assert MyType({1}) == MyType({1})  # error: Type not supported in equality comparison: MyType
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_set_of_lists_ok():
     assert {[1, 2], [3, 4]} != {[1, 2]}

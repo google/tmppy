@@ -14,12 +14,12 @@
 
 from py2tmp.testing import *
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_simple_assertion():
     from tmppy import Type
     assert Type('int') == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assertion_in_function():
     from tmppy import Type
     def f(x: bool):
@@ -27,7 +27,7 @@ def test_assertion_in_function():
         return x
     assert f(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assertion_with_function_call_in_function():
     from tmppy import Type
     def f(x: Type):
@@ -47,7 +47,7 @@ def test_simple_assertion_error_custom_message():
     from tmppy import Type
     assert Type('int') == Type('float'), 'The expected error'
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_unconditional_false_assertion_bool_param_function_never_called_ok():
     def f(x: bool):
         assert False == True
@@ -60,14 +60,14 @@ def test_unconditional_false_assertion_bool_param_function_called_error():
         return x
     assert f(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_unconditional_true_assertion_bool_param_function_called_ok():
     def f(x: bool):
         assert False == False
         return x
     assert f(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_unconditional_false_assertion_int_param_function_never_called_ok():
     def f(x: int):
         assert False == True
@@ -80,14 +80,14 @@ def test_unconditional_false_assertion_int_param_function_called_error():
         return x
     assert f(15) == 15
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_unconditional_true_assertion_int_param_function_called_ok():
     def f(x: int):
         assert False == False
         return x
     assert f(15) == 15
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_unconditional_false_assertion_type_param_function_never_called_ok():
     from tmppy import Type
     def f(x: Type):
@@ -102,7 +102,7 @@ def test_unconditional_false_assertion_type_param_function_called_error():
         return x
     assert f(Type('int')) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_unconditional_true_assertion_type_param_function_called_ok():
     from tmppy import Type
     def f(x: Type):
@@ -110,7 +110,7 @@ def test_unconditional_true_assertion_type_param_function_called_ok():
         return x
     assert f(Type('int')) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_unconditional_false_assertion_function_param_function_never_called_ok():
     from typing import Callable
     def f(x: Callable[[bool], bool]):
@@ -127,7 +127,7 @@ def test_unconditional_false_assertion_function_param_function_called_error():
         return x
     assert f(g) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_unconditional_true_assertion_function_param_function_called_ok():
     from typing import Callable
     def f(x: Callable[[bool], bool]):
@@ -138,7 +138,7 @@ def test_unconditional_true_assertion_function_param_function_called_ok():
     assert f(g) == True
 
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assert_false_in_function_call_with_constant_args_never_called_bool_bool_ok():
     def f(x: bool):
         assert False
@@ -156,7 +156,7 @@ def test_assert_false_in_function_call_with_constant_args_called_bool_bool_error
     assert g(True)
 
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assert_false_in_function_call_with_constant_args_never_called_bool_int_ok():
     def f(x: bool):
         assert False
@@ -173,7 +173,7 @@ def test_assert_false_in_function_call_with_constant_args_called_bool_int_error(
         return f(True)
     assert g(1)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assert_false_in_function_call_with_constant_args_never_called_bool_type_ok():
     from tmppy import Type
     def f(x: bool):
@@ -192,7 +192,7 @@ def test_assert_false_in_function_call_with_constant_args_called_bool_type_error
         return f(True)
     assert g(Type('float'))
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assert_false_in_function_call_with_constant_args_never_called_int_bool_ok():
     def f(x: int):
         assert False
@@ -210,7 +210,7 @@ def test_assert_false_in_function_call_with_constant_args_called_int_bool_error(
     assert g(True)
 
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assert_false_in_function_call_with_constant_args_never_called_int_int_ok():
     def f(x: int):
         assert False
@@ -227,7 +227,7 @@ def test_assert_false_in_function_call_with_constant_args_called_int_int_error()
         return f(1)
     assert g(1)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assert_false_in_function_call_with_constant_args_never_called_int_type_ok():
     from tmppy import Type
     def f(x: int):
@@ -246,7 +246,7 @@ def test_assert_false_in_function_call_with_constant_args_called_int_type_error(
         return f(1)
     assert g(Type('float'))
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assert_false_in_function_call_with_constant_args_never_called_type_bool_ok():
     from tmppy import Type
     def f(x: Type):
@@ -265,7 +265,7 @@ def test_assert_false_in_function_call_with_constant_args_called_type_bool_error
         return f(Type('double'))
     assert g(True)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assert_false_in_function_call_with_constant_args_never_called_type_int_ok():
     from tmppy import Type
     def f(x: Type):
@@ -284,7 +284,7 @@ def test_assert_false_in_function_call_with_constant_args_called_type_int_error(
         return f(Type('double'))
     assert g(1)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_assert_false_in_function_call_with_constant_args_never_called_type_type_ok():
     from tmppy import Type
     def f(x: Type):
@@ -302,3 +302,7 @@ def test_assert_false_in_function_call_with_constant_args_called_type_type_error
     def g(x: Type):
         return f(Type('double'))
     assert g(Type('float'))
+
+@assert_conversion_fails
+def test_assert_expression_wrong_type():
+    assert 1  # error: The value passed to assert must have type bool, but got a value with type int.

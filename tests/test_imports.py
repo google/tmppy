@@ -30,6 +30,6 @@ def test_import_module_as_alias_error():
 def test_import_symbol_as_alias_error():
     from typing import Type as x  # error: TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_import_multiple_ok():
     from typing import List, Callable

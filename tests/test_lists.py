@@ -31,7 +31,7 @@ def test_empty_list_too_many_arguments_error():
     def f(x: bool):
         return empty_list(bool, bool) # error: empty_list\(\) takes 1 argument. Got: 2
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_empty_list_success():
     from tmppy import empty_list
     assert empty_list(bool) == empty_list(bool)
@@ -67,80 +67,80 @@ def test_list_of_functions_error():
             f
         ]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_of_bools_ok():
     assert [True, False] == [True, False]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_of_ints_ok():
     assert [1, 2, 5] == [1, 2, 5]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_int_list_concat_ok():
     assert [1] + [2, 3] == [1, 2, 3]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_int_list_concat_lhs_empty_ok():
     from tmppy import empty_list
     assert empty_list(int) + [2, 3] == [2, 3]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_int_list_concat_rhs_empty_ok():
     from tmppy import empty_list
     assert [2, 3] + empty_list(int) == [2, 3]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_int_list_concat_both_empty_ok():
     from tmppy import empty_list
     assert empty_list(int) + empty_list(int) == empty_list(int)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_bool_list_concat_ok():
     assert [True] + [False, True] == [True, False, True]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_bool_list_concat_lhs_empty_ok():
     from tmppy import empty_list
     assert empty_list(bool) + [False, True] == [False, True]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_bool_list_concat_rhs_empty_ok():
     from tmppy import empty_list
     assert [False, True] + empty_list(bool) == [False, True]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_bool_list_concat_both_empty_ok():
     from tmppy import empty_list
     assert empty_list(bool) + empty_list(bool) == empty_list(bool)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_type_list_concat_ok():
     from tmppy import Type
     assert [Type('int')] + [Type('float'), Type('double')] == [Type('int'), Type('float'), Type('double')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_type_list_concat_lhs_empty_ok():
     from tmppy import Type, empty_list
     assert empty_list(Type) + [Type('float'), Type('double')] == [Type('float'), Type('double')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_type_list_concat_rhs_empty_ok():
     from tmppy import Type, empty_list
     assert [Type('float'), Type('double')] + empty_list(Type) == [Type('float'), Type('double')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_type_list_concat_both_empty_ok():
     from tmppy import Type, empty_list
     assert empty_list(Type) + empty_list(Type) == empty_list(Type)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_type_list_concat_ok():
     class Int:
         def __init__(self, n: int):
             self.n = n
     assert [Int(1)] + [Int(2), Int(3)] == [Int(1), Int(2), Int(3)]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_type_list_concat_lhs_empty_ok():
     from tmppy import empty_list
     class Int:
@@ -148,7 +148,7 @@ def test_custom_type_list_concat_lhs_empty_ok():
             self.n = n
     assert empty_list(Int) + [Int(2), Int(3)] == [Int(2), Int(3)]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_type_list_concat_rhs_empty_ok():
     from tmppy import empty_list
     class Int:
@@ -156,7 +156,7 @@ def test_custom_type_list_concat_rhs_empty_ok():
             self.n = n
     assert [Int(2), Int(3)] + empty_list(Int) == [Int(2), Int(3)]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_type_list_concat_both_empty_ok():
     from tmppy import empty_list
     class Int:
@@ -172,15 +172,15 @@ def test_int_list_concat_error():
 def test_list_int_concat_error():
     assert [1] + 1  # error: Type mismatch: the LHS of "\+" has type List\[int\] but the RHS has type int.
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_bool_to_bool_ok():
     assert [not x for x in [True, False, False]] == [False, True, True]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_bool_to_const_bool_ok():
     assert [True for x in [True, False, False]] == [True, True, True]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_bool_to_int_ok():
     def f(b: bool):
         if b:
@@ -189,7 +189,7 @@ def test_list_comprehension_bool_to_int_ok():
             return -1
     assert [f(x) for x in [True, False]] == [5, -1]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_bool_to_const_int_ok():
     def f(b: bool):
         if b:
@@ -198,7 +198,7 @@ def test_list_comprehension_bool_to_const_int_ok():
             return -1
     assert [1 for x in [True, False]] == [1, 1]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_bool_to_type_ok():
     from tmppy import Type
     def f(b: bool):
@@ -208,7 +208,7 @@ def test_list_comprehension_bool_to_type_ok():
             return Type('float')
     assert [f(x) for x in [True, False]] == [Type('int'), Type('float')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_bool_to_const_type_ok():
     from tmppy import Type
     def f(b: bool):
@@ -218,62 +218,62 @@ def test_list_comprehension_bool_to_const_type_ok():
             return Type('float')
     assert [Type('int') for x in [True, False]] == [Type('int'), Type('int')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_bool_to_custom_type_ok():
     class Bool:
         def __init__(self, b: bool):
             self.b = b
     assert [Bool(x) for x in [True, False]] == [Bool(True), Bool(False)]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_bool_to_const_custom_type_ok():
     class Bool:
         def __init__(self, b: bool):
             self.b = b
     assert [Bool(True) for x in [True, False]] == [Bool(True), Bool(True)]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_int_to_bool_ok():
     assert [x <= 2 for x in [1, 2, 3]] == [True, True, False]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_int_to_const_bool_ok():
     assert [True for x in [1, 2, 3]] == [True, True, True]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_int_to_const_int_ok():
     assert [5 for x in [1, 2, 3]] == [5, 5, 5]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_int_to_const_type_ok():
     from tmppy import Type
     assert [Type('float') for x in [1, -1, 0]] == [Type('float'), Type('float'), Type('float')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_int_to_custom_type_ok():
     class Int:
         def __init__(self, n: int):
             self.n = n
     assert [Int(x) for x in [1, -1, 0, 2]] == [Int(1), Int(-1), Int(0), Int(2)]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_int_to_const_custom_type_ok():
     class Int:
         def __init__(self, n: int):
             self.n = n
     assert [Int(3) for x in [1, -1, 0]] == [Int(3), Int(3), Int(3)]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_type_to_bool_ok():
     from tmppy import Type
     assert [x == Type('int') for x in [Type('int'), Type('float'), Type('int')]] == [True, False, True]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_type_to_const_bool_ok():
     from tmppy import Type
     assert [True for x in [Type('int'), Type('float'), Type('int')]] == [True, True, True]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_type_to_int_ok():
     from tmppy import Type
     def f(x: Type):
@@ -285,29 +285,29 @@ def test_list_comprehension_type_to_int_ok():
             return -1
     assert [f(x) for x in [Type('int'), Type('float'), Type('double')]] == [5, 7, -1]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_type_to_const_int_ok():
     from tmppy import Type
     assert [5 for x in [Type('int'), Type('float'), Type('double')]] == [5, 5, 5]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_type_to_type_ok():
     from tmppy import Type
     def f(x: Type):
         if x == Type('int'):
-            return Type('int*')
+            return Type.pointer(Type('int'))
         elif x == Type('float'):
-            return Type('float*')
+            return Type.pointer(Type('float'))
         else:
             return Type('void')
-    assert [f(x) for x in [Type('int'), Type('float'), Type('double')]] == [Type('int*'), Type('float*'), Type('void')]
+    assert [f(x) for x in [Type('int'), Type('float'), Type('double')]] == [Type.pointer(Type('int')), Type.pointer(Type('float')), Type('void')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_type_to_const_type_ok():
     from tmppy import Type
     assert [Type('float') for x in [Type('int'), Type('float'), Type('double')]] == [Type('float'), Type('float'), Type('float')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_type_to_custom_type_ok():
     from tmppy import Type
     class TypeWrapper:
@@ -315,7 +315,7 @@ def test_list_comprehension_type_to_custom_type_ok():
             self.x = x
     assert [TypeWrapper(x) for x in [Type('int'), Type('float'), Type('float')]] == [TypeWrapper(Type('int')), TypeWrapper(Type('float')), TypeWrapper(Type('float'))]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_type_to_const_custom_type_ok():
     from tmppy import Type
     class TypeWrapper:
@@ -323,13 +323,13 @@ def test_list_comprehension_type_to_const_custom_type_ok():
             self.x = x
     assert [TypeWrapper(Type('double')) for x in [Type('int'), Type('float'), Type('float')]] == [TypeWrapper(Type('double')), TypeWrapper(Type('double')), TypeWrapper(Type('double'))]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_in_function_using_function_arg_ok():
     def f(k: int):
         return [x * k for x in [1, k, 3]]
     assert f(2) == [2, 4, 6]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_in_function_using_function_variable_ok():
     def f(b: bool):
         k = 2
@@ -349,7 +349,7 @@ def test_list_comprehension_from_bool_list_throws_toplevel():
         return True
     assert [f(x) for x in [True, False, False]] == empty_list(bool)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_from_bool_list_throws_in_function_caught_success():
     class MyError(Exception):
         def __init__(self, b: bool):
@@ -379,7 +379,7 @@ def test_list_comprehension_from_int_list_throws_toplevel():
         return True
     assert [f(x) for x in [0, 1, 2]] == empty_list(bool)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_from_int_list_throws_in_function_caught_success():
     class MyError(Exception):
         def __init__(self, b: bool):
@@ -409,7 +409,7 @@ def test_list_comprehension_from_type_list_throws_toplevel():
         return True
     assert [f(x) for x in [Type('int'), Type('float'), Type('double')]] == empty_list(bool)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_from_type_list_throws_in_function_caught_success():
     from tmppy import Type
     class MyError(Exception):
@@ -443,7 +443,7 @@ def test_list_comprehension_from_custom_type_list_throws_toplevel():
         return True
     assert [f(x) for x in [Int(0), Int(1), Int(2)]] == empty_list(bool)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_comprehension_from_custom_type_list_throws_in_function_caught_success():
     class Int:
         def __init__(self, n: int):
@@ -491,11 +491,18 @@ def test_list_comprehension_transforming_to_function_list_error():
         return b
     assert [f for x in [1, 2]]  # error: Creating lists of functions is not supported. The elements of this list have type: \(bool\) -> bool
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
+def test_list_comprehension_forwarding_existing_param():
+    from tmppy import Type
+    def f(b: bool):
+        return [Type('double') for x in [1, 2]]
+    assert f(True) == [Type('double'), Type('double')]
+
+@assert_compilation_succeeds()
 def test_sum_success():
     assert sum([5, 1, 34]) == 40
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_sum_empty_list_success():
     from tmppy import empty_list
     assert sum(empty_list(int)) == 0
@@ -518,15 +525,15 @@ def test_sum_with_keyword_argument_error():
 def test_sum_with_multiple_arguments_error():
     assert sum([True, False], 0) == 40  # error: sum\(\) takes 1 argument. Got: 2
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_all_success_returns_true():
     assert all([True, True, True]) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_all_success_returns_false():
     assert all([True, False, True]) == False
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_all_empty_list_success():
     from tmppy import empty_list
     assert all(empty_list(bool)) == True
@@ -549,15 +556,15 @@ def test_all_with_keyword_argument_error():
 def test_all_with_multiple_arguments_error():
     assert all([True, False], True) == True  # error: all\(\) takes 1 argument. Got: 2
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_any_success_returns_false():
     assert any([False, False, False]) == False
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_any_success_returns_false():
     assert any([False, True, False]) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_any_empty_list_success():
     from tmppy import empty_list
     assert any(empty_list(bool)) == False
@@ -580,7 +587,7 @@ def test_any_with_keyword_argument_error():
 def test_any_with_multiple_arguments_error():
     assert any([True, False], True) == True  # error: any\(\) takes 1 argument. Got: 2
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_list_unpacking_as_tuple_success():
     def f(b: bool):
         return [10, 20, 30, 40]
@@ -589,14 +596,33 @@ def test_list_unpacking_as_tuple_success():
         return b
     assert g(True) == 20
 
-@assert_compilation_succeeds
-def test_list_unpacking_as_list_success():
+@assert_compilation_succeeds()
+def test_list_unpacking_as_list_success_int():
     def f(b: bool):
         return [10, 20, 30, 40]
     def g(b1: bool):
         [a, b, c, d] = f(b1)
         return b
     assert g(True) == 20
+
+@assert_compilation_succeeds()
+def test_list_unpacking_as_list_success_bool():
+    def f(b: bool):
+        return [True, False, True]
+    def g(b1: bool):
+        [a, b, c] = f(b1)
+        return b
+    assert g(True) == False
+
+@assert_compilation_succeeds()
+def test_list_unpacking_as_list_success_type():
+    from tmppy import Type
+    def f(b: bool):
+        return [Type('int'), Type('float'), Type('double')]
+    def g(b1: bool):
+        [a, b, c] = f(b1)
+        return b
+    assert g(True) == Type('float')
 
 @assert_conversion_fails
 def test_list_unpacking_as_tuple_not_a_list_error():

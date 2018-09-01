@@ -12,17 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterator, Tuple, Union
+from typing import List, Iterator, Tuple, Union, Callable
 from _py2tmp import ir0
 
 class Writer:
-    def new_id(self) -> str: ... # pragma: no cover
+    def new_id(self) -> str: ...  # pragma: no cover
 
-    def write_toplevel_elem(self, s: str): ... # pragma: no cover
+    def write_toplevel_elem(self, s: str): ...  # pragma: no cover
 
-    def write_template_body_elem(self, s: str): ... # pragma: no cover
+    def write_template_body_elem(self, s: str): ...  # pragma: no cover
 
     def create_child_writer(self) -> 'TemplateElemWriter': ...  # pragma: no cover
+
+    def get_toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
 
 class ToplevelWriter(Writer):
     def __init__(self, identifier_generator: Iterator[str]):
@@ -38,8 +40,14 @@ class ToplevelWriter(Writer):
     def write_template_body_elem(self, s: str):
         self.write_toplevel_elem(s)
 
+    def write_expr_fragment(self, s: str):
+        self.write_toplevel_elem(s)
+
     def create_child_writer(self):
         return TemplateElemWriter(self)
+
+    def get_toplevel_writer(self):
+        return self
 
 class TemplateElemWriter(Writer):
     def __init__(self, toplevel_writer: ToplevelWriter):
@@ -55,22 +63,45 @@ class TemplateElemWriter(Writer):
     def write_template_body_elem(self, s: str):
         self.strings.append(s)
 
+    def write_expr_fragment(self, s: str):
+        self.strings.append(s)
+
     def create_child_writer(self):
         return TemplateElemWriter(self.toplevel_writer)
+
+    def get_toplevel_writer(self):
+        return self.toplevel_writer
+
+class ExprWriter(Writer):
+    def __init__(self, parent_writer: Writer):
+        self.parent_writer = parent_writer
+        self.strings = []
+
+    def new_id(self):
+        return self.parent_writer.new_id()
+
+    def write_toplevel_elem(self, s: str):
+        self.parent_writer.write_toplevel_elem(s)
+
+    def write_template_body_elem(self, s: str):
+        self.parent_writer.write_template_body_elem(s)
+
+    def write_expr_fragment(self, s: str):
+        self.strings.append(s)
+
+    def create_child_writer(self):
+        raise NotImplementedError('This is not supported at the expression level')
+
+    def get_toplevel_writer(self):
+        return self.parent_writer.get_toplevel_writer()
 
 def expr_to_cpp(expr: ir0.Expr,
                 enclosing_function_defn_args: List[ir0.TemplateArgDecl],
                 writer: Writer) -> str:
     if isinstance(expr, ir0.Literal):
         return literal_to_cpp(expr)
-    elif isinstance(expr, ir0.TypeLiteral):
-        return type_literal_to_cpp(expr)
     elif isinstance(expr, ir0.ComparisonExpr):
         return comparison_expr_to_cpp(expr, enclosing_function_defn_args, writer)
-    elif isinstance(expr, ir0.TemplateInstantiation):
-        return template_instantiation_to_cpp(expr, enclosing_function_defn_args, writer)
-    elif isinstance(expr, ir0.ClassMemberAccess):
-        return class_member_access_to_cpp(expr, enclosing_function_defn_args, writer)
     elif isinstance(expr, ir0.NotExpr):
         return not_expr_to_cpp(expr, enclosing_function_defn_args, writer)
     elif isinstance(expr, ir0.UnaryMinusExpr):
@@ -78,7 +109,9 @@ def expr_to_cpp(expr: ir0.Expr,
     elif isinstance(expr, ir0.Int64BinaryOpExpr):
         return int64_binary_op_expr_to_cpp(expr, enclosing_function_defn_args, writer)
     else:
-        raise NotImplementedError('Unexpected expr: %s' % str(expr.__class__))
+        writer = ExprWriter(writer)
+        type_expr_to_cpp(expr, enclosing_function_defn_args, writer)
+        return ''.join(writer.strings)
 
 def static_assert_to_cpp(assert_stmt: ir0.StaticAssert,
                          enclosing_function_defn_args: List[ir0.TemplateArgDecl],
@@ -119,6 +152,7 @@ def static_assert_to_cpp(assert_stmt: ir0.StaticAssert,
         template_param_decl = _type_to_template_param_declaration(type=enclosing_function_defn_args[0].type)
         template_param = enclosing_function_defn_args[0].name
         writer.write_template_body_elem('''\
+            // Custom AlwaysTrueFor* template
             template <{template_param_decl}>
             struct {always_true_id} {{
               static constexpr bool value = true;
@@ -160,7 +194,7 @@ def typedef_to_cpp(typedef: ir0.Typedef,
                                        for arg in template_args)
 
         template_instantiation_expr = ir0.TemplateInstantiation(template_expr=typedef.expr,
-                                                                args=[ir0.TypeLiteral.for_local(type=arg.type,
+                                                                args=[ir0.AtomicTypeLiteral.for_local(type=arg.type,
                                                                                                 cpp_type=arg.name)
                                                                       for arg in template_args],
                                                                 # TODO: use static analysis to determine when it's
@@ -189,6 +223,9 @@ def _type_to_template_param_declaration(type: ir0.ExprType):
                 + ', '.join(_type_to_template_param_declaration(arg_type)
                             for arg_type in type.argtypes)
                 + '> class')
+    elif type.kind == ir0.ExprKind.VARIADIC_TYPE:
+        assert isinstance(type, ir0.VariadicType)
+        return 'typename...'
     else:
         raise NotImplementedError('Unsupported argument kind: ' + str(type.kind))
 
@@ -224,7 +261,7 @@ def template_specialization_to_cpp(specialization: ir0.TemplateSpecialization,
     template_args = ', '.join(template_arg_decl_to_cpp(arg)
                               for arg in specialization.args)
     if specialization.patterns is not None:
-        patterns_str = ', '.join(type_pattern_literal_to_cpp(pattern)
+        patterns_str = ', '.join(expr_to_cpp(pattern, enclosing_function_defn_args, writer)
                                  for pattern in specialization.patterns)
         writer.write_template_body_elem('''\
             template <{template_args}>
@@ -282,12 +319,6 @@ def literal_to_cpp(literal: ir0.Literal):
     else:
         raise NotImplementedError('Unexpected literal value: %s' % repr(literal.value))
 
-def type_literal_to_cpp(literal: ir0.TypeLiteral):
-    return literal.cpp_type
-
-def type_pattern_literal_to_cpp(pattern: ir0.TemplateArgPatternLiteral):
-    return pattern.cxx_pattern
-
 def comparison_expr_to_cpp(comparison: ir0.ComparisonExpr,
                            enclosing_function_defn_args: List[ir0.TemplateArgDecl],
                            writer: Writer):
@@ -341,16 +372,22 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
 
             if arg_decl.type.kind != ir0.ExprKind.TEMPLATE and arg_to_replace.type.kind != ir0.ExprKind.TEMPLATE:
                 # We use lambdas here just to make sure we collect code coverage of each "branch". They are not necessary.
+                # Note that we use the *Type variants for variadic types too. That's ok, since e.g.
+                # Select1stBoolType<b, Args> will be expanded as e.g. Select1stBoolType<b, Args>... so it's exactly what
+                # we want in the variadic case too.
                 select1st_variant = {
                     (ir0.ExprKind.BOOL, ir0.ExprKind.BOOL):  lambda: 'Select1stBoolBool',
                     (ir0.ExprKind.BOOL, ir0.ExprKind.INT64): lambda: 'Select1stBoolInt64',
                     (ir0.ExprKind.BOOL, ir0.ExprKind.TYPE):  lambda: 'Select1stBoolType',
+                    (ir0.ExprKind.BOOL, ir0.ExprKind.VARIADIC_TYPE):  lambda: 'Select1stBoolType',
                     (ir0.ExprKind.INT64, ir0.ExprKind.BOOL):  lambda: 'Select1stInt64Bool',
                     (ir0.ExprKind.INT64, ir0.ExprKind.INT64): lambda: 'Select1stInt64Int64',
                     (ir0.ExprKind.INT64, ir0.ExprKind.TYPE):  lambda: 'Select1stInt64Type',
+                    (ir0.ExprKind.INT64, ir0.ExprKind.VARIADIC_TYPE):  lambda: 'Select1stInt64TypeType',
                     (ir0.ExprKind.TYPE, ir0.ExprKind.BOOL):  lambda: 'Select1stTypeBool',
                     (ir0.ExprKind.TYPE, ir0.ExprKind.INT64): lambda: 'Select1stTypeInt64',
                     (ir0.ExprKind.TYPE, ir0.ExprKind.TYPE):  lambda: 'Select1stTypeType',
+                    (ir0.ExprKind.TYPE, ir0.ExprKind.VARIADIC_TYPE):  lambda: 'Select1stTypeType',
                 }[(arg_to_replace.type.kind, arg_decl.type.kind)]()
             else:
                 # We need to define a new Select1st variant for the desired function type.
@@ -359,26 +396,26 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
                 template_param_decl1 = _type_to_template_param_declaration(type=arg_to_replace.type)
                 template_param_decl2 = _type_to_template_param_declaration(type=arg_decl.type)
 
-                if isinstance(writer, ToplevelWriter):
-                    select1st_variant_body_writer = TemplateElemWriter(writer)
-                else:
-                    assert isinstance(writer, TemplateElemWriter)
-                    select1st_variant_body_writer = TemplateElemWriter(writer.toplevel_writer)
+                select1st_variant_body_writer = TemplateElemWriter(writer.get_toplevel_writer())
                 if arg_to_replace.type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
                     select1st_variant_body = ir0.ConstantDef(name='value',
-                                                             expr=ir0.TypeLiteral.for_local(cpp_type=forwarded_param_id,
+                                                             expr=ir0.AtomicTypeLiteral.for_local(cpp_type=forwarded_param_id,
                                                                                             type=arg_to_replace.type))
                     constant_def_to_cpp(select1st_variant_body, enclosing_function_defn_args, select1st_variant_body_writer)
                 else:
-                    assert arg_to_replace.type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE)
+                    replaced_type = arg_to_replace.type
+                    if replaced_type.kind == ir0.ExprKind.VARIADIC_TYPE:
+                        replaced_type = ir0.TypeType()
+                    assert replaced_type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE)
                     select1st_variant_body = ir0.Typedef(name='value',
-                                                         expr=ir0.TypeLiteral.for_local(cpp_type=forwarded_param_id,
-                                                                                        type=arg_to_replace.type))
+                                                         expr=ir0.AtomicTypeLiteral.for_local(cpp_type=forwarded_param_id,
+                                                                                              type=replaced_type))
                     typedef_to_cpp(select1st_variant_body, enclosing_function_defn_args, select1st_variant_body_writer)
 
                 select1st_variant_body_str = ''.join(select1st_variant_body_writer.strings)
 
                 writer.write_template_body_elem('''
+                    // Custom Select1st* template
                     template <{template_param_decl1} {forwarded_param_id}, {template_param_decl2}>
                     struct {select1st_variant} {{
                       {select1st_variant_body_str}
@@ -386,10 +423,10 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
                     '''.format(**locals()))
 
             select1st_type = ir0.TemplateType(argtypes=[arg_to_replace.type, arg_decl.type])
-            select1st_instantiation = ir0.TemplateInstantiation(template_expr=ir0.TypeLiteral.for_local(cpp_type=select1st_variant,
+            select1st_instantiation = ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_local(cpp_type=select1st_variant,
                                                                                                         type=select1st_type),
                                                                 args=[arg_to_replace,
-                                                                      ir0.TypeLiteral.for_local(cpp_type=arg_decl.name,
+                                                                      ir0.AtomicTypeLiteral.for_local(cpp_type=arg_decl.name,
                                                                                                 type=arg_decl.type)],
                                                                 instantiation_might_trigger_static_asserts=False)
             new_arg = ir0.ClassMemberAccess(class_type_expr=select1st_instantiation,
@@ -441,6 +478,11 @@ def class_member_access_to_cpp(expr: ir0.ClassMemberAccess,
         raise NotImplementedError('Member type: %s' % expr.type.__class__.__name__)
     return cpp_str_template.format(**locals())
 
+def variadic_type_expansion_to_cpp(expr: ir0.VariadicTypeExpansion,
+                                   enclosing_function_defn_args: List[ir0.TemplateArgDecl],
+                                   writer: Writer):
+    return expr_to_cpp(expr.expr, enclosing_function_defn_args, writer) + '...'
+
 def not_expr_to_cpp(expr: ir0.NotExpr,
                     enclosing_function_defn_args: List[ir0.TemplateArgDecl],
                     writer: Writer):
@@ -452,6 +494,22 @@ def unary_minus_expr_to_cpp(expr: ir0.UnaryMinusExpr,
                             writer: Writer):
     inner_expr = expr_to_cpp(expr.expr, enclosing_function_defn_args, writer)
     return '-({inner_expr})'.format(**locals())
+
+def toplevel_elem_to_cpp(elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef], writer: ToplevelWriter):
+    if isinstance(elem, ir0.StaticAssert):
+        static_assert_to_cpp(elem,
+                             enclosing_function_defn_args=[],
+                             writer=writer)
+    elif isinstance(elem, ir0.ConstantDef):
+        constant_def_to_cpp(elem,
+                            enclosing_function_defn_args=[],
+                            writer=writer)
+    elif isinstance(elem, ir0.Typedef):
+        typedef_to_cpp(elem,
+                       enclosing_function_defn_args=[],
+                       writer=writer)
+    else:
+        raise NotImplementedError('Unexpected toplevel element: %s' % str(elem.__class__))
 
 def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
     writer = ToplevelWriter(identifier_generator)
@@ -469,18 +527,108 @@ def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
                              enclosing_function_defn_args=[],
                              writer=writer)
     for elem in header.toplevel_content:
-        if isinstance(elem, ir0.StaticAssert):
-            static_assert_to_cpp(elem,
-                                 enclosing_function_defn_args=[],
-                                 writer=writer)
-        elif isinstance(elem, ir0.ConstantDef):
-            constant_def_to_cpp(elem,
-                                enclosing_function_defn_args=[],
-                                writer=writer)
-        elif isinstance(elem, ir0.Typedef):
-            typedef_to_cpp(elem,
-                           enclosing_function_defn_args=[],
-                           writer=writer)
-        else:
-            raise NotImplementedError('Unexpected toplevel element: %s' % str(elem.__class__))
+        toplevel_elem_to_cpp(elem, writer)
     return ''.join(writer.strings)
+
+def type_expr_to_cpp(expr: ir0.Expr,
+                     enclosing_function_defn_args: List[ir0.TemplateArgDecl],
+                     writer: ExprWriter):
+    write_prefix, write_suffix = type_expr_to_cpp_prefix_suffix(expr, enclosing_function_defn_args, writer, has_modifiers=False)
+    write_prefix()
+    write_suffix()
+
+# We can't generate code like "int & &&", so we need to collapse reference types ourselves. The C++ compiler has similar
+# collapsing logic, but it's only applied to cases where a ref/rref is hidden inside a typedef and one isn't.
+def _simplify_toplevel_references(expr: Union[ir0.RvalueReferenceTypeExpr, ir0.ReferenceTypeExpr]):
+    has_reference = False
+    while isinstance(expr, (ir0.RvalueReferenceTypeExpr, ir0.ReferenceTypeExpr)):
+        has_reference |= isinstance(expr, ir0.ReferenceTypeExpr)
+        expr = expr.type_expr
+    if has_reference:
+        return ir0.ReferenceTypeExpr(expr)
+    else:
+        return ir0.RvalueReferenceTypeExpr(expr)
+
+def type_expr_to_cpp_prefix_suffix(expr: ir0.Expr,
+                                   enclosing_function_defn_args: List[ir0.TemplateArgDecl],
+                                   writer: ExprWriter,
+                                   has_modifiers: bool) -> Tuple[Callable[[], None], Callable[[], None]]:
+    if isinstance(expr, (ir0.RvalueReferenceTypeExpr, ir0.ReferenceTypeExpr)):
+        expr = _simplify_toplevel_references(expr)
+
+    if isinstance(expr, ir0.FunctionTypeExpr):
+        return function_type_expr_to_cpp_prefix_suffix(expr, enclosing_function_defn_args, writer, has_modifiers)
+    elif isinstance(expr, ir0.PointerTypeExpr):
+        return unary_modifier_type_expr_to_cpp_prefix_suffix('*', expr.type_expr, enclosing_function_defn_args, writer)
+    elif isinstance(expr, ir0.ReferenceTypeExpr):
+        return unary_modifier_type_expr_to_cpp_prefix_suffix(' &',  expr.type_expr, enclosing_function_defn_args, writer)
+    elif isinstance(expr, ir0.RvalueReferenceTypeExpr):
+        return unary_modifier_type_expr_to_cpp_prefix_suffix(' &&', expr.type_expr, enclosing_function_defn_args, writer)
+    elif isinstance(expr, ir0.ConstTypeExpr):
+        return unary_modifier_type_expr_to_cpp_prefix_suffix(' const ', expr.type_expr, enclosing_function_defn_args, writer)
+    elif isinstance(expr, ir0.ArrayTypeExpr):
+        return unary_modifier_type_expr_to_cpp_prefix_suffix('[]', expr.type_expr, enclosing_function_defn_args, writer)
+
+    if isinstance(expr, ir0.AtomicTypeLiteral):
+        expr_cpp_code = atomic_type_literal_expr_to_cpp(expr)
+    elif isinstance(expr, ir0.TemplateInstantiation):
+        expr_cpp_code = template_instantiation_to_cpp(expr, enclosing_function_defn_args, writer)
+    elif isinstance(expr, ir0.ClassMemberAccess):
+        expr_cpp_code = class_member_access_to_cpp(expr, enclosing_function_defn_args, writer)
+    elif isinstance(expr, ir0.VariadicTypeExpansion):
+        expr_cpp_code = variadic_type_expansion_to_cpp(expr, enclosing_function_defn_args, writer)
+    else:
+        raise NotImplementedError('Unexpected type expr: %s' % str(expr.__class__))
+
+    def write_prefix():
+        writer.write_expr_fragment(expr_cpp_code)
+    def write_suffix():
+        pass
+    return write_prefix, write_suffix
+
+def function_type_expr_to_cpp_prefix_suffix(expr: ir0.FunctionTypeExpr,
+                                            enclosing_function_defn_args: List[ir0.TemplateArgDecl],
+                                            writer: ExprWriter,
+                                            has_modifiers: bool):
+    # X1 -> Y                          |  Y(*) (X1)
+    # X2 -> (X1 -> Y)                  |  Y(*(*) (X2)) (X1)
+    # X3 -> (X2 -> (X1 -> Y))          |  Y(*(*(*) (X3)) (X2)) (X1)
+    # X4 -> (X3 -> (X2 -> (X1 -> Y)))  |  Y(*(*(*(*) (X4)) (X3)) (X2)) (X1)
+    #
+    # Y -> X1                          |  X1(*) (Y)
+    # (Y -> X1) -> X2                  |  X2(*) (X1(*) (Y))
+    # ((Y -> X1) -> X2) -> X3          |  X3(*) (X2(*) (X1(*) (Y)))
+    # (((Y -> X1) -> X2) -> X3) -> X4  |  X4(*) (X3(*) (X2(*) (X1(*) (Y))))
+
+    return_type_write_prefix, return_type_write_suffix = type_expr_to_cpp_prefix_suffix(expr.return_type_expr, enclosing_function_defn_args, writer, has_modifiers=False)
+
+    def write_prefix():
+        return_type_write_prefix()
+        if has_modifiers:
+            writer.write_expr_fragment('(')
+
+    def write_suffix():
+        if has_modifiers:
+            writer.write_expr_fragment(')')
+        writer.write_expr_fragment(' (')
+        for i, arg in enumerate(expr.arg_exprs):
+            if i != 0:
+                writer.write_expr_fragment(', ')
+            type_expr_to_cpp(arg, enclosing_function_defn_args, writer)
+        writer.write_expr_fragment(')')
+        return_type_write_suffix()
+
+    return write_prefix, write_suffix
+
+def unary_modifier_type_expr_to_cpp_prefix_suffix(modifier_str: str,
+                                                  sub_expr: ir0.Expr,
+                                                  enclosing_function_defn_args: List[ir0.TemplateArgDecl],
+                                                  writer: ExprWriter):
+    write_subexpr_prefix, write_subexpr_suffix = type_expr_to_cpp_prefix_suffix(sub_expr, enclosing_function_defn_args, writer, has_modifiers=True)
+    def write_prefix():
+        write_subexpr_prefix()
+        writer.write_expr_fragment(modifier_str)
+    return write_prefix, write_subexpr_suffix
+
+def atomic_type_literal_expr_to_cpp(expr: ir0.AtomicTypeLiteral):
+    return expr.cpp_type

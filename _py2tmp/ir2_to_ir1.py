@@ -17,34 +17,17 @@ from _py2tmp import ir1
 from _py2tmp import ir2
 from _py2tmp import ir1_to_ir0
 
-from typing import List, Iterator, Optional
+from typing import List, Iterator, Optional, Union
 
 class Writer:
-    def new_id(self) -> str: ...  # pragma: no cover
-
     def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment]): ...  # pragma: no cover
 
-    def get_fun_writer(self) -> 'FunWriter': ...  # pragma: no cover
-
 class FunWriter(Writer):
-    def __init__(self, identifier_generator: Iterator[str]):
-        self.identifier_generator = identifier_generator
+    def __init__(self):
         self.elems = []  # type: List[ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment]]
-
-    def new_id(self):
-        return next(self.identifier_generator)
-
-    def new_var(self, type: ir1.ExprType, is_global_function: bool = False):
-        return ir1.VarReference(type=type,
-                                name=self.new_id(),
-                                is_global_function=is_global_function,
-                                is_function_that_may_throw=isinstance(type, ir1.FunctionType))
 
     def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment]):
         self.elems.append(elem)
-
-    def get_fun_writer(self):
-        return self
 
 class StmtWriter(Writer):
     def __init__(self,
@@ -59,15 +42,6 @@ class StmtWriter(Writer):
             self.stmts.append(elem)
         else:
             self.fun_writer.write(elem)
-
-    def new_id(self):
-        return self.fun_writer.new_id()
-
-    def new_var(self, type: ir1.ExprType):
-        return self.fun_writer.new_var(type)
-
-    def get_fun_writer(self):
-        return self.fun_writer
 
 def custom_type_to_ir1(type: ir2.CustomType):
     return ir1.CustomType(name=type.name,
@@ -96,8 +70,8 @@ def type_to_ir1(type: ir2.ExprType):
     else:
         raise NotImplementedError('Unexpected type: %s' % str(type.__class__))
 
-def expr_to_ir1(expr: ir2.Expr) -> ir1.Expr:
-    if isinstance(expr, ir2.VarReference):
+def expr_to_ir1(expr: Union[ir2.Expr, ir2.PatternExpr]) -> ir1.Expr:
+    if isinstance(expr, (ir2.VarReference, ir2.VarReferencePattern)):
         return var_reference_to_ir1(expr)
     elif isinstance(expr, ir2.MatchExpr):
         return match_expr_to_ir1(expr)
@@ -105,9 +79,25 @@ def expr_to_ir1(expr: ir2.Expr) -> ir1.Expr:
         return bool_literal_to_ir1(expr)
     elif isinstance(expr, ir2.IntLiteral):
         return int_literal_to_ir1(expr)
-    elif isinstance(expr, ir2.TypeLiteral):
-        return type_literal_to_ir1(expr)
-    elif isinstance(expr, ir2.ListExpr):
+    elif isinstance(expr, (ir2.AtomicTypeLiteral, ir2.AtomicTypeLiteralPattern)):
+        return atomic_type_literal_to_ir1(expr)
+    elif isinstance(expr, (ir2.PointerTypeExpr, ir2.PointerTypePatternExpr)):
+        return pointer_type_expr_to_ir1(expr)
+    elif isinstance(expr, (ir2.ReferenceTypeExpr, ir2.ReferenceTypePatternExpr)):
+        return reference_type_expr_to_ir1(expr)
+    elif isinstance(expr, (ir2.RvalueReferenceTypeExpr, ir2.RvalueReferenceTypePatternExpr)):
+        return rvalue_reference_type_expr_to_ir1(expr)
+    elif isinstance(expr, (ir2.ConstTypeExpr, ir2.ConstTypePatternExpr)):
+        return const_type_expr_to_ir1(expr)
+    elif isinstance(expr, (ir2.ArrayTypeExpr, ir2.ArrayTypePatternExpr)):
+        return array_type_expr_to_ir1(expr)
+    elif isinstance(expr, (ir2.FunctionTypeExpr, ir2.FunctionTypePatternExpr)):
+        return function_type_expr_to_ir1(expr)
+    elif isinstance(expr, (ir2.TemplateInstantiationExpr, ir2.TemplateInstantiationPatternExpr)):
+        return template_instantiation_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.TemplateMemberAccessExpr):
+        return template_member_access_expr_to_ir1(expr)
+    elif isinstance(expr, (ir2.ListExpr, ir2.ListPatternExpr)):
         return list_expr_to_ir1(expr)
     elif isinstance(expr, ir2.FunctionCall):
         return function_call_to_ir1(expr)
@@ -148,11 +138,40 @@ def expr_to_ir1(expr: ir2.Expr) -> ir1.Expr:
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
+def type_pattern_expr_to_ir1(expr: ir2.PatternExpr) -> ir1.Expr:
+    if isinstance(expr, ir2.VarReferencePattern):
+        return var_reference_pattern_to_ir1(expr)
+    elif isinstance(expr, ir2.AtomicTypeLiteralPattern):
+        return atomic_type_literal_pattern_to_ir1(expr)
+    elif isinstance(expr, ir2.PointerTypePatternExpr):
+        return pointer_type_pattern_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.ReferenceTypePatternExpr):
+        return reference_type_pattern_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.RvalueReferenceTypePatternExpr):
+        return rvalue_reference_type_pattern_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.ConstTypePatternExpr):
+        return const_type_pattern_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.ArrayTypePatternExpr):
+        return array_type_pattern_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.FunctionTypePatternExpr):
+        return function_type_pattern_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.TemplateInstantiationPatternExpr):
+        return template_instantiation_pattern_expr_to_ir1(expr)
+    elif isinstance(expr, ir2.ListPatternExpr):
+        return list_expr_to_ir1(expr)
+    # TODO: Re-enable this once it's possible to use bools/ints in template instantiations.
+    # elif isinstance(expr, ir2.BoolLiteral):
+    #     return bool_literal_to_ir1(expr)
+    # elif isinstance(expr, ir2.IntLiteral):
+    #     return int_literal_to_ir1(expr)
+    else:
+        raise NotImplementedError('Unexpected pattern expression: %s' % str(expr.__class__))
+
 def function_arg_decl_to_ir1(decl: ir2.FunctionArgDecl):
     return ir1.FunctionArgDecl(type=type_to_ir1(decl.type),
                                name=decl.name)
 
-def var_reference_to_ir1(var: ir2.VarReference):
+def var_reference_to_ir1(var: Union[ir2.VarReference, ir2.VarReferencePattern]):
     return ir1.VarReference(type=type_to_ir1(var.type),
                             name=var.name,
                             is_global_function=var.is_global_function,
@@ -161,7 +180,8 @@ def var_reference_to_ir1(var: ir2.VarReference):
 def match_expr_to_ir1(match_expr: ir2.MatchExpr):
     return ir1.MatchExpr(matched_vars=[var_reference_to_ir1(var)
                                        for var in match_expr.matched_vars],
-                         match_cases=[ir1.MatchCase(type_patterns=match_case.type_patterns,
+                         match_cases=[ir1.MatchCase(type_patterns=[type_pattern_expr_to_ir1(pattern)
+                                                                   for pattern in match_case.type_patterns],
                                                     matched_var_names=match_case.matched_var_names,
                                                     expr=function_call_to_ir1(match_case.expr))
                                       for match_case in match_expr.match_cases])
@@ -172,12 +192,39 @@ def bool_literal_to_ir1(literal: ir2.BoolLiteral):
 def int_literal_to_ir1(literal: ir2.IntLiteral):
     return ir1.IntLiteral(value=literal.value)
 
-def type_literal_to_ir1(literal: ir2.TypeLiteral):
-    return ir1.TypeLiteral(cpp_type=literal.cpp_type,
-                           args={arg_name: expr_to_ir1(arg_expr)
-                                 for arg_name, arg_expr in literal.args.items()})
+def atomic_type_literal_to_ir1(literal: Union[ir2.AtomicTypeLiteral, ir2.AtomicTypeLiteralPattern]):
+    return ir1.AtomicTypeLiteral(cpp_type=literal.cpp_type)
 
-def list_expr_to_ir1(list_expr: ir2.ListExpr):
+def pointer_type_expr_to_ir1(expr: Union[ir2.PointerTypeExpr, ir2.PointerTypePatternExpr]):
+    return ir1.PointerTypeExpr(expr_to_ir1(expr.type_expr))
+
+def reference_type_expr_to_ir1(expr: Union[ir2.ReferenceTypeExpr, ir2.ReferenceTypePatternExpr]):
+    return ir1.ReferenceTypeExpr(expr_to_ir1(expr.type_expr))
+
+def rvalue_reference_type_expr_to_ir1(expr: Union[ir2.RvalueReferenceTypeExpr, ir2.RvalueReferenceTypePatternExpr]):
+    return ir1.RvalueReferenceTypeExpr(expr_to_ir1(expr.type_expr))
+
+def const_type_expr_to_ir1(expr: Union[ir2.ConstTypeExpr, ir2.ConstTypePatternExpr]):
+    return ir1.ConstTypeExpr(expr_to_ir1(expr.type_expr))
+
+def array_type_expr_to_ir1(expr: Union[ir2.ArrayTypeExpr, ir2.ArrayTypePatternExpr]):
+    return ir1.ArrayTypeExpr(expr_to_ir1(expr.type_expr))
+
+def function_type_expr_to_ir1(expr: Union[ir2.FunctionTypeExpr, ir2.FunctionTypePatternExpr]):
+    return ir1.FunctionTypeExpr(return_type_expr=var_reference_to_ir1(expr.return_type_expr),
+                                arg_list_expr=var_reference_to_ir1(expr.arg_list_expr))
+
+def template_instantiation_expr_to_ir1(expr: Union[ir2.TemplateInstantiationExpr, ir2.TemplateInstantiationPatternExpr]):
+    return ir1.TemplateInstantiationWithList(template_name=expr.template_atomic_cpp_type,
+                                             arg_list_expr=expr_to_ir1(expr.arg_list_expr),
+                                             instantiation_might_trigger_static_asserts=True)
+
+def template_member_access_expr_to_ir1(expr: ir2.TemplateMemberAccessExpr):
+    return ir1.TemplateMemberAccess(var_reference_to_ir1(expr.class_type_expr),
+                                    expr.member_name,
+                                    var_reference_to_ir1(expr.arg_list_expr))
+
+def list_expr_to_ir1(list_expr: Union[ir2.ListExpr, ir2.ListPatternExpr]):
     # [1, 2, x]
     #
     # Becomes:
@@ -195,8 +242,8 @@ def list_expr_to_ir1(list_expr: ir2.ListExpr):
         raise NotImplementedError('elem_kind: %s' % elem_kind)
 
     return ir1.TemplateInstantiation(template_name=list_template_name,
-                                     args=[var_reference_to_ir1(elem_expr)
-                                           for elem_expr in list_expr.elems],
+                                     arg_exprs=[expr_to_ir1(elem_expr)
+                                                for elem_expr in list_expr.elems],
                                      instantiation_might_trigger_static_asserts=False)
 
 def function_call_to_ir1(call_expr: ir2.FunctionCall):
@@ -232,7 +279,7 @@ def int_list_sum_expr_to_ir1(expr: ir2.IntListSumExpr):
     # Int64ListSum<l>::value
 
     template_instantiation = ir1.TemplateInstantiation(template_name='Int64ListSum',
-                                                       args=[var_reference_to_ir1(expr.var)],
+                                                       arg_exprs=[expr_to_ir1(expr.var)],
                                                        instantiation_might_trigger_static_asserts=False)
 
     return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
@@ -247,7 +294,7 @@ def bool_list_all_expr_to_ir1(expr: ir2.BoolListAllExpr):
     # BoolListAll<l>::value
 
     template_instantiation = ir1.TemplateInstantiation(template_name='BoolListAll',
-                                                       args=[var_reference_to_ir1(expr.var)],
+                                                       arg_exprs=[expr_to_ir1(expr.var)],
                                                        instantiation_might_trigger_static_asserts=False)
 
     return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
@@ -263,7 +310,7 @@ def bool_list_any_expr_to_ir1(expr: ir2.BoolListAnyExpr):
     # BoolListAny<l>::value
 
     template_instantiation = ir1.TemplateInstantiation(template_name='BoolListAny',
-                                                       args=[var_reference_to_ir1(expr.var)],
+                                                       arg_exprs=[expr_to_ir1(expr.var)],
                                                        instantiation_might_trigger_static_asserts=False)
 
     return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
@@ -293,8 +340,7 @@ def list_concat_expr_to_ir1(expr: ir2.ListConcatExpr):
         raise NotImplementedError('elem_kind: %s' % elem_kind)
 
     template_instantiation = ir1.TemplateInstantiation(template_name=list_concat_template_name,
-                                                       args=[var_reference_to_ir1(expr.lhs),
-                                                             var_reference_to_ir1(expr.rhs)],
+                                                       arg_exprs=[expr_to_ir1(expr.lhs), expr_to_ir1(expr.rhs)],
                                                        instantiation_might_trigger_static_asserts=False)
 
     return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
@@ -331,6 +377,40 @@ def list_to_set_expr_to_ir1(expr: ir2.ListToSetExpr):
 
 def set_to_list_expr_to_ir1(expr: ir2.SetToListExpr):
     return var_reference_to_ir1(expr.var)
+
+def var_reference_pattern_to_ir1(expr: ir2.VarReferencePattern):
+    return ir1.VarReference(type=type_to_ir1(expr.type),
+                            name=expr.name,
+                            is_global_function=expr.is_global_function,
+                            is_function_that_may_throw=expr.is_function_that_may_throw)
+
+def atomic_type_literal_pattern_to_ir1(expr: ir2.AtomicTypeLiteralPattern):
+    return ir1.AtomicTypeLiteral(expr.cpp_type)
+
+def pointer_type_pattern_expr_to_ir1(expr: ir2.PointerTypePatternExpr):
+    return ir1.PointerTypeExpr(type_pattern_expr_to_ir1(expr.type_expr))
+
+def reference_type_pattern_expr_to_ir1(expr: ir2.ReferenceTypePatternExpr):
+    return ir1.ReferenceTypeExpr(type_pattern_expr_to_ir1(expr.type_expr))
+
+def rvalue_reference_type_pattern_expr_to_ir1(expr: ir2.RvalueReferenceTypePatternExpr):
+    return ir1.RvalueReferenceTypeExpr(type_pattern_expr_to_ir1(expr.type_expr))
+
+def const_type_pattern_expr_to_ir1(expr: ir2.ConstTypePatternExpr):
+    return ir1.ConstTypeExpr(type_pattern_expr_to_ir1(expr.type_expr))
+
+def array_type_pattern_expr_to_ir1(expr: ir2.ArrayTypePatternExpr):
+    return ir1.ArrayTypeExpr(type_pattern_expr_to_ir1(expr.type_expr))
+
+def function_type_pattern_expr_to_ir1(expr: ir2.FunctionTypePatternExpr):
+    return ir1.FunctionTypeExpr(return_type_expr=type_pattern_expr_to_ir1(expr.return_type_expr),
+                                arg_list_expr=type_pattern_expr_to_ir1(expr.arg_list_expr))
+
+def template_instantiation_pattern_expr_to_ir1(expr: ir2.TemplateInstantiationPatternExpr):
+    return ir1.TemplateInstantiation(template_name=expr.template_atomic_cpp_type,
+                                     arg_exprs=[type_pattern_expr_to_ir1(elem_expr)
+                                                for elem_expr in expr.arg_exprs],
+                                     instantiation_might_trigger_static_asserts=False)
 
 def assert_to_ir1(assert_stmt: ir2.Assert, writer: Writer):
     writer.write(ir1.Assert(var=var_reference_to_ir1(assert_stmt.var),
@@ -394,8 +474,8 @@ def function_defn_to_ir1(function_defn: ir2.FunctionDefn, writer: FunWriter):
                                   body=stmt_writer.stmts,
                                   return_type=return_type))
 
-def module_to_ir1(module: ir2.Module, identifier_generator: Iterator[str]):
-    writer = FunWriter(identifier_generator)
+def module_to_ir1(module: ir2.Module):
+    writer = FunWriter()
     for toplevel_elem in module.body:
         if isinstance(toplevel_elem, ir2.FunctionDefn):
             function_defn_to_ir1(toplevel_elem, writer)

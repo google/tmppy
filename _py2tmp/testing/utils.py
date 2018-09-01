@@ -626,7 +626,7 @@ def _convert_tmppy_source_to_ir(python_source, identifier_generator):
     module_ir3 = ast_to_ir3.module_ast_to_ir3(source_ast, filename, python_source.splitlines())
     module_ir3 = optimize_ir3.optimize_module(module_ir3)
     module_ir2 = ir3_to_ir2.module_to_ir2(module_ir3, identifier_generator)
-    module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2, identifier_generator)
+    module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2)
     return module_ir2, module_ir1
 
 def _convert_to_cpp_expecting_success(tmppy_source):
@@ -679,14 +679,16 @@ def _convert_to_cpp_expecting_success(tmppy_source):
                             error_message=e.args[0]),
             pytrace=False)
 
-def assert_compilation_succeeds(f):
-    @wraps(f)
-    def wrapper():
-        tmppy_source = _get_function_body(f)
-        module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-        expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cpp_source)
+def assert_compilation_succeeds(extra_cpp_prelude=''):
+    def eval(f):
+        @wraps(f)
+        def wrapper():
+            tmppy_source = _get_function_body(f)
+            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+            expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, extra_cpp_prelude + cpp_source)
+        return wrapper
 
-    return wrapper
+    return eval
 
 def assert_code_optimizes_to(expected_cpp_source: str):
     def eval(f):

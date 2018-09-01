@@ -14,7 +14,7 @@
 
 from py2tmp.testing import *
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_bool_equals_success():
     assert True == True, 'Assertion error'
 
@@ -22,7 +22,7 @@ def test_bool_equals_success():
 def test_bool_equals_error():
     assert True == False
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_bool_not_equals_success():
     assert True == True, 'Assertion error'
 
@@ -52,17 +52,17 @@ def test_not_equals_functions_error():
     def g(x: bool):
         return f != f  # error: Type not supported in equality comparison: \(bool\) -> bool
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_type_equals_success():
     from tmppy import Type
     assert Type('int') == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_type_not_equal_success():
     from tmppy import Type
     assert Type('int') != Type('float')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_int_equals_success():
     assert 15 == 15
 
@@ -70,11 +70,11 @@ def test_int_equals_success():
 def test_int_equals_error():
     assert 1 == 0
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_int_not_equal_success():
     assert 15 != 3
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_equal_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -82,7 +82,7 @@ def test_custom_class_equal_success():
             self.y = y
     assert MyType(True, 15) == MyType(True, 15)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_first_field_not_equal_success():
     class MyType:
         def __init__(self, x: bool, y: int):
@@ -90,7 +90,7 @@ def test_custom_class_first_field_not_equal_success():
             self.y = y
     assert MyType(True, 15) != MyType(False, 15)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_custom_class_second_field_not_equal_success():
     class MyType:
         def __init__(self, x: bool, y: int):

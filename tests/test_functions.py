@@ -14,13 +14,13 @@
 
 from py2tmp.testing import *
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_identity():
     def f(x: bool):
         return x
     assert f(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_call_returning_bool():
     def f(x: bool):
         return x
@@ -28,7 +28,7 @@ def test_function_call_returning_bool():
         return f(f(the_argument))
     assert g(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_call_returning_int():
     def f(x: int):
         return x
@@ -36,7 +36,7 @@ def test_function_call_returning_int():
         return f(f(the_argument))
     assert g(3) == 3
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_call_returning_type():
     from tmppy import Type
     def f(x: Type):
@@ -45,7 +45,7 @@ def test_function_call_returning_type():
         return f(f(x))
     assert g(Type('int')) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_call_returning_list():
     from tmppy import Type
     from typing import List
@@ -55,7 +55,7 @@ def test_function_call_returning_list():
         return f(f(x))
     assert g([Type('int'), Type('float')]) == [Type('int'), Type('float')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_call_returning_set():
     from tmppy import Type
     from typing import Set
@@ -65,7 +65,7 @@ def test_function_call_returning_set():
         return f(f(x))
     assert g({Type('int'), Type('float')}) == {Type('int'), Type('float')}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_type_function_passed_as_argument():
     from tmppy import Type
     from typing import List
@@ -79,7 +79,19 @@ def test_type_function_passed_as_argument():
         return g(f, x)
     assert h(Type('int')) == [Type('int'), Type('int')]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
+def test_type_function_passed_as_only_argument():
+    from tmppy import Type
+    from typing import List
+    from typing import Callable
+
+    def f(x: Type, y: Type):
+        return [x, y]
+    def g(x: Callable[[Type, Type], List[Type]]):
+        return x(Type('int'), Type('int'))
+    assert g(f) == [Type('int'), Type('int')]
+
+@assert_compilation_succeeds()
 def test_bool_function_passed_as_argument():
     from typing import List
     from typing import Callable
@@ -164,7 +176,7 @@ def test_function_decorator_error():
     def f(x: bool):
         return x
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_return_type_declaration_success():
     def f(x: bool) -> bool:
         return x
@@ -315,16 +327,18 @@ def test_function_argument_call_keyword_argument_error():
     from typing import Callable
     def g(f: Callable[[bool], bool], # note: The definition of f was here
           x: bool):
-        return f(foo=x)  # error: Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable expressions. Please switch to non-keyword arguments.
+        return f(
+            foo=x)  # error: Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable objects. Please switch to non-keyword arguments.
 
 @assert_conversion_fails
 def test_function_expression_call_keyword_argument_error():
     from typing import Callable
     def g(f: Callable[[bool], Callable[[bool], bool]],
           x: bool):
-        return f(True)(x=x) # error: Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable expressions. Please switch to non-keyword arguments.
+        return f(True)(
+            x=x) # error: Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable objects. Please switch to non-keyword arguments.
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_call_keyword_argument_success():
     from tmppy import Type
     from typing import List
@@ -343,7 +357,7 @@ def test_function_call_keyword_and_non_keyword_arguments_error():
     def g(x: bool):
         return f(True, bar=Type('int'), baz=[x]) # error: Function calls with a mix of keyword and non-keyword arguments are not supported. Please choose either style.
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_returning_function_returning_type_success():
     from tmppy import Type
     def f(x: Type):
@@ -354,7 +368,7 @@ def test_function_returning_function_returning_type_success():
         return g(True)(x)
     assert h(Type('int')) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_returning_function_returning_type_with_forward_success():
     from tmppy import Type
     def f(x: Type):
@@ -367,7 +381,7 @@ def test_function_returning_function_returning_type_with_forward_success():
         return g2(True)(x)
     assert h(Type('int')) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_returning_function_returning_list_success():
     from tmppy import Type
     def f(x: bool):
@@ -378,7 +392,7 @@ def test_function_returning_function_returning_list_success():
         return g(x)(True)
     assert h(Type('int')) == [True]
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_returning_function_returning_set_success():
     from tmppy import Type
     def f(x: bool):
@@ -389,7 +403,7 @@ def test_function_returning_function_returning_set_success():
         return g(x)(True)
     assert h(Type('int')) == {True}
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_returning_function_returning_bool_ok():
     from tmppy import Type
     def f(x: bool):
@@ -398,7 +412,7 @@ def test_function_returning_function_returning_bool_ok():
         return f
     assert g(Type('int'))(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_returning_function_returning_int_ok():
     from tmppy import Type
     def f(x: int):
@@ -407,7 +421,7 @@ def test_function_returning_function_returning_int_ok():
         return f
     assert g(Type('int'))(15) == 15
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_returning_function_returning_function_ok():
     from tmppy import Type
     def f(x: Type):
@@ -418,7 +432,7 @@ def test_function_returning_function_returning_function_ok():
         return g
     assert h(Type('int'))(Type('int'))(Type('bool')) == Type('bool')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_returning_function_returning_function__bool_args_ok():
     def f(b: bool):
         return b
@@ -428,7 +442,7 @@ def test_function_returning_function_returning_function__bool_args_ok():
         return g
     assert h(True)(True)(False) == False
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_call_to_function_declared_after_with_return_type_decl_ok():
     def f(b: bool):
         return g(b)
@@ -443,7 +457,7 @@ def test_function_call_to_function_declared_after_without_type_decl_error():
     def g(b: bool):  # note: g was defined here
         return b
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_recursive_function_call_with_return_type_decl_ok():
     def fact(n: int) -> int:
         if n == 0:

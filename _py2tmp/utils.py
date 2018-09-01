@@ -66,10 +66,13 @@ def ir_to_string(ir_elem, line_indent=''):
 
 def clang_format(cxx_source: str, code_style='LLVM') -> str:
     command = ['clang-format',
-               '-assume-filename=file.h',
-               "-style={BasedOnStyle: %s, MaxEmptyLinesToKeep: 0, KeepEmptyLinesAtTheStartOfBlocks: false}"
-               % code_style
-               ]
+               '-assume-filename=file.cpp',
+               '-style=' + str({
+                   'BasedOnStyle': code_style,
+                   'MaxEmptyLinesToKeep': 0,
+                   'KeepEmptyLinesAtTheStartOfBlocks': 'false',
+                   'Standard': 'Cpp11'
+               })]
     try:
         p = subprocess.Popen(
             command,

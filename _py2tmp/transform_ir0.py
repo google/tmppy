@@ -22,29 +22,34 @@ class Writer:
 
     def new_id(self) -> str: ...  # pragma: no cover
 
-    def new_constant_or_typedef(self, expr: ir0.Expr) -> ir0.TypeLiteral:
+    def new_constant_or_typedef(self, expr: ir0.Expr) -> ir0.AtomicTypeLiteral:
         id = self.new_id()
         if expr.type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
             self.write(ir0.ConstantDef(name=id, expr=expr))
         elif expr.type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
             self.write(ir0.Typedef(name=id, expr=expr))
         else:
+            # TODO: consider handling VARIADIC_TYPE too.
             raise NotImplementedError('Unexpected kind: ' + str(expr.type.kind))
 
-        return ir0.TypeLiteral.for_local(cpp_type=id, type=expr.type)
+        return ir0.AtomicTypeLiteral.for_local(cpp_type=id, type=expr.type)
 
     def get_toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
 
 class ToplevelWriter(Writer):
-    def __init__(self, identifier_generator: Iterable[str]):
+    def __init__(self, identifier_generator: Iterable[str], allow_toplevel_elems: bool = True, allow_template_defns: bool = True):
         self.identifier_generator = identifier_generator
         self.template_defns = []  # type: List[ir0.TemplateDefn]
         self.toplevel_elems = []  # type: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]]
+        self.allow_toplevel_elems = allow_toplevel_elems
+        self.allow_template_defns = allow_template_defns
 
     def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
         if isinstance(elem, ir0.TemplateDefn):
+            assert self.allow_template_defns
             self.template_defns.append(elem)
         else:
+            assert self.allow_toplevel_elems
             self.toplevel_elems.append(elem)
 
     def new_id(self):
@@ -127,14 +132,23 @@ class Transformation:
     def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: Writer) -> ir0.TemplateSpecialization:
         toplevel_writer = writer.get_toplevel_writer()
 
+        if specialization.patterns is not None:
+            patterns = [self.transform_pattern(pattern, writer)
+                        for pattern in specialization.patterns]
+        else:
+            patterns = None
+
         return ir0.TemplateSpecialization(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in specialization.args],
-                                          patterns=[self.transform_pattern(pattern) for pattern in specialization.patterns] if specialization.patterns is not None else None,
+                                          patterns=patterns,
                                           body=self.transform_template_body_elems(specialization.body, toplevel_writer))
+
+    def transform_pattern(self, expr: ir0.Expr, writer: Writer) -> ir0.Expr:
+        return self.transform_expr(expr, writer)
 
     def transform_expr(self, expr: ir0.Expr, writer: Writer) -> ir0.Expr:
         if isinstance(expr, ir0.Literal):
             return self.transform_literal(expr, writer)
-        elif isinstance(expr, ir0.TypeLiteral):
+        elif isinstance(expr, ir0.AtomicTypeLiteral):
             return self.transform_type_literal(expr, writer)
         elif isinstance(expr, ir0.ClassMemberAccess):
             return self.transform_class_member_access(expr, writer)
@@ -148,11 +162,22 @@ class Transformation:
             return self.transform_int64_binary_op_expr(expr, writer)
         elif isinstance(expr, ir0.TemplateInstantiation):
             return self.transform_template_instantiation(expr, writer)
+        elif isinstance(expr, ir0.PointerTypeExpr):
+            return self.transform_pointer_type_expr(expr, writer)
+        elif isinstance(expr, ir0.ReferenceTypeExpr):
+            return self.transform_reference_type_expr(expr, writer)
+        elif isinstance(expr, ir0.RvalueReferenceTypeExpr):
+            return self.transform_rvalue_reference_type_expr(expr, writer)
+        elif isinstance(expr, ir0.ConstTypeExpr):
+            return self.transform_const_type_expr(expr, writer)
+        elif isinstance(expr, ir0.ArrayTypeExpr):
+            return self.transform_array_type_expr(expr, writer)
+        elif isinstance(expr, ir0.FunctionTypeExpr):
+            return self.transform_function_type_expr(expr, writer)
+        elif isinstance(expr, ir0.VariadicTypeExpansion):
+            return self.transform_variadic_type_expansion(expr, writer)
         else:
             raise NotImplementedError('Unexpected expr: ' + expr.__class__.__name__)
-
-    def transform_pattern(self, pattern: ir0.TemplateArgPatternLiteral) -> ir0.TemplateArgPatternLiteral:
-        return pattern
 
     def transform_template_body_elem(self, elem: ir0.TemplateBodyElement, writer: TemplateBodyWriter):
         if isinstance(elem, ir0.TemplateDefn):
@@ -169,16 +194,14 @@ class Transformation:
     def transform_literal(self, literal: ir0.Literal, writer: Writer) -> ir0.Expr:
         return literal
 
-    def transform_type_literal(self, type_literal: ir0.TypeLiteral, writer: Writer) -> ir0.Expr:
+    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: Writer) -> ir0.Expr:
         return self._transform_type_literal_default_impl(type_literal, writer)
 
-    def _transform_type_literal_default_impl(self, type_literal: ir0.TypeLiteral, writer: Writer) -> ir0.TypeLiteral:
-        return ir0.TypeLiteral(cpp_type=type_literal.cpp_type,
-                               is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
-                               referenced_locals=[self._transform_type_literal_default_impl(literal, writer)
-                                                  for literal in type_literal.referenced_locals],
-                               type=type_literal.type,
-                               is_local=type_literal.is_local)
+    def _transform_type_literal_default_impl(self, type_literal: ir0.AtomicTypeLiteral, writer: Writer) -> ir0.AtomicTypeLiteral:
+        return ir0.AtomicTypeLiteral(cpp_type=type_literal.cpp_type,
+                                     is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
+                                     type=type_literal.type,
+                                     is_local=type_literal.is_local)
 
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: Writer) -> ir0.Expr:
         return ir0.ClassMemberAccess(class_type_expr=self.transform_expr(class_member_access.expr, writer),
@@ -205,3 +228,27 @@ class Transformation:
         return ir0.TemplateInstantiation(template_expr=self.transform_expr(template_instantiation.template_expr, writer),
                                          args=[self.transform_expr(arg, writer) for arg in template_instantiation.args],
                                          instantiation_might_trigger_static_asserts=template_instantiation.instantiation_might_trigger_static_asserts)
+
+    def transform_pointer_type_expr(self, expr: ir0.PointerTypeExpr, writer: Writer):
+        return ir0.PointerTypeExpr(self.transform_expr(expr.type_expr, writer))
+
+    def transform_reference_type_expr(self, expr: ir0.ReferenceTypeExpr, writer: Writer):
+        return ir0.ReferenceTypeExpr(self.transform_expr(expr.type_expr, writer))
+
+    def transform_rvalue_reference_type_expr(self, expr: ir0.RvalueReferenceTypeExpr, writer: Writer):
+        return ir0.RvalueReferenceTypeExpr(self.transform_expr(expr.type_expr, writer))
+
+    def transform_const_type_expr(self, expr: ir0.ConstTypeExpr, writer: Writer):
+        return ir0.ConstTypeExpr(self.transform_expr(expr.type_expr, writer))
+
+    def transform_array_type_expr(self, expr: ir0.ArrayTypeExpr, writer: Writer):
+        return ir0.ArrayTypeExpr(self.transform_expr(expr.type_expr, writer))
+
+    def transform_function_type_expr(self, expr: ir0.FunctionTypeExpr, writer: Writer):
+        return ir0.FunctionTypeExpr(return_type_expr=self.transform_expr(expr.return_type_expr, writer),
+                                    arg_exprs=[self.transform_expr(arg_expr, writer)
+                                               for arg_expr in expr.arg_exprs])
+
+    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: Writer):
+        return ir0.VariadicTypeExpansion(self.transform_expr(expr.expr, writer))
+

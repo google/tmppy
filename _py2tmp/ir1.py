@@ -143,7 +143,7 @@ class VarReference(Expr):
 
 class MatchCase:
     def __init__(self,
-                 type_patterns: List[str],
+                 type_patterns: List[Expr],
                  matched_var_names: List[str],
                  expr: 'FunctionCall'):
         self.type_patterns = tuple(type_patterns)
@@ -151,10 +151,18 @@ class MatchCase:
         self.expr = expr
 
     def is_main_definition(self):
-        return set(self.type_patterns) == set(self.matched_var_names)
+        matched_vars = set()
+        for type_pattern in self.type_patterns:
+            if isinstance(type_pattern, VarReference):
+                matched_vars.add(type_pattern.name)
+            else:
+                return False
+
+        return matched_vars == set(self.matched_var_names)
 
     def write(self, writer: Writer):
-        writer.writeln('TypePattern(\'%s\')' % '\', \''.join(self.type_patterns))
+        writer.writeln('TypePattern(\'%s\')' % '\', \''.join(str(type_pattern)
+                                                             for type_pattern in self.type_patterns))
         with writer.indent():
             writer.writeln('lambda %s:' % ', '.join(self.matched_var_names))
             with writer.indent():
@@ -203,7 +211,7 @@ class BoolLiteral(Expr):
 
     def get_free_variables(self):
         if False:
-            yield
+            yield  # pragma: no cover
 
     def __str__(self):
         return repr(self.value)
@@ -212,48 +220,166 @@ class BoolLiteral(Expr):
         return ''
 
 
-class TypeLiteral(Expr):
-    def __init__(self, cpp_type: str, args: Dict[str, Expr]):
+class AtomicTypeLiteral(Expr):
+    def __init__(self, cpp_type: str):
         super().__init__(type=TypeType())
         self.cpp_type = cpp_type
-        self.args = args
 
     def get_free_variables(self):
-        for arg in self.args.values():
-            for var in arg.get_free_variables():
-                yield var
+        if False:
+            yield  # pragma: no cover
 
     def __str__(self):
-        return 'Type(\'%s\'%s)' % (self.cpp_type, ''.join(', %s=%s' % (arg_name, str(arg_expr))
-                                                          for arg_name, arg_expr in self.args.items()))
+        return 'Type(\'%s\')' % self.cpp_type
 
     def describe_other_fields(self):
         return ''
 
-class TemplateInstantiation(Expr):
-    def __init__(self,
-                 template_name: str,
-                 args: List[VarReference],
-                 instantiation_might_trigger_static_asserts: bool):
+
+class PointerTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
         super().__init__(type=TypeType())
-        self.template_name = template_name
-        self.args = tuple(args)
-        self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
 
     def get_free_variables(self):
-        for expr in self.args:
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'Type.pointer(%s)' % str(self.type_expr)
+
+    def describe_other_fields(self):
+        return self.type_expr.describe_other_fields()
+
+class ReferenceTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def get_free_variables(self):
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'Type.reference(%s)' % str(self.type_expr)
+
+    def describe_other_fields(self):
+        return self.type_expr.describe_other_fields()
+
+class RvalueReferenceTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def get_free_variables(self):
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'Type.rvalue_reference(%s)' % str(self.type_expr)
+
+    def describe_other_fields(self):
+        return self.type_expr.describe_other_fields()
+
+class ConstTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def get_free_variables(self):
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'Type.const(%s)' % str(self.type_expr)
+
+    def describe_other_fields(self):
+        return self.type_expr.describe_other_fields()
+
+class ArrayTypeExpr(Expr):
+    def __init__(self, type_expr: Expr):
+        super().__init__(type=TypeType())
+        assert type_expr.type == TypeType()
+        self.type_expr = type_expr
+
+    def get_free_variables(self):
+        for var in self.type_expr.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'Type.array(%s)' % str(self.type_expr)
+
+    def describe_other_fields(self):
+        return self.type_expr.describe_other_fields()
+
+class FunctionTypeExpr(Expr):
+    def __init__(self, return_type_expr: Expr, arg_list_expr: Expr):
+        assert return_type_expr.type == TypeType()
+        assert arg_list_expr.type == TypeType()
+
+        super().__init__(type=TypeType())
+        self.return_type_expr = return_type_expr
+        self.arg_list_expr = arg_list_expr
+
+    def get_free_variables(self):
+        for expr in (self.return_type_expr, self.arg_list_expr):
             for var in expr.get_free_variables():
                 yield var
 
     def __str__(self):
-        return str(TypeLiteral(cpp_type='%s<%s>' % (self.template_name, ', '.join(arg.name
-                                                                                  for arg in self.args)),
-                               args={arg.name: arg.name
-                                     for arg in self.args}))
+        return 'Type.function(%s, %s)' % (str(self.return_type_expr),
+                                          str(self.arg_list_expr))
 
     def describe_other_fields(self):
-        return '; '.join('%s: %s' % (arg.name, arg.describe_other_fields())
-                         for arg in self.args)
+        return 'return_type: %s; arg_type_list: %s' % (str(self.return_type_expr.describe_other_fields()),
+                                                       str(self.arg_list_expr.describe_other_fields()))
+
+class TemplateInstantiation(Expr):
+    def __init__(self,
+                 template_name: str,
+                 arg_exprs: List[Expr],
+                 instantiation_might_trigger_static_asserts: bool):
+        super().__init__(type=TypeType())
+        self.template_name = template_name
+        self.arg_exprs = arg_exprs
+        self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
+
+    def get_free_variables(self):
+        for arg_expr in self.arg_exprs:
+            for var in arg_expr.get_free_variables():
+                yield var
+
+    def __str__(self):
+        return 'Type.template_instantiation(\'%s\', [%s])' % (self.template_name, ', '.join(str(arg_expr)
+                                                                                            for arg_expr in self.arg_exprs))
+
+    def describe_other_fields(self):
+        return '[%s]' % '; '.join(arg_expr.describe_other_fields()
+                                  for arg_expr in self.arg_exprs)
+
+class TemplateInstantiationWithList(Expr):
+    def __init__(self,
+                 template_name: str,
+                 arg_list_expr: Expr,
+                 instantiation_might_trigger_static_asserts: bool):
+        super().__init__(type=TypeType())
+        self.template_name = template_name
+        self.arg_list_expr = arg_list_expr
+        self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
+
+    def get_free_variables(self):
+        for var in self.arg_list_expr.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'Type.template_instantiation(\'%s\', %s)' % (self.template_name, str(self.arg_list_expr))
+
+    def describe_other_fields(self):
+        return self.arg_list_expr.describe_other_fields()
 
 class ClassMemberAccess(Expr):
     def __init__(self, class_type_expr: Expr, member_name: str, member_type: ExprType):
@@ -269,6 +395,25 @@ class ClassMemberAccess(Expr):
     def __str__(self):
         return str(TypeLiteral(cpp_type='X::%s' % self.member_name,
                                args={'X': self.class_type_expr}))
+
+    def describe_other_fields(self):
+        return self.class_type_expr.describe_other_fields()
+
+class TemplateMemberAccess(Expr):
+    def __init__(self, class_type_expr: VarReference, member_name: str, arg_list_expr: VarReference):
+        super().__init__(type=TypeType())
+        self.class_type_expr = class_type_expr
+        self.member_name = member_name
+        self.arg_list_expr = arg_list_expr
+
+    def get_free_variables(self):
+        for var in self.class_type_expr.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return 'Type.template_member(%s, \'%s\', %s)' % (str(self.class_type_expr),
+                                                         self.member_name,
+                                                         str(self.arg_list_expr))
 
     def describe_other_fields(self):
         return self.class_type_expr.describe_other_fields()
@@ -381,7 +526,7 @@ class IntLiteral(Expr):
 
     def get_free_variables(self):
         if False:
-            yield
+            yield  # pragma: no cover
 
     def __str__(self):
         return str(self.value)
@@ -706,8 +851,7 @@ class FunctionDefn:
             writer.writeln(self.description)
         writer.writeln('def %s(%s) -> %s:' % (
             self.name,
-            ', '.join('%s: %s' % (arg.name, str(arg.type))
-                      for arg in self.args),
+            ', '.join(str(arg) for arg in self.args),
             str(self.return_type)))
         with writer.indent():
             for stmt in self.body:

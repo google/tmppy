@@ -14,7 +14,7 @@
 
 from py2tmp.testing import *
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_success():
     from tmppy import Type
     def f(x: bool):
@@ -24,7 +24,7 @@ def test_if_else_success():
             return Type('float')
     assert f(True) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_defining_local_var_success():
     from tmppy import Type
     def f(x: bool):
@@ -35,7 +35,7 @@ def test_if_else_defining_local_var_success():
             return Type('float')
     assert f(True) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_only_if_returns_success():
     from tmppy import Type
     def f(x: bool):
@@ -46,7 +46,7 @@ def test_if_else_only_if_returns_success():
         return y
     assert f(True) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_only_else_returns_success():
     from tmppy import Type
     def f(x: bool):
@@ -57,7 +57,7 @@ def test_if_else_only_else_returns_success():
         return y
     assert f(True) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_returns_success():
     from tmppy import Type
     def f(x: bool):
@@ -66,7 +66,7 @@ def test_if_returns_success():
         return Type('float')
     assert f(True) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_neither_returns_success():
     from tmppy import Type
     def f(x: bool):
@@ -77,7 +77,7 @@ def test_if_else_neither_returns_success():
         return y
     assert f(True) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_assert_in_if_branch_never_taken_ok():
     def f(x: bool):
         if False:
@@ -86,7 +86,7 @@ def test_if_else_assert_in_if_branch_never_taken_ok():
         return True
     assert f(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_assert_in_else_branch_never_taken_ok():
     def f(x: bool):
         if True:
@@ -98,7 +98,7 @@ def test_if_else_assert_in_else_branch_never_taken_ok():
         return True
     assert f(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_assert_in_continuation_never_executed_ok():
     from tmppy import Type
     def f(x: bool):
@@ -109,7 +109,7 @@ def test_if_else_assert_in_continuation_never_executed_ok():
         return Type('void')
     assert f(True) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_with_comparisons_success():
     from tmppy import Type
     def f(x: Type):
@@ -120,7 +120,7 @@ def test_if_else_with_comparisons_success():
         return b == True
     assert f(Type('int')) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_variable_forwarded_to_if_branch_success():
     def f(x: bool):
         if x:
@@ -129,7 +129,7 @@ def test_if_else_variable_forwarded_to_if_branch_success():
             return False
     assert f(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_variable_forwarded_to_else_branch_success():
     def f(x: bool):
         if x:
@@ -138,7 +138,7 @@ def test_if_else_variable_forwarded_to_else_branch_success():
             return x
     assert f(False) == False
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_variable_forwarded_to_continuation_success():
     def f(x: bool):
         if False:
@@ -146,7 +146,7 @@ def test_if_else_variable_forwarded_to_continuation_success():
         return x
     assert f(True) == True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_variable_forwarded_to_both_branches_success():
     def f(x: bool):
         if x:
@@ -183,7 +183,7 @@ def test_if_else_returning_different_types_error():
         else:
             return True  # error: Found return statement with different return type: bool instead of Type.
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_if_branch_defining_additional_var_success():
     from tmppy import Type
     def f(x: bool):
@@ -195,7 +195,7 @@ def test_if_else_if_branch_defining_additional_var_success():
         return y
     assert f(True) == Type('int')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_else_branch_defining_additional_var_success():
     from tmppy import Type
     def f(x: bool):
@@ -270,7 +270,7 @@ def test_if_else_missing_else_branch_no_return_after_error():
         if x:  # error: Missing return statement. You should add an else branch that returns, or a return after the if.
             return True
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_if_else_sequential_success():
     from tmppy import Type
     def f(x: bool):

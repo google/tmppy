@@ -84,12 +84,15 @@ def apply_toplevel_elems_optimization(toplevel_elems: List[Union[ir0.StaticAsser
 
 class ExprSimplifyingTransformation(transform_ir0.Transformation):
     def transform_expr(self, expr: ir0.Expr, writer: transform_ir0.Writer, split_nontrivial_exprs=True) -> ir0.Expr:
-        if split_nontrivial_exprs and not isinstance(expr, ir0.TypeLiteral):
+        if split_nontrivial_exprs and not isinstance(expr, ir0.AtomicTypeLiteral):
             expr = super().transform_expr(expr, writer)
             var = writer.new_constant_or_typedef(expr)
             return var
         else:
             return expr
+
+    def transform_pattern(self, expr: ir0.Expr, writer: transform_ir0.Writer):
+        return expr
 
     def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: transform_ir0.Writer):
         writer.write(ir0.ConstantDef(name=constant_def.name,
@@ -104,10 +107,9 @@ def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generato
 
   Unlike other constants/typedefs, the exprs that initialize "result" and "error" will always have 0 operations.
   '''
-  writer = transform_ir0.ToplevelWriter(identifier_generator)
+  writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
   ExprSimplifyingTransformation().transform_template_defn(template_defn, writer)
   [new_template_defn] = writer.template_defns
-  assert not writer.toplevel_elems
 
   return new_template_defn
 
@@ -117,23 +119,23 @@ def normalize_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.Co
 
   Unlike other constants/typedefs, the exprs that initialize "result" and "error" will always have 0 operations.
   '''
-  writer = transform_ir0.ToplevelWriter(identifier_generator)
+  writer = transform_ir0.ToplevelWriter(identifier_generator, allow_template_defns=False)
   for toplevel_elem in toplevel_elems:
     ExprSimplifyingTransformation().transform_toplevel_elem(toplevel_elem, writer)
 
-  assert not writer.template_defns
   return writer.toplevel_elems
 
 def create_var_to_var_assignment(lhs: str, rhs: str, type: ir0.ExprType):
   if type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
     return ir0.ConstantDef(name=lhs,
-                           expr=ir0.TypeLiteral.for_local(cpp_type=rhs,
+                           expr=ir0.AtomicTypeLiteral.for_local(cpp_type=rhs,
                                                           type=type))
   elif type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
     return ir0.Typedef(name=lhs,
-                       expr=ir0.TypeLiteral.for_local(cpp_type=rhs,
+                       expr=ir0.AtomicTypeLiteral.for_local(cpp_type=rhs,
                                                       type=type))
   else:
+    # TODO: consider handling VARIADIC_TYPE too.
     raise NotImplementedError('Unexpected kind: %s' % str(type.kind))
 
 class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
@@ -171,7 +173,7 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
         # First we process all args, so that we'll remove assignments of the form:
         # x1 = arg1
         for arg in template_specialization_args:
-          name_by_expr[ir0.TypeLiteral.for_local(cpp_type=arg.name,
+          name_by_expr[ir0.AtomicTypeLiteral.for_local(cpp_type=arg.name,
                                                  type=arg.type)] = arg.name
           type_by_name[arg.name] = arg.type
 
@@ -227,10 +229,9 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
 
       result_elems = []
       for elem in elems:
-        writer = transform_ir0.ToplevelWriter(identifier_generator)
+        writer = transform_ir0.ToplevelWriter(identifier_generator, allow_template_defns=False)
         NameReplacementTransformation(replacements).transform_toplevel_elem(elem, writer)
         [elem] = writer.toplevel_elems
-        assert not writer.template_defns
 
         if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.expr in name_by_expr:
           replacements[elem.name] = name_by_expr[elem.expr]
@@ -244,10 +245,9 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
 
 def perform_common_subexpression_normalization(template_defn: ir0.TemplateDefn,
                                                identifier_generator: Iterator[str]):
-  writer = transform_ir0.ToplevelWriter(identifier_generator)
+  writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
   CommonSubexpressionEliminationTransformation().transform_template_defn(template_defn, writer)
   [template_defn] = writer.template_defns
-  assert not writer.toplevel_elems
   return template_defn
 
 def perform_common_subexpression_normalization_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
@@ -259,21 +259,21 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
         self.var = var
         self.replacement_expr = replacement_expr
 
-    def transform_type_literal(self, type_literal: ir0.TypeLiteral, writer: transform_ir0.Writer):
+    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: transform_ir0.Writer):
         if type_literal.cpp_type == self.var:
             return self.replacement_expr
 
         if self.var not in type_literal.get_referenced_identifiers():
             return type_literal
 
-        if isinstance(self.replacement_expr, ir0.TypeLiteral):
+        if isinstance(self.replacement_expr, ir0.AtomicTypeLiteral):
             referenced_locals = []
             for referenced_local in type_literal.referenced_locals:
                 if referenced_local.cpp_type != self.var:
                     referenced_locals.append(referenced_local)
             for referenced_local in self.replacement_expr.referenced_locals:
                 referenced_locals.append(referenced_local)
-            return ir0.TypeLiteral(cpp_type=utils.replace_identifiers(type_literal.cpp_type, {self.var: self.replacement_expr.cpp_type}),
+            return ir0.AtomicTypeLiteral(cpp_type=utils.replace_identifiers(type_literal.cpp_type, {self.var: self.replacement_expr.cpp_type}),
                                    is_local=type_literal.is_local and self.replacement_expr.is_local,
                                    is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error or self.replacement_expr.is_metafunction_that_may_return_error,
                                    referenced_locals=referenced_locals,
@@ -283,11 +283,9 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
         raise NotImplementedError('The replacement of "%s" with "%s" in "%s" is not implemented yet.' % (self.var, expr_to_cpp(self.replacement_expr), type_literal.cpp_type))
 
 def replace_var_with_expr(elem: ir0.TemplateBodyElement, var: str, expr: ir0.Expr) -> ir0.TemplateBodyElement:
-    toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[])
+    toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[], allow_template_defns=False, allow_toplevel_elems=False)
     writer = transform_ir0.TemplateBodyWriter(toplevel_writer)
     ReplaceVarWithExprTransformation(var, expr).transform_template_body_elem(elem, writer)
-    assert not toplevel_writer.template_defns
-    assert not toplevel_writer.toplevel_elems
     [elem] = writer.elems
     return elem
 
@@ -434,7 +432,7 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                     want_to_inline_var = True
                 elif isinstance(defining_stmt.expr, ir0.Literal):
                     want_to_inline_var = True
-                elif isinstance(defining_stmt.expr, ir0.TypeLiteral) and len(list(defining_stmt.expr.get_referenced_identifiers())) <= 1:
+                elif isinstance(defining_stmt.expr, ir0.AtomicTypeLiteral) and len(list(defining_stmt.expr.get_referenced_identifiers())) <= 1:
                     want_to_inline_var = True
                 else:
                     want_to_inline_var = (remaining_uses_of_var[var] == 1)
@@ -519,21 +517,17 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
 def perform_constant_folding(template_defn: ir0.TemplateDefn,
                              identifier_generator: Iterator[str],
                              inline_template_instantiations_with_multiple_references: bool):
-  writer = transform_ir0.ToplevelWriter(identifier_generator)
+  writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
   transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
   transformation.transform_template_defn(template_defn, writer)
   [template_defn] = writer.template_defns
-  assert not writer.toplevel_elems
   return template_defn
 
 def perform_constant_folding_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
                                                identifier_generator: Iterator[str],
                                                inline_template_instantiations_with_multiple_references: bool):
-  writer = transform_ir0.ToplevelWriter(identifier_generator)
   transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
   toplevel_elems = transformation._transform_template_body_elems(toplevel_elems, result_element_names=tuple())
-  assert not writer.template_defns
-  assert not writer.toplevel_elems
   return toplevel_elems
 
 def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn,
@@ -593,16 +587,11 @@ class NameReplacementTransformation(transform_ir0.Transformation):
         super().__init__()
         self.replacements = replacements
 
-    def transform_pattern(self, pattern: ir0.TemplateArgPatternLiteral):
-        return ir0.TemplateArgPatternLiteral(cxx_pattern=utils.replace_identifiers(pattern.cxx_pattern, self.replacements))
-
-    def transform_type_literal(self, type_literal: ir0.TypeLiteral, writer: transform_ir0.Writer):
-        return ir0.TypeLiteral(cpp_type=utils.replace_identifiers(type_literal.cpp_type, self.replacements),
-                               is_local=type_literal.is_local,
-                               is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
-                               referenced_locals=[self.transform_type_literal(referenced_literal, writer)
-                                                  for referenced_literal in type_literal.referenced_locals],
-                               type=type_literal.type)
+    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: transform_ir0.Writer):
+        return ir0.AtomicTypeLiteral(cpp_type=utils.replace_identifiers(type_literal.cpp_type, self.replacements),
+                                     is_local=type_literal.is_local,
+                                     is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
+                                     type=type_literal.type)
 
     def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: transform_ir0.Writer):
         writer.write(ir0.ConstantDef(name=self._transform_name(constant_def.name),
@@ -640,7 +629,7 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
         assert isinstance(writer, transform_ir0.TemplateBodyWriter)
         if (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
-                and isinstance(class_member_access.expr.template_expr, ir0.TypeLiteral)
+                and isinstance(class_member_access.expr.template_expr, ir0.AtomicTypeLiteral)
                 and class_member_access.expr.template_expr.cpp_type in self.inlineable_templates_by_name):
             template_instantiation = class_member_access.expr
             template_defn_to_inline = self.inlineable_templates_by_name[template_instantiation.template_expr.cpp_type]
@@ -669,7 +658,7 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
             for elem in template_defn_to_inline.main_definition.body:
                 transformation.transform_template_body_elem(elem, writer)
 
-            return ir0.TypeLiteral.for_local(cpp_type=new_var_name_by_old_var_name[class_member_access.member_name],
+            return ir0.AtomicTypeLiteral.for_local(cpp_type=new_var_name_by_old_var_name[class_member_access.member_name],
                                              type=class_member_access.type)
         else:
             return super().transform_class_member_access(class_member_access, writer)
@@ -688,10 +677,9 @@ def perform_template_inlining(template_defn: ir0.TemplateDefn,
     transformation = TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
                                                                   for template_name in inlineable_refs})
 
-    writer = transform_ir0.ToplevelWriter(identifier_generator)
+    writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
     transformation.transform_template_defn(template_defn, writer)
     [new_template_defn] = writer.template_defns
-    assert not writer.toplevel_elems
     return new_template_defn
 
   template_defn = apply_optimization(template_defn,
@@ -718,10 +706,8 @@ def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir0.S
     transformation = TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
                                                                   for template_name in inlineable_refs})
 
-    writer = transform_ir0.ToplevelWriter(identifier_generator)
+    writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False, allow_template_defns=False)
     elems = transformation.transform_template_body_elems(toplevel_elems, writer)
-    assert not writer.template_defns
-    assert not writer.toplevel_elems
 
     return elems
 

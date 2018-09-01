@@ -57,7 +57,7 @@ class FunWriter(Writer):
         arg_decls = [ir2.FunctionArgDecl(type=x_var.type, name=x_var.name)]
 
         stmt_writer = StmtWriter(self, current_fun_return_type=ir2.BoolType(), current_fun_args=arg_decls)
-        v_var = stmt_writer.new_var_for_expr(ir2.TypeLiteral(cpp_type='void', args=dict()))
+        v_var = stmt_writer.new_var_for_expr(ir2.AtomicTypeLiteral('void'))
         b_var = stmt_writer.new_var_for_expr(ir2.EqualityComparison(lhs=x_var, rhs=v_var))
         b2_var = stmt_writer.new_var_for_expr(ir2.NotExpr(b_var))
         stmt_writer.write_stmt(ir2.ReturnStmt(result=b2_var, error=None))
@@ -209,8 +209,24 @@ def expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.VarReference:
         return bool_literal_to_ir2(expr, writer)
     elif isinstance(expr, ir3.IntLiteral):
         return int_literal_to_ir2(expr, writer)
-    elif isinstance(expr, ir3.TypeLiteral):
-        return type_literal_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.AtomicTypeLiteral):
+        return atomic_type_literal_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.PointerTypeExpr):
+        return pointer_type_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.ReferenceTypeExpr):
+        return reference_type_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.RvalueReferenceTypeExpr):
+        return rvalue_reference_type_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.ConstTypeExpr):
+        return const_type_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.ArrayTypeExpr):
+        return array_type_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.FunctionTypeExpr):
+        return function_type_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.TemplateInstantiationExpr):
+        return template_instantiation_expr_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.TemplateMemberAccessExpr):
+        return template_member_access_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.ListExpr):
         return list_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.SetExpr):
@@ -254,6 +270,33 @@ def expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.VarReference:
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
+def type_pattern_expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.PatternExpr:
+    if isinstance(expr, ir3.VarReference):
+        return var_reference_to_ir2_pattern(expr, writer)
+    elif isinstance(expr, ir3.AtomicTypeLiteral):
+        return atomic_type_literal_to_ir2_type_pattern(expr, writer)
+    # TODO: Re-enable this once it's possible to use bools in template instantiations.
+    # elif isinstance(expr, ir3.BoolLiteral):
+    #     return bool_literal_to_ir2_type_pattern(expr, writer)
+    elif isinstance(expr, ir3.PointerTypeExpr):
+        return pointer_type_expr_to_ir2_type_pattern(expr, writer)
+    elif isinstance(expr, ir3.ReferenceTypeExpr):
+        return reference_type_expr_to_ir2_type_pattern(expr, writer)
+    elif isinstance(expr, ir3.RvalueReferenceTypeExpr):
+        return rvalue_reference_type_expr_to_ir2_type_pattern(expr, writer)
+    elif isinstance(expr, ir3.ConstTypeExpr):
+        return const_type_expr_to_ir2_type_pattern(expr, writer)
+    elif isinstance(expr, ir3.ArrayTypeExpr):
+        return array_type_expr_to_ir2_type_pattern(expr, writer)
+    elif isinstance(expr, ir3.FunctionTypeExpr):
+        return function_type_expr_to_ir2_type_pattern(expr, writer)
+    elif isinstance(expr, ir3.TemplateInstantiationExpr):
+        return template_instantiation_expr_to_ir2_type_pattern(expr, writer)
+    elif isinstance(expr, ir3.ListExpr):
+        return list_expr_to_ir2_type_pattern(expr, writer)
+    else:
+        raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
+
 def function_arg_decl_to_ir2(decl: ir3.FunctionArgDecl, writer: Writer):
     return ir2.FunctionArgDecl(type=type_to_ir2(decl.type),
                                name=writer.obfuscate_identifier(decl.name))
@@ -266,7 +309,7 @@ def var_reference_to_ir2(var: ir3.VarReference, writer: StmtWriter):
 
 def _select_arbitrary_forwarded_arg(args: List[ir2.FunctionArgDecl]):
     for arg in args:
-        if not isinstance(arg, ir2.FunctionType):
+        if not isinstance(arg.type, ir2.FunctionType):
             selected_arg = arg
             break
     else:
@@ -305,10 +348,8 @@ def match_expr_to_ir2(match_expr: ir3.MatchExpr, writer: StmtWriter):
                                          name=match_fun_name,
                                          is_global_function=True,
                                          is_function_that_may_throw=True)
-        replacements = {var_name: writer.obfuscate_identifier(var_name)
-                        for var_name in match_case.matched_var_names}
 
-        match_cases.append(ir2.MatchCase(type_patterns=[utils.replace_identifiers(type_pattern, replacements)
+        match_cases.append(ir2.MatchCase(type_patterns=[type_pattern_expr_to_ir2(type_pattern, writer)
                                                         for type_pattern in match_case.type_patterns],
                                          matched_var_names=[writer.obfuscate_identifier(var_name)
                                                            for var_name in match_case.matched_var_names],
@@ -323,11 +364,36 @@ def bool_literal_to_ir2(literal: ir3.BoolLiteral, writer: StmtWriter):
 def int_literal_to_ir2(literal: ir3.IntLiteral, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.IntLiteral(value=literal.value))
 
-def type_literal_to_ir2(literal: ir3.TypeLiteral, writer: StmtWriter):
-    arg_vars_by_name = dict()
-    for arg_name, arg_expr in sorted(literal.arg_exprs.items(), key=lambda item: item[0]):
-        arg_vars_by_name[arg_name] = expr_to_ir2(arg_expr, writer)
-    return writer.new_var_for_expr(ir2.TypeLiteral(cpp_type=literal.cpp_type, args=arg_vars_by_name))
+def atomic_type_literal_to_ir2(literal: ir3.AtomicTypeLiteral, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.AtomicTypeLiteral(cpp_type=literal.cpp_type))
+
+def pointer_type_expr_to_ir2(expr: ir3.PointerTypeExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.PointerTypeExpr(expr_to_ir2(expr.type_expr, writer)))
+
+def reference_type_expr_to_ir2(expr: ir3.ReferenceTypeExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.ReferenceTypeExpr(expr_to_ir2(expr.type_expr, writer)))
+
+def rvalue_reference_type_expr_to_ir2(expr: ir3.RvalueReferenceTypeExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.RvalueReferenceTypeExpr(expr_to_ir2(expr.type_expr, writer)))
+
+def const_type_expr_to_ir2(expr: ir3.ConstTypeExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.ConstTypeExpr(expr_to_ir2(expr.type_expr, writer)))
+
+def array_type_expr_to_ir2(expr: ir3.ArrayTypeExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.ArrayTypeExpr(expr_to_ir2(expr.type_expr, writer)))
+
+def function_type_expr_to_ir2(expr: ir3.FunctionTypeExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.FunctionTypeExpr(return_type_expr=expr_to_ir2(expr.return_type_expr, writer),
+                                                        arg_list_expr=expr_to_ir2(expr.arg_list_expr, writer)))
+
+def template_instantiation_expr_to_ir2(expr: ir3.TemplateInstantiationExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.TemplateInstantiationExpr(template_atomic_cpp_type=expr.template_atomic_cpp_type,
+                                                                 arg_list_expr=expr_to_ir2(expr.arg_list_expr, writer)))
+
+def template_member_access_expr_to_ir2(expr: ir3.TemplateMemberAccessExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.TemplateMemberAccessExpr(class_type_expr=expr_to_ir2(expr.class_type_expr, writer),
+                                                                member_name=expr.member_name,
+                                                                arg_list_expr=expr_to_ir2(expr.arg_list_expr, writer)))
 
 def list_expr_to_ir2(list_expr: ir3.ListExpr, writer: StmtWriter):
     elem_vars = [expr_to_ir2(elem_expr, writer)
@@ -480,7 +546,7 @@ def deconstructed_list_comprehension_expr_to_ir2(list_var: ir3.VarReference,
         if writer.current_fun_args:
             forwarded_vars = [_select_arbitrary_forwarded_arg(writer.current_fun_args)]
         else:
-            forwarded_vars = [writer.new_var_for_expr(expr=ir2.TypeLiteral(cpp_type='void', args={}))]
+            forwarded_vars = [writer.new_var_for_expr(expr=ir2.AtomicTypeLiteral('void'))]
 
     helper_fun_name = writer.new_id()
     writer.write_function(ir2.FunctionDefn(name=helper_fun_name,
@@ -531,6 +597,50 @@ def set_comprehension_expr_to_ir2(expr: ir3.SetComprehension, writer: StmtWriter
                                                           writer=writer)
 
     return writer.new_var_for_expr(ir2.ListToSetExpr(l2_var))
+
+def var_reference_to_ir2_pattern(var: ir3.VarReference, writer: StmtWriter):
+    return ir2.VarReferencePattern(type=type_to_ir2(var.type),
+                                   name=var.name if var.is_global_function else writer.obfuscate_identifier(var.name),
+                                   is_global_function=var.is_global_function,
+                                   is_function_that_may_throw=var.is_function_that_may_throw)
+
+def atomic_type_literal_to_ir2_type_pattern(expr: ir3.AtomicTypeLiteral, writer: StmtWriter):
+    return ir2.AtomicTypeLiteralPattern(expr.cpp_type)
+
+# TODO: Re-enable this once it's possible to use bools in template instantiations.
+# def bool_literal_to_ir2_type_pattern(expr: ir3.BoolLiteral, writer: StmtWriter):
+#     return ir2.BoolLiteral(expr.value)
+
+def pointer_type_expr_to_ir2_type_pattern(expr: ir3.PointerTypeExpr, writer: StmtWriter):
+    return ir2.PointerTypePatternExpr(type_pattern_expr_to_ir2(expr.type_expr, writer))
+
+def reference_type_expr_to_ir2_type_pattern(expr: ir3.ReferenceTypeExpr, writer: StmtWriter):
+    return ir2.ReferenceTypePatternExpr(type_pattern_expr_to_ir2(expr.type_expr, writer))
+
+def rvalue_reference_type_expr_to_ir2_type_pattern(expr: ir3.RvalueReferenceTypeExpr, writer: StmtWriter):
+    return ir2.RvalueReferenceTypePatternExpr(type_pattern_expr_to_ir2(expr.type_expr, writer))
+
+def const_type_expr_to_ir2_type_pattern(expr: ir3.ConstTypeExpr, writer: StmtWriter):
+    return ir2.ConstTypePatternExpr(type_pattern_expr_to_ir2(expr.type_expr, writer))
+
+def array_type_expr_to_ir2_type_pattern(expr: ir3.ArrayTypeExpr, writer: StmtWriter):
+    return ir2.ArrayTypePatternExpr(type_pattern_expr_to_ir2(expr.type_expr, writer))
+
+def function_type_expr_to_ir2_type_pattern(expr: ir3.FunctionTypeExpr, writer: StmtWriter):
+    return ir2.FunctionTypePatternExpr(return_type_expr=type_pattern_expr_to_ir2(expr.return_type_expr, writer),
+                                       arg_list_expr=type_pattern_expr_to_ir2(expr.arg_list_expr, writer))
+
+def template_instantiation_expr_to_ir2_type_pattern(expr: ir3.TemplateInstantiationExpr, writer: StmtWriter):
+    # This is the only ListExpr that's allowed in a template instantiation in a pattern.
+    assert isinstance(expr.arg_list_expr, ir3.ListExpr)
+    return ir2.TemplateInstantiationPatternExpr(template_atomic_cpp_type=expr.template_atomic_cpp_type,
+                                                arg_exprs=[type_pattern_expr_to_ir2(arg_expr, writer)
+                                                           for arg_expr in expr.arg_list_expr.elem_exprs])
+
+def list_expr_to_ir2_type_pattern(expr: ir3.ListExpr, writer: StmtWriter):
+    return ir2.ListPatternExpr(elem_type=type_to_ir2(expr.elem_type),
+                               elems=[type_pattern_expr_to_ir2(elem_expr, writer)
+                                      for elem_expr in expr.elem_exprs])
 
 def assert_to_ir2(assert_stmt: ir3.Assert, writer: StmtWriter):
     writer.write_stmt(ir2.Assert(var=expr_to_ir2(assert_stmt.expr, writer),

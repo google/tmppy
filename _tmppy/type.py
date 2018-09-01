@@ -12,24 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import typing
-from typing import TypeVar, Callable, Dict, Any, List
+from typing import Callable, Dict, Any, List, Union, Tuple
 
 class Type:
-    def __init__(self, s, **kwargs: 'Type'):
-        self.s = s
+    def __init__(self, atomic_type: str): ...
 
-    def __str__(self):
-        return "Type(%s)" % self.s
+    @staticmethod
+    def pointer(other: 'Type') -> 'Type': ...
 
-    def matches(self, str) -> 'typing.List[Type]': ...
+    @staticmethod
+    def reference(other: 'Type') -> 'Type': ...
 
-    def __getattr__(self, item) -> 'Type': ...
+    @staticmethod
+    def rvalue_reference(other: 'Type') -> 'Type': ...
 
-class TypePattern():
-    def __init__(self, *p: str, **kwargs):
-        pass
+    @staticmethod
+    def const(other: 'Type') -> 'Type': ...
 
-T = TypeVar('T')
+    # E.g. Type.function(Type('int'), [Type('float')]) constructs the type 'int(float)'
+    @staticmethod
+    def function(return_type: 'Type', args: List['Type']) -> 'Type': ...
 
-def match(arg: Type, *args: Type) -> Callable[[Dict[TypePattern, Callable[Any, T]]], T]: ...
+    # E.g. Type.array(Type('int')) constructs the type 'int[]'
+    @staticmethod
+    def array(elem_type: 'Type') -> 'Type': ...
+
+    @staticmethod
+    def template_instantiation(template_atomic_type: str, args: List['Type']) -> 'Type': ...
+
+    # E.g. Type.template_member(Type('foo'), 'bar', [Type('int')]) constructs the type 'foo::bar<int>'.
+    @staticmethod
+    def template_member(type: 'Type', member_name: str, args: List['Type']) -> 'Type': ...
+
+    # E.g. Type('foo').bar is the type 'foo::bar'.
+    def __getattr__(self, member_name: str) -> 'Type': ...
+
+def match(*types: Type) -> Callable[Any, Dict[Union[Type, Tuple[Type, ...]], Type]]: ...

@@ -14,7 +14,7 @@
 
 from py2tmp.testing import *
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_exception_raised_and_caught_success():
     from tmppy import Type
     class MyError(Exception):
@@ -24,7 +24,7 @@ def test_exception_raised_and_caught_success():
             self.x = x
     def f(b: bool):
         if b:
-            raise MyError(b, Type('int*'))
+            raise MyError(b, Type.pointer(Type('int')))
         return Type('float')
     def g(b: bool):
         try:
@@ -32,11 +32,11 @@ def test_exception_raised_and_caught_success():
             return x
         except MyError as e:
             assert e.b == b
-            assert e.x == Type('int*')
+            assert e.x == Type.pointer(Type('int'))
             return Type('double')
     assert g(True) == Type('double')
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_exception_raised_and_caught_same_block_success():
     from tmppy import Type
     class MyError(Exception):
@@ -46,10 +46,10 @@ def test_exception_raised_and_caught_same_block_success():
             self.x = x
     def f(b: bool):
         try:
-            raise MyError(b, Type('int*'))
+            raise MyError(b, Type.pointer(Type('int')))
         except MyError as e:
             assert e.b == b
-            assert e.x == Type('int*')
+            assert e.x == Type.pointer(Type('int'))
             return Type('double')
     assert f(True) == Type('double')
 
@@ -68,7 +68,7 @@ def test_catch_does_not_catch_other_exception():
             self.x = x
     def f(b: bool):
         if b:
-            raise MyError1(b, Type('int*'))
+            raise MyError1(b, Type.pointer(Type('int')))
         return Type('float')
     def g(b: bool):
         try:
@@ -76,7 +76,7 @@ def test_catch_does_not_catch_other_exception():
             return x
         except MyError2 as e:
             assert e.b == b
-            assert e.x == Type('int*')
+            assert e.x == Type.pointer(Type('int'))
             return Type('double')
     assert g(True) == Type('double')
 
@@ -95,10 +95,10 @@ def test_catch_does_not_catch_other_exception_same_block():
             self.x = x
     def f(b: bool):
         try:
-            raise MyError1(b, Type('int*'))
+            raise MyError1(b, Type.pointer(Type('int')))
         except MyError2 as e:
             assert e.b == b
-            assert e.x == Type('int*')
+            assert e.x == Type.pointer(Type('int'))
             return Type('double')
     assert f(True) == Type('double')
 
@@ -118,7 +118,7 @@ def test_exception_raised_and_not_caught_error():
             self.b = b
             self.x = x
     def f(b: bool) -> bool:
-        raise MyError(b, Type('int*'))
+        raise MyError(b, Type.pointer(Type('int')))
     assert f(True)
 
 @assert_compilation_fails_with_static_assert_error('Something went wrong')
@@ -131,7 +131,7 @@ def test_exception_raised_and_not_caught_with_branch_error():
             self.x = x
     def f(b: bool):
         if b:
-            raise MyError(b, Type('int*'))
+            raise MyError(b, Type.pointer(Type('int')))
         return 1
     assert f(True) == 15
 
@@ -144,12 +144,12 @@ def test_exception_raised_and_not_caught_from_another_function_error():
             self.b = b
             self.x = x
     def f(b: bool) -> bool:
-        raise MyError(b, Type('int*'))
+        raise MyError(b, Type.pointer(Type('int')))
     def g(b: bool) -> bool:
         return f(b)
     assert g(True)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_that_always_raises_an_exception_no_type_annotation_ok():
     class MyError(Exception):
         def __init__(self, x: bool):
@@ -165,7 +165,7 @@ def test_function_that_always_raises_an_exception_no_type_annotation_ok():
             return e.x
     assert g(True)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_function_that_always_raises_an_exception_with_type_annotation_ok():
     class MyError(Exception):
         def __init__(self, x: bool):
@@ -181,7 +181,7 @@ def test_function_that_always_raises_an_exception_with_type_annotation_ok():
             return e.x
     assert g(True)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_exception_returned_ok():
     class MyError(Exception):
         def __init__(self, x: bool):
@@ -194,7 +194,7 @@ def test_exception_returned_ok():
         return True
     assert g(True)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_var_defined_in_try_and_except_used_after_ok():
     class MyError(Exception):
         def __init__(self, x: bool):
@@ -208,7 +208,7 @@ def test_var_defined_in_try_and_except_used_after_ok():
         return x
     assert f(True)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_var_defined_in_try_except_always_returns_used_after_ok():
     class MyError(Exception):
         def __init__(self, x: bool):
@@ -222,7 +222,7 @@ def test_var_defined_in_try_except_always_returns_used_after_ok():
         return x
     assert f(True)
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_var_defined_in_except_try_always_returns_used_after_ok():
     class MyError(Exception):
         def __init__(self, x: bool):
@@ -318,7 +318,7 @@ def test_try_except_in_except_error():
             except MyError as e:
                 return 1
 
-@assert_compilation_succeeds
+@assert_compilation_succeeds()
 def test_try_except_after_if_ok():
     class MyError(Exception):
         def __init__(self, b: bool):
