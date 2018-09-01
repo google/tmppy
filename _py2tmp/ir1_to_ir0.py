@@ -1067,7 +1067,7 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
         then_function_call_expr = None
         then_function_call_error_expr = None
 
-    if write_continuation_fun_call is None and (then_function_call_expr or then_function_call_error_expr):
+    if then_function_call_expr or then_function_call_error_expr:
         write_continuation_fun_call = lambda writer: writer.write_result_body_elements(result_expr=then_function_call_expr,
                                                                                        error_expr=then_function_call_error_expr)
 

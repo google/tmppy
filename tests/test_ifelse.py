@@ -376,3 +376,262 @@ def test_if_else_sequential_reassigned_var_else_else_error():
             z = Type('int')  # error: z could be already initialized at this point.
         return True
 
+@assert_compilation_succeeds()
+def test_two_nested_ifs_with_else():
+    def g(b1: bool, b2: bool):
+        if b1:
+            if b2:
+                return 1
+            else:
+                return 2
+        else:
+            if b2:
+                return 3
+            else:
+                return 4
+    assert g(True, True) == 1
+    assert g(True, False) == 2
+    assert g(False, True) == 3
+    assert g(False, False) == 4
+
+@assert_compilation_succeeds()
+def test_two_nested_ifs_without_else():
+    def g(b1: bool, b2: bool):
+        if b1:
+            if b2:
+                return 1
+            return 2
+        return 3
+    assert g(True, True) == 1
+    assert g(True, False) == 2
+    assert g(False, True) == 3
+    assert g(False, False) == 3
+
+@assert_compilation_succeeds()
+def test_two_nested_ifs_outer_without_else():
+    def g(b1: bool, b2: bool):
+        if b1:
+            if b2:
+                return 1
+            else:
+                return 2
+        return 3
+    assert g(True, True) == 1
+    assert g(True, False) == 2
+    assert g(False, True) == 3
+    assert g(False, False) == 3
+
+@assert_compilation_succeeds()
+def test_two_nested_ifs_inner_without_else():
+    def g(b1: bool, b2: bool):
+        if b1:
+            if b2:
+                return 1
+            return 2
+        else:
+            if b2:
+                return 3
+            return 4
+    assert g(True, True) == 1
+    assert g(True, False) == 2
+    assert g(False, True) == 3
+    assert g(False, False) == 4
+
+@assert_compilation_succeeds()
+def test_three_nested_ifs_without_else():
+    def g(b1: bool, b2: bool, b3: bool):
+        if b1:
+            if b2:
+                if b3:
+                    return 1
+                return 2
+            return 3
+        return 4
+    assert g(True, True, True) == 1
+    assert g(True, True, False) == 2
+    assert g(True, False, True) == 3
+    assert g(True, False, False) == 3
+    assert g(False, True, True) == 4
+    assert g(False, True, False) == 4
+    assert g(False, False, True) == 4
+    assert g(False, False, False) == 4
+
+@assert_compilation_succeeds()
+def test_three_nested_ifs_outer_without_else():
+    def g(b1: bool, b2: bool, b3: bool):
+        if b1:
+            if b2:
+                if b3:
+                    return 1
+                else:
+                    return 2
+            else:
+                if b3:
+                    return 3
+                else:
+                    return 4
+        return 5
+    assert g(True, True, True) == 1
+    assert g(True, True, False) == 2
+    assert g(True, False, True) == 3
+    assert g(True, False, False) == 4
+    assert g(False, True, True) == 5
+    assert g(False, True, False) == 5
+    assert g(False, False, True) == 5
+    assert g(False, False, False) == 5
+
+@assert_compilation_succeeds()
+def test_three_nested_ifs_middle_without_else():
+    def g(b1: bool, b2: bool, b3: bool):
+        if b1:
+            if b2:
+                if b3:
+                    return 1
+                else:
+                    return 2
+            return 3
+        else:
+            if b2:
+                if b3:
+                    return 4
+                else:
+                    return 5
+            return 6
+    assert g(True, True, True) == 1
+    assert g(True, True, False) == 2
+    assert g(True, False, True) == 3
+    assert g(True, False, False) == 3
+    assert g(False, True, True) == 4
+    assert g(False, True, False) == 5
+    assert g(False, False, True) == 6
+    assert g(False, False, False) == 6
+
+@assert_compilation_succeeds()
+def test_three_nested_ifs_inner_without_else():
+    def g(b1: bool, b2: bool, b3: bool):
+        if b1:
+            if b2:
+                if b3:
+                    return 1
+                return 2
+            else:
+                if b3:
+                    return 3
+                return 4
+        else:
+            if b2:
+                if b3:
+                    return 5
+                return 6
+            else:
+                if b3:
+                    return 7
+                return 8
+    assert g(True, True, True) == 1
+    assert g(True, True, False) == 2
+    assert g(True, False, True) == 3
+    assert g(True, False, False) == 4
+    assert g(False, True, True) == 5
+    assert g(False, True, False) == 6
+    assert g(False, False, True) == 7
+    assert g(False, False, False) == 8
+
+@assert_compilation_succeeds()
+def test_three_nested_ifs_inner_and_middle_without_else():
+    def g(b1: bool, b2: bool, b3: bool):
+        if b1:
+            if b2:
+                if b3:
+                    return 1
+                return 2
+            return 3
+        else:
+            if b2:
+                if b3:
+                    return 4
+                return 5
+            return 6
+    assert g(True, True, True) == 1
+    assert g(True, True, False) == 2
+    assert g(True, False, True) == 3
+    assert g(True, False, False) == 3
+    assert g(False, True, True) == 4
+    assert g(False, True, False) == 5
+    assert g(False, False, True) == 6
+    assert g(False, False, False) == 6
+
+@assert_compilation_succeeds()
+def test_three_nested_ifs_outer_and_middle_without_else():
+    def g(b1: bool, b2: bool, b3: bool):
+        if b1:
+            if b2:
+                if b3:
+                    return 1
+                else:
+                    return 2
+            return 3
+        return 4
+    assert g(True, True, True) == 1
+    assert g(True, True, False) == 2
+    assert g(True, False, True) == 3
+    assert g(True, False, False) == 3
+    assert g(False, True, True) == 4
+    assert g(False, True, False) == 4
+    assert g(False, False, True) == 4
+    assert g(False, False, False) == 4
+
+@assert_compilation_succeeds()
+def test_three_nested_ifs_outer_and_inner_without_else():
+    def g(b1: bool, b2: bool, b3: bool):
+        if b1:
+            if b2:
+                if b3:
+                    return 1
+                return 2
+            else:
+                if b3:
+                    return 3
+                return 4
+        return 5
+    assert g(True, True, True) == 1
+    assert g(True, True, False) == 2
+    assert g(True, False, True) == 3
+    assert g(True, False, False) == 4
+    assert g(False, True, True) == 5
+    assert g(False, True, False) == 5
+    assert g(False, False, True) == 5
+    assert g(False, False, False) == 5
+
+@assert_compilation_succeeds()
+def test_three_nested_if_else():
+    def g(b1: bool, b2: bool, b3: bool):
+        if b1:
+            if b2:
+                if b3:
+                    return 1
+                else:
+                    return 2
+            else:
+                if b3:
+                    return 3
+                else:
+                    return 4
+        else:
+            if b2:
+                if b3:
+                    return 5
+                else:
+                    return 6
+            else:
+                if b3:
+                    return 7
+                else:
+                    return 8
+    assert g(True, True, True) == 1
+    assert g(True, True, False) == 2
+    assert g(True, False, True) == 3
+    assert g(True, False, False) == 4
+    assert g(False, True, True) == 5
+    assert g(False, True, False) == 6
+    assert g(False, False, True) == 7
+    assert g(False, False, False) == 8
