@@ -320,7 +320,9 @@ def test_array_type_expr_as_match_expr_not_matched_success():
         })
     assert f(Type.pointer(Type('int'))) == Type('double')
 
-@assert_compilation_succeeds()
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
 def test_template_instantiation_type_expr_as_match_expr_matched_success():
     from tmppy import Type, match
     def f(t: Type):
@@ -332,7 +334,9 @@ def test_template_instantiation_type_expr_as_match_expr_matched_success():
         })
     assert f(Type.template_instantiation('std::tuple', [Type('int'), Type('float')])) == Type('int')
 
-@assert_compilation_succeeds()
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
 def test_template_instantiation_type_expr_as_match_expr_not_matched_success():
     from tmppy import Type, match
     def f(t: Type):
