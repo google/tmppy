@@ -737,7 +737,7 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
     template_dependency_graph_transitive_closure = nx.transitive_closure(template_dependency_graph)
     assert isinstance(template_dependency_graph_transitive_closure, nx.DiGraph)
 
-    for connected_component_index in nx.topological_sort(condensed_graph, reverse=True):
+    for connected_component_index in reversed(list(nx.topological_sort(condensed_graph))):
         connected_component = condensed_graph.node[connected_component_index]['members']
         for node in sorted(connected_component, key=lambda node: new_template_defns[node].name):
             template_defn = new_template_defns[node]
