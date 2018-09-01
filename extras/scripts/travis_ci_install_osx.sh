@@ -41,6 +41,7 @@ time brew upgrade python
 time pip3 install pytest
 time pip3 install pytest-xdist
 time pip3 install typed_ast
+time pip3 install networkx
 
 # This adds python-installed executables to PATH (notably py.test).
 export PATH="$(brew --prefix)/bin:$PATH"
