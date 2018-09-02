@@ -17,8 +17,6 @@ from py2tmp.testing import *
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename> struct CheckIfError;
-template <int64_t TmppyInternal_5> struct inc;
 template <typename> struct CheckIfError { using type = void; };
 template <int64_t TmppyInternal_5> struct inc {
   static constexpr int64_t value = (TmppyInternal_5) + (1LL);
@@ -32,7 +30,6 @@ def test_optimization_one_function():
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename> struct CheckIfError;
 template <typename> struct CheckIfError { using type = void; };
 static_assert(((1LL) + (1LL)) == (2LL),
               "TMPPy assertion failed: \n<unknown>:1: assert 1 + 1 == 2");
@@ -43,8 +40,6 @@ def test_optimization_toplevel_code():
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename> struct CheckIfError;
-template <int64_t TmppyInternal_5> struct f;
 template <typename> struct CheckIfError { using type = void; };
 template <int64_t TmppyInternal_5> struct f {
   static constexpr int64_t TmppyInternal_10 =
@@ -70,7 +65,6 @@ def test_common_subexpression_elimination():
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename> struct CheckIfError;
 template <typename> struct CheckIfError { using type = void; };
 static constexpr int64_t TmppyInternal_9 = (2LL) * ((3LL) + (1LL));
 using TmppyInternal_17 = int *;
@@ -87,7 +81,6 @@ def test_common_subexpression_elimination_toplevel():
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename> struct CheckIfError;
 template <typename> struct CheckIfError { using type = void; };
 static constexpr int64_t TmppyInternal_9 = (2LL) * ((3LL) + (1LL));
 using TmppyInternal_17 = int *;
@@ -104,8 +97,6 @@ def test_common_subexpression_elimination_at_toplevel():
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename> struct CheckIfError;
-template <int64_t TmppyInternal_5> struct inc;
 template <typename> struct CheckIfError { using type = void; };
 template <int64_t TmppyInternal_5> struct inc {
   using error = void;
@@ -121,7 +112,6 @@ def test_optimization_two_functions_with_call():
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename> struct CheckIfError;
 template <typename> struct CheckIfError { using type = void; };
 static_assert(((3LL) + (1LL)) == (4LL),
               "TMPPy assertion failed: \n<unknown>:3: assert _plus(3, 1) == 4");
@@ -134,11 +124,10 @@ def test_optimization_function_call_at_toplevel():
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename> struct CheckIfError;
+template <typename> struct CheckIfError { using type = void; };
 template <bool TmppyInternal_5, bool> struct TmppyInternal_10;
 template <bool TmppyInternal_5> struct f;
 template <bool TmppyInternal_5> struct g;
-template <typename> struct CheckIfError { using type = void; };
 // (meta)function generated for an if-else statement
 template <bool TmppyInternal_5> struct TmppyInternal_10<TmppyInternal_5, true> {
   static constexpr int64_t value = 3LL;

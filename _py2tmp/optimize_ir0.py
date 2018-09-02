@@ -680,32 +680,39 @@ def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir0.S
                                                                                                     for template_name in inlineable_refs) + '\n',
                                            verbose=verbose)
 
-def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool):
-    new_template_defns = {elem.name: elem
-                          for elem in header.template_defns}
-
+def compute_template_dependency_graph(header: ir0.Header, template_defn_by_name: Dict[str, ir0.TemplateDefn]):
     template_dependency_graph = nx.DiGraph()
     for template_defn in header.template_defns:
         template_dependency_graph.add_node(template_defn.name)
 
         for identifier in template_defn.get_referenced_identifiers():
-            if identifier in new_template_defns.keys():
+            if identifier in template_defn_by_name.keys():
                 template_dependency_graph.add_edge(template_defn.name, identifier)
+    return template_dependency_graph
 
+def compute_condensation_in_topological_order(template_dependency_graph: nx.DiGraph) -> Iterator[List[str]]:
     condensed_graph = nx.condensation(template_dependency_graph)
     assert isinstance(condensed_graph, nx.DiGraph)
+
+    for connected_component_index in nx.topological_sort(condensed_graph):
+        yield condensed_graph.node[connected_component_index]['members']
+
+def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool):
+    new_template_defns = {elem.name: elem
+                          for elem in header.template_defns}
+
+    template_dependency_graph = compute_template_dependency_graph(header, new_template_defns)
 
     template_dependency_graph_transitive_closure = nx.transitive_closure(template_dependency_graph)
     assert isinstance(template_dependency_graph_transitive_closure, nx.DiGraph)
 
-    for connected_component_index in reversed(list(nx.topological_sort(condensed_graph))):
-        connected_component = condensed_graph.node[connected_component_index]['members']
-        for node in sorted(connected_component, key=lambda node: new_template_defns[node].name):
-            template_defn = new_template_defns[node]
+    for connected_component in reversed(list(compute_condensation_in_topological_order(template_dependency_graph))):
+        for template_name in sorted(connected_component, key=lambda node: new_template_defns[node].name):
+            template_defn = new_template_defns[template_name]
 
             inlineable_refs = {other_node
-                               for other_node in template_dependency_graph.successors(node)
-                               if not template_dependency_graph_transitive_closure.has_edge(other_node, node)
+                               for other_node in template_dependency_graph.successors(template_name)
+                               if not template_dependency_graph_transitive_closure.has_edge(other_node, template_name)
                                and not new_template_defns[other_node].specializations}
             if inlineable_refs:
                 template_defn = perform_template_inlining(template_defn,
@@ -718,7 +725,7 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
                                                                          identifier_generator,
                                                                          inline_template_instantiations_with_multiple_references=False,
                                                                          verbose=verbose)
-            new_template_defns[node] = template_defn
+            new_template_defns[template_name] = template_defn
 
     new_toplevel_content = header.toplevel_content
     inlineable_refs = {template_name

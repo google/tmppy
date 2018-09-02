@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from typing import List, Iterator, Tuple, Union, Callable
-from _py2tmp import ir0
+from _py2tmp import ir0, optimize_ir0
 
 class Writer:
     def new_id(self) -> str: ...  # pragma: no cover
@@ -517,15 +517,38 @@ def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
         #include <tmppy/tmppy.h>
         #include <type_traits>
         ''')
-    for elem in header.template_defns:
-        # TODO: only do this when needed, many of these forward declarations are unnecessary.
-        template_defn_to_cpp_forward_decl(elem,
-                                          enclosing_function_defn_args=[],
-                                          writer=writer)
-    for elem in header.template_defns:
-        template_defn_to_cpp(elem,
-                             enclosing_function_defn_args=[],
-                             writer=writer)
+
+    template_defn_by_template_name = {elem.name: elem
+                                      for elem in header.template_defns}
+
+    template_dependency_graph = optimize_ir0.compute_template_dependency_graph(header, template_defn_by_template_name)
+    template_dependency_graph_condensed = optimize_ir0.compute_condensation_in_topological_order(template_dependency_graph)
+
+    for connected_component in reversed(list(template_dependency_graph_condensed)):
+        connected_component = sorted([template_defn_by_template_name[template_name]
+                                      for template_name in connected_component],
+                                     key=lambda template_defn: template_defn.name)
+
+        if len(connected_component) > 1:
+            # There's a dependency loop with >1 templates, we first need to emit all forward decls.
+            for template_defn in connected_component:
+                template_defn_to_cpp_forward_decl(template_defn,
+                                                  enclosing_function_defn_args=[],
+                                                  writer=writer)
+        else:
+            [template_defn] = connected_component
+            if not template_defn.main_definition:
+                # There's no loop here, but this template has only specializations and no main definition, so we need the
+                # forward declaration anyway.
+                template_defn_to_cpp_forward_decl(template_defn,
+                                                  enclosing_function_defn_args=[],
+                                                  writer=writer)
+
+        for template_defn in connected_component:
+            template_defn_to_cpp(template_defn,
+                                 enclosing_function_defn_args=[],
+                                 writer=writer)
+
     for elem in header.toplevel_content:
         toplevel_elem_to_cpp(elem, writer)
     return ''.join(writer.strings)
