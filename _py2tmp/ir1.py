@@ -14,6 +14,9 @@
 
 from typing import List, Iterable, Optional, Union, Dict, Tuple, Set
 from contextlib import contextmanager
+
+import itertools
+
 from _py2tmp import utils
 
 class Writer:
@@ -75,6 +78,15 @@ class FunctionType(ExprType):
             ', '.join(str(arg)
                       for arg in self.argtypes),
             str(self.returns))
+
+class ParameterPackType(ExprType):
+    def __init__(self, element_type: Union[BoolType, IntType, TypeType, ErrorOrVoidType]):
+        assert not isinstance(element_type, (FunctionType, ParameterPackType, BottomType))
+        self.element_type = element_type
+
+    def __str__(self):
+        return 'List[%s]' % (
+            str(self.element_type))
 
 class CustomTypeArgDecl(utils.ValueType):
     def __init__(self, name: str, type: ExprType):
@@ -145,9 +157,11 @@ class MatchCase:
     def __init__(self,
                  type_patterns: List[Expr],
                  matched_var_names: List[str],
+                 matched_variadic_var_names: List[str],
                  expr: 'FunctionCall'):
         self.type_patterns = tuple(type_patterns)
         self.matched_var_names = tuple(matched_var_names)
+        self.matched_variadic_var_names = tuple(matched_variadic_var_names)
         self.expr = expr
 
     def is_main_definition(self):
@@ -158,13 +172,13 @@ class MatchCase:
             else:
                 return False
 
-        return matched_vars == set(self.matched_var_names)
+        return matched_vars == set(self.matched_var_names).union(self.matched_variadic_var_names)
 
     def write(self, writer: Writer):
         writer.writeln('TypePattern(\'%s\')' % '\', \''.join(str(type_pattern)
                                                              for type_pattern in self.type_patterns))
         with writer.indent():
-            writer.writeln('lambda %s:' % ', '.join(self.matched_var_names))
+            writer.writeln('lambda %s:' % ', '.join(itertools.chain(self.matched_var_names, self.matched_variadic_var_names)))
             with writer.indent():
                 writer.write(str(self.expr))
                 writer.writeln(',')
@@ -360,6 +374,22 @@ class TemplateInstantiation(Expr):
     def describe_other_fields(self):
         return '[%s]' % '; '.join(arg_expr.describe_other_fields()
                                   for arg_expr in self.arg_exprs)
+
+class ParameterPackExpansion(Expr):
+    def __init__(self, expr: VarReference):
+        assert isinstance(expr.type, ParameterPackType)
+        super().__init__(expr.type.element_type)
+        self.expr = expr
+
+    def get_free_variables(self):
+        for var in self.expr.get_free_variables():
+            yield var
+
+    def __str__(self):
+        return '*(%s)' % str(self.expr)
+
+    def describe_other_fields(self):
+        return self.expr.describe_other_fields()
 
 class TemplateInstantiationWithList(Expr):
     def __init__(self,

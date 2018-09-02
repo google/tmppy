@@ -14,6 +14,9 @@
 
 from typing import List, Iterable, Optional, Union, Dict, Tuple, Set
 from contextlib import contextmanager
+
+import itertools
+
 from _py2tmp import utils
 
 class Writer:
@@ -185,19 +188,22 @@ class MatchCase:
     def __init__(self,
                  type_patterns: List[PatternExpr],
                  matched_var_names: List[str],
+                 matched_variadic_var_names: List[str],
                  expr: 'FunctionCall'):
         self.type_patterns = type_patterns
         self.matched_var_names = matched_var_names
+        self.matched_variadic_var_names = matched_variadic_var_names
         self.expr = expr
 
     def is_main_definition(self):
-        return set(self.type_patterns) == set(self.matched_var_names)
+        return set(self.type_patterns) == set(self.matched_var_names).union(self.matched_variadic_var_names)
 
     def write(self, writer: Writer):
-        writer.writeln('TypePattern(\'%s\')' % '\', \''.join(str(type_pattern)
-                                                             for type_pattern in self.type_patterns))
+        writer.writeln('lambda %s:' % ', '.join(itertools.chain(self.matched_var_names, self.matched_variadic_var_names)))
         with writer.indent():
-            writer.writeln('lambda %s:' % ', '.join(self.matched_var_names))
+            writer.write('\', \''.join(str(type_pattern)
+                                       for type_pattern in self.type_patterns))
+            writer.writeln(':')
             with writer.indent():
                 writer.write(str(self.expr))
                 writer.writeln(',')
@@ -505,25 +511,33 @@ class TemplateInstantiationExpr(Expr):
 
 # E.g. TemplateInstantiationExpr('std::vector', [AtomicTypeLiteral('int')]) is the type 'std::vector<int>'.
 class TemplateInstantiationPatternExpr(PatternExpr):
-    def __init__(self, template_atomic_cpp_type: str, arg_exprs: List[PatternExpr]):
+    def __init__(self, template_atomic_cpp_type: str, arg_exprs: List[PatternExpr], list_extraction_arg_expr: Optional[VarReferencePattern]):
         for arg in arg_exprs:
             assert arg.type == TypeType()
+        if list_extraction_arg_expr:
+            assert list_extraction_arg_expr.type == ListType(TypeType())
 
         super().__init__(type=TypeType())
         self.template_atomic_cpp_type = template_atomic_cpp_type
         self.arg_exprs = arg_exprs
+        self.list_extraction_arg_expr = list_extraction_arg_expr
 
     def get_free_variables(self):
         for expr in self.arg_exprs:
             for var in expr.get_free_variables():
                 yield var
+        if self.list_extraction_arg_expr:
+            yield self.list_extraction_arg_expr
 
     def __str__(self):
-        return 'Type.template_instantiation(\'%s\', %s)' % (self.template_atomic_cpp_type, str(self.arg_exprs))
+        return 'Type.template_instantiation(\'%s\', [%s%s])' % (self.template_atomic_cpp_type,
+                                                                ', '.join(str(arg_expr) for arg_expr in self.arg_exprs),
+                                                                ', *' + str(self.list_extraction_arg_expr) if self.list_extraction_arg_expr else '')
 
     def describe_other_fields(self):
         return '; '.join(arg_expr.describe_other_fields()
-                         for arg_expr in self.arg_exprs)
+                         for arg_expr in itertools.chain(self.arg_exprs,
+                                                         (self.list_extraction_arg_expr,) if self.list_extraction_arg_expr else tuple()))
 
 # E.g. TemplateMemberAccessExpr(AtomicTypeLiteral('foo'), 'bar', [AtomicTypeLiteral('int')]) is the type 'foo::bar<int>'.
 class TemplateMemberAccessExpr(Expr):
@@ -570,11 +584,12 @@ class ListExpr(Expr):
         return ''
 
 class ListPatternExpr(PatternExpr):
-    def __init__(self, elem_type: ExprType, elems: List[PatternExpr]):
+    def __init__(self, elem_type: ExprType, elems: List[PatternExpr], list_extraction_expr: Optional[VarReference]):
         assert not isinstance(elem_type, FunctionType)
         super().__init__(type=ListType(elem_type))
         self.elem_type = elem_type
         self.elems = elems
+        self.list_extraction_expr = list_extraction_expr
 
     def get_free_variables(self):
         for expr in self.elems:

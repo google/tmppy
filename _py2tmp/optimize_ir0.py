@@ -180,7 +180,7 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
         result_elems = []
         for elem in elems:
             writer = transform_ir0.TemplateBodyWriter(toplevel_writer)
-            NameReplacementTransformation(replacements).transform_template_body_elem(elem, writer)
+            transform_ir0.NameReplacementTransformation(replacements).transform_template_body_elem(elem, writer)
             [elem] = writer.elems
 
             if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.expr in name_by_expr:
@@ -214,8 +214,8 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
             else:
               replacements2[replacement] = result_elem_name
 
-        result_elems = NameReplacementTransformation(replacements2).transform_template_body_elems(result_elems,
-                                                                                                  toplevel_writer)
+        result_elems = transform_ir0.NameReplacementTransformation(replacements2).transform_template_body_elems(result_elems,
+                                                                                                                toplevel_writer)
 
         return result_elems + additional_result_elems
 
@@ -230,7 +230,7 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
       result_elems = []
       for elem in elems:
         writer = transform_ir0.ToplevelWriter(identifier_generator, allow_template_defns=False)
-        NameReplacementTransformation(replacements).transform_toplevel_elem(elem, writer)
+        transform_ir0.NameReplacementTransformation(replacements).transform_toplevel_elem(elem, writer)
         [elem] = writer.toplevel_elems
 
         if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.expr in name_by_expr:
@@ -582,45 +582,6 @@ def perform_local_optimizations_on_toplevel_elems(toplevel_elems: List[Union[ir0
 
   return toplevel_elems
 
-class NameReplacementTransformation(transform_ir0.Transformation):
-    def __init__(self, replacements: Dict[str, str]):
-        super().__init__()
-        self.replacements = replacements
-
-    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: transform_ir0.Writer):
-        return ir0.AtomicTypeLiteral(cpp_type=utils.replace_identifiers(type_literal.cpp_type, self.replacements),
-                                     is_local=type_literal.is_local,
-                                     is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
-                                     type=type_literal.type)
-
-    def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: transform_ir0.Writer):
-        writer.write(ir0.ConstantDef(name=self._transform_name(constant_def.name),
-                                     expr=self.transform_expr(constant_def.expr, writer)))
-
-    def transform_typedef(self, typedef: ir0.Typedef, writer: transform_ir0.Writer):
-        writer.write(ir0.Typedef(name=self._transform_name(typedef.name),
-                                 expr=self.transform_expr(typedef.expr, writer)))
-
-    def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
-        writer.write(ir0.TemplateDefn(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args],
-                                      main_definition=self.transform_template_specialization(template_defn.main_definition, writer)
-                                          if template_defn.main_definition is not None else None,
-                                      specializations=[self.transform_template_specialization(specialization, writer)
-                                                       for specialization in template_defn.specializations],
-                                      name=self._transform_name(template_defn.name),
-                                      description=template_defn.description,
-                                      result_element_names=template_defn.result_element_names))
-
-    def transform_template_arg_decl(self, arg_decl: ir0.TemplateArgDecl):
-        return ir0.TemplateArgDecl(type=arg_decl.type,
-                                   name=self._transform_name(arg_decl.name))
-
-    def _transform_name(self, name: str):
-        if name in self.replacements:
-            return self.replacements[name]
-        else:
-            return name
-
 class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
     def __init__(self, inlineable_templates_by_name: Dict[str, ir0.TemplateDefn]):
         super().__init__()
@@ -654,7 +615,7 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
                 else:
                     raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 
-            transformation = NameReplacementTransformation(new_var_name_by_old_var_name)
+            transformation = transform_ir0.NameReplacementTransformation(new_var_name_by_old_var_name)
             for elem in template_defn_to_inline.main_definition.body:
                 transformation.transform_template_body_elem(elem, writer)
 

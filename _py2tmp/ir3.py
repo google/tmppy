@@ -108,13 +108,14 @@ class VarReference(Expr):
             yield self
 
 class MatchCase:
-    def __init__(self, matched_var_names: Set[str], type_patterns: List[Expr], expr: Expr):
+    def __init__(self, matched_var_names: Set[str], matched_variadic_var_names: Set[str], type_patterns: List[Expr], expr: Expr):
         self.matched_var_names = matched_var_names
+        self.matched_variadic_var_names = matched_variadic_var_names
         self.type_patterns = type_patterns
         self.expr = expr
 
     def is_main_definition(self):
-        matched_var_names_set = set(self.matched_var_names)
+        matched_var_names_set = set(self.matched_var_names).union(self.matched_variadic_var_names)
         return all(isinstance(pattern, VarReference) and pattern.name in matched_var_names_set
                    for pattern in self.type_patterns)
 
@@ -255,16 +256,19 @@ class TemplateMemberAccessExpr(Expr):
                 yield var
 
 class ListExpr(Expr):
-    def __init__(self, elem_type: ExprType, elem_exprs: List[Expr]):
+    def __init__(self, elem_type: ExprType, elem_exprs: List[Expr], list_extraction_expr: Optional[VarReference]):
         assert not isinstance(elem_type, FunctionType)
         super().__init__(type=ListType(elem_type))
         self.elem_type = elem_type
         self.elem_exprs = elem_exprs
+        self.list_extraction_expr = list_extraction_expr
 
     def get_free_variables(self):
         for expr in self.elem_exprs:
             for var in expr.get_free_variables():
                 yield var
+        if self.list_extraction_expr:
+            yield self.list_extraction_expr
 
 class SetExpr(Expr):
     def __init__(self, elem_type: ExprType, elem_exprs: List[Expr]):

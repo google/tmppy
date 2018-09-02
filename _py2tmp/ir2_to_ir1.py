@@ -93,7 +93,7 @@ def expr_to_ir1(expr: Union[ir2.Expr, ir2.PatternExpr]) -> ir1.Expr:
         return array_type_expr_to_ir1(expr)
     elif isinstance(expr, (ir2.FunctionTypeExpr, ir2.FunctionTypePatternExpr)):
         return function_type_expr_to_ir1(expr)
-    elif isinstance(expr, (ir2.TemplateInstantiationExpr, ir2.TemplateInstantiationPatternExpr)):
+    elif isinstance(expr, ir2.TemplateInstantiationExpr):
         return template_instantiation_expr_to_ir1(expr)
     elif isinstance(expr, ir2.TemplateMemberAccessExpr):
         return template_member_access_expr_to_ir1(expr)
@@ -183,6 +183,7 @@ def match_expr_to_ir1(match_expr: ir2.MatchExpr):
                          match_cases=[ir1.MatchCase(type_patterns=[type_pattern_expr_to_ir1(pattern)
                                                                    for pattern in match_case.type_patterns],
                                                     matched_var_names=match_case.matched_var_names,
+                                                    matched_variadic_var_names=match_case.matched_variadic_var_names,
                                                     expr=function_call_to_ir1(match_case.expr))
                                       for match_case in match_expr.match_cases])
 
@@ -214,7 +215,7 @@ def function_type_expr_to_ir1(expr: Union[ir2.FunctionTypeExpr, ir2.FunctionType
     return ir1.FunctionTypeExpr(return_type_expr=var_reference_to_ir1(expr.return_type_expr),
                                 arg_list_expr=var_reference_to_ir1(expr.arg_list_expr))
 
-def template_instantiation_expr_to_ir1(expr: Union[ir2.TemplateInstantiationExpr, ir2.TemplateInstantiationPatternExpr]):
+def template_instantiation_expr_to_ir1(expr: ir2.TemplateInstantiationExpr):
     return ir1.TemplateInstantiationWithList(template_name=expr.template_atomic_cpp_type,
                                              arg_list_expr=expr_to_ir1(expr.arg_list_expr),
                                              instantiation_might_trigger_static_asserts=True)
@@ -241,9 +242,15 @@ def list_expr_to_ir1(list_expr: Union[ir2.ListExpr, ir2.ListPatternExpr]):
     else:
         raise NotImplementedError('elem_kind: %s' % elem_kind)
 
+    arg_exprs = [expr_to_ir1(elem_expr) for elem_expr in list_expr.elems]
+    if isinstance(list_expr, ir2.ListPatternExpr) and list_expr.list_extraction_expr:
+        arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(type=ir1.ParameterPackType(type_to_ir1(list_expr.list_extraction_expr)),
+                                                                     name=list_expr.list_extraction_expr.name,
+                                                                     is_global_function=list_expr.list_extraction_expr.is_global_function,
+                                                                     is_function_that_may_throw=list_expr.list_extraction_expr.is_function_that_may_throw)))
+
     return ir1.TemplateInstantiation(template_name=list_template_name,
-                                     arg_exprs=[expr_to_ir1(elem_expr)
-                                                for elem_expr in list_expr.elems],
+                                     arg_exprs=arg_exprs,
                                      instantiation_might_trigger_static_asserts=False)
 
 def function_call_to_ir1(call_expr: ir2.FunctionCall):
@@ -407,9 +414,14 @@ def function_type_pattern_expr_to_ir1(expr: ir2.FunctionTypePatternExpr):
                                 arg_list_expr=type_pattern_expr_to_ir1(expr.arg_list_expr))
 
 def template_instantiation_pattern_expr_to_ir1(expr: ir2.TemplateInstantiationPatternExpr):
+    arg_exprs = [type_pattern_expr_to_ir1(elem_expr) for elem_expr in expr.arg_exprs]
+    if expr.list_extraction_arg_expr:
+        arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(type=ir1.ParameterPackType(type_to_ir1(expr.list_extraction_arg_expr.type)),
+                                                                     name=expr.list_extraction_arg_expr.name,
+                                                                     is_global_function=expr.list_extraction_arg_expr.is_global_function,
+                                                                     is_function_that_may_throw=expr.list_extraction_arg_expr.is_function_that_may_throw)))
     return ir1.TemplateInstantiation(template_name=expr.template_atomic_cpp_type,
-                                     arg_exprs=[type_pattern_expr_to_ir1(elem_expr)
-                                                for elem_expr in expr.arg_exprs],
+                                     arg_exprs=arg_exprs,
                                      instantiation_might_trigger_static_asserts=False)
 
 def assert_to_ir1(assert_stmt: ir2.Assert, writer: Writer):

@@ -374,6 +374,8 @@ def match_expr_to_ir2(match_expr: ir3.MatchExpr, writer: StmtWriter):
                                                         for type_pattern in match_case.type_patterns],
                                          matched_var_names=[writer.obfuscate_identifier(var_name)
                                                            for var_name in match_case.matched_var_names],
+                                         matched_variadic_var_names=[writer.obfuscate_identifier(var_name)
+                                                                     for var_name in match_case.matched_variadic_var_names],
                                          expr=ir2.FunctionCall(fun=match_fun_ref,
                                                                args=forwarded_vars)))
 
@@ -417,6 +419,7 @@ def template_member_access_expr_to_ir2(expr: ir3.TemplateMemberAccessExpr, write
                                                                 arg_list_expr=expr_to_ir2(expr.arg_list_expr, writer)))
 
 def list_expr_to_ir2(list_expr: ir3.ListExpr, writer: StmtWriter):
+    assert list_expr.list_extraction_expr is None
     elem_vars = [expr_to_ir2(elem_expr, writer)
                  for elem_expr in list_expr.elem_exprs]
     return writer.new_var_for_expr(ir2.ListExpr(elem_type=type_to_ir2(list_expr.elem_type),
@@ -667,14 +670,18 @@ def function_type_expr_to_ir2_type_pattern(expr: ir3.FunctionTypeExpr, writer: S
 def template_instantiation_expr_to_ir2_type_pattern(expr: ir3.TemplateInstantiationExpr, writer: StmtWriter):
     # This is the only ListExpr that's allowed in a template instantiation in a pattern.
     assert isinstance(expr.arg_list_expr, ir3.ListExpr)
+    arg_exprs = [type_pattern_expr_to_ir2(arg_expr, writer) for arg_expr in expr.arg_list_expr.elem_exprs]
+    list_extraction_expr = expr.arg_list_expr.list_extraction_expr
     return ir2.TemplateInstantiationPatternExpr(template_atomic_cpp_type=expr.template_atomic_cpp_type,
-                                                arg_exprs=[type_pattern_expr_to_ir2(arg_expr, writer)
-                                                           for arg_expr in expr.arg_list_expr.elem_exprs])
+                                                arg_exprs=arg_exprs,
+                                                list_extraction_arg_expr=var_reference_to_ir2_pattern(list_extraction_expr, writer) if list_extraction_expr else None)
 
 def list_expr_to_ir2_type_pattern(expr: ir3.ListExpr, writer: StmtWriter):
     return ir2.ListPatternExpr(elem_type=type_to_ir2(expr.elem_type),
                                elems=[type_pattern_expr_to_ir2(elem_expr, writer)
-                                      for elem_expr in expr.elem_exprs])
+                                      for elem_expr in expr.elem_exprs],
+                               list_extraction_expr = var_reference_to_ir2(expr.list_extraction_expr, writer)
+                                                      if expr.list_extraction_expr else None)
 
 def assert_to_ir2(assert_stmt: ir3.Assert, writer: StmtWriter):
     writer.write_stmt(ir2.Assert(var=expr_to_ir2(assert_stmt.expr, writer),

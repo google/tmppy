@@ -756,3 +756,204 @@ def test_match_expr_requiring_to_pick_arbitrary_function_type_arg():
     def h(n: int):
         return n
     assert f(h) == 42
+
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
+def test_match_expr_extract_list_empty():
+    from tmppy import Type, match, empty_list
+    def unpack_tuple(t: Type):
+        return match(t)(lambda Ts: {
+            Type.template_instantiation('std::tuple', [*Ts]):
+                Ts
+        })
+    assert unpack_tuple(Type.template_instantiation('std::tuple', empty_list(Type))) \
+        == empty_list(Type)
+
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
+def test_match_expr_extract_list():
+    from tmppy import Type, match
+    def unpack_tuple(t: Type):
+        return match(t)(lambda Ts: {
+            Type.template_instantiation('std::tuple', [*Ts]):
+                Ts
+        })
+    assert unpack_tuple(Type.template_instantiation('std::tuple', [Type('int'), Type('float'), Type('double')])) \
+        == [Type('int'), Type('float'), Type('double')]
+
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
+def test_match_expr_extract_list_used_in_nested_match():
+    from tmppy import Type, match
+    def unpack_tuple(t: Type):
+        return match(t)(lambda Ts: {
+            Type.template_instantiation('std::tuple', [*Ts]):
+                match(Type('int'))(lambda T: {
+                    T:
+                        Ts
+                })
+        })
+    assert unpack_tuple(Type.template_instantiation('std::tuple', [Type('int'), Type('float'), Type('double')])) \
+        == [Type('int'), Type('float'), Type('double')]
+
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
+def test_match_expr_extract_list_and_front_element():
+    from tmppy import Type, match
+    def unpack_tuple(t: Type):
+        return match(t)(lambda FirstT, Ts: {
+            Type.template_instantiation('std::tuple', [FirstT, *Ts]):
+                [[FirstT], Ts]
+        })
+    assert unpack_tuple(Type.template_instantiation('std::tuple', [Type('int'), Type('float'), Type('double'), Type('char')])) \
+        == [[Type('int')], [Type('float'), Type('double'), Type('char')]]
+
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
+def test_match_expr_extract_list_and_front_elements():
+    from tmppy import Type, match
+    def unpack_tuple(t: Type):
+        return match(t)(lambda FirstT, SecondT, Ts: {
+            Type.template_instantiation('std::tuple', [FirstT, SecondT, *Ts]):
+                [[FirstT, SecondT], Ts]
+        })
+    assert unpack_tuple(Type.template_instantiation('std::tuple', [Type('int'), Type('float'), Type('double'), Type('char')])) \
+        == [[Type('int'), Type('float')], [Type('double'), Type('char')]]
+
+@assert_conversion_fails
+def test_match_expr_extract_last_element_error():
+    from tmppy import Type, match
+    def unpack_tuple(t: Type):
+        return match(t)(lambda Ts, LastT: {
+            Type.template_instantiation('std::tuple', [*Ts, LastT]):  # error: List extraction is only allowed at the end of the list
+                [Ts, [LastT]]
+        })
+
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
+def test_match_expr_extract_multiple_lists():
+    from tmppy import Type, match
+    def unpack_tuple_of_tuples(t: Type):
+        return match(t)(lambda Ts, Us: {
+            Type.template_instantiation('std::tuple',
+                                        [Type.template_instantiation('std::tuple', [*Ts]),
+                                         Type.template_instantiation('std::tuple', [*Us])]):
+                [Ts, Us]
+        })
+    assert unpack_tuple_of_tuples(Type.template_instantiation('std::tuple',
+                                                              [Type.template_instantiation('std::tuple', [Type('int'), Type('float')]),
+                                                               Type.template_instantiation('std::tuple', [Type('double')])])) \
+        == [[Type('int'), Type('float')], [Type('double')]]
+
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
+def test_match_expr_extract_list_multiple_times_matched():
+    from tmppy import Type, match
+    def unpack_tuple_of_tuples(t: Type):
+        return match(t)(lambda T, Ts: {
+            Type.template_instantiation('std::tuple',
+                                        [Type.template_instantiation('std::tuple', [*Ts]),
+                                         Type.template_instantiation('std::tuple', [Type('int'), *Ts])]):
+                Ts,
+            T:
+                [Type('void')],
+        })
+    assert unpack_tuple_of_tuples(Type.template_instantiation('std::tuple',
+                                                              [Type.template_instantiation('std::tuple', [Type('float'), Type('double')]),
+                                                               Type.template_instantiation('std::tuple', [Type('int'), Type('float'), Type('double')])])) \
+        == [Type('float'), Type('double')]
+
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
+def test_match_expr_extract_list_multiple_times_matched_without_default_case():
+    from tmppy import Type, match
+    def unpack_tuple_of_tuples(t: Type):
+        return match(t)(lambda Ts: {
+            Type.template_instantiation('std::tuple',
+                                        [Type.template_instantiation('std::tuple', [*Ts]),
+                                         Type.template_instantiation('std::tuple', [Type('int'), *Ts])]):
+                Ts,
+        })
+    assert unpack_tuple_of_tuples(Type.template_instantiation('std::tuple',
+                                                              [Type.template_instantiation('std::tuple', [Type('float'), Type('double')]),
+                                                               Type.template_instantiation('std::tuple', [Type('int'), Type('float'), Type('double')])])) \
+        == [Type('float'), Type('double')]
+
+@assert_compilation_succeeds(extra_cpp_prelude='''\
+#include <utility>
+''')
+def test_match_expr_extract_list_multiple_times_not_matched():
+    from tmppy import Type, match
+    def unpack_tuple_of_tuples(t: Type):
+        return match(t)(lambda T, Ts: {
+            Type.template_instantiation('std::tuple',
+                                        [Type.template_instantiation('std::tuple', [*Ts]),
+                                         Type.template_instantiation('std::tuple', [Type('int'), *Ts])]):
+                Ts,
+            T:
+                [Type('void')],
+        })
+    assert unpack_tuple_of_tuples(Type.template_instantiation('std::tuple',
+                                                              [Type.template_instantiation('std::tuple', [Type('float'), Type('double')]),
+                                                               Type.template_instantiation('std::tuple', [Type('int'), Type('double'), Type('double')])])) \
+        == [Type('void')]
+
+@assert_conversion_fails
+def test_match_expr_extract_list_also_used_as_type_before_error():
+    from tmppy import Type, match
+    def f(t: Type):
+        return match(t)(lambda X: {
+            Type.template_instantiation('std::tuple',
+                                        [Type.template_instantiation('std::tuple',
+                                                                     [X]),  # note: A previous match as a Type was here
+                                         Type.template_instantiation('std::tuple',
+                                                                     [*X])]):  # error: List extraction can't be used on X because it was already used to match a Type
+                Type('int'),
+        })
+
+@assert_conversion_fails
+def test_match_expr_extract_list_also_used_as_type_after_error():
+    from tmppy import Type, match
+    def f(t: Type):
+        return match(t)(lambda X: {
+            Type.template_instantiation('std::tuple',
+                                        [Type.template_instantiation('std::tuple',
+                                                                     [*X]),  # note: A previous match as a List\[Type\] was here
+                                         Type.template_instantiation('std::tuple',
+                                                                     [X])]):  # error: Can't match X as a Type because it was already used to match a List\[Type\]
+                Type('int'),
+        })
+
+@assert_compilation_succeeds()
+def test_match_expr_extract_list_also_used_as_type_before_different_branch_ok():
+    from tmppy import Type, match
+    def f(t: Type):
+        return match(t)(lambda X: {
+            Type.template_instantiation('std::tuple', [Type('int'), X]):
+                [X],
+            Type.template_instantiation('std::tuple', [*X]):
+                X,
+        })
+    assert f(Type.template_instantiation('std::tuple', [Type('int'), Type('double')])) == [Type('double')]
+    assert f(Type.template_instantiation('std::tuple', [Type('double'), Type('int')])) == [Type('double'), Type('int')]
+
+@assert_compilation_succeeds()
+def test_match_expr_extract_list_also_used_as_type_after_different_branch_ok():
+    from tmppy import Type, match
+    def f(t: Type):
+        return match(t)(lambda X: {
+            Type.template_instantiation('std::tuple', [*X]):
+                X,
+            Type.template_instantiation('std::tuple', [Type('int'), X]):
+                [X],
+        })
+    assert f(Type.template_instantiation('std::tuple', [Type('int'), Type('double')])) == [Type('double')]
+    assert f(Type.template_instantiation('std::tuple', [Type('double'), Type('int')])) == [Type('double'), Type('int')]

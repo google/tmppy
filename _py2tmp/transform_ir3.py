@@ -240,7 +240,9 @@ class Transformation:
     def transform_list_expr(self, expr: ir3.ListExpr) -> ir3.ListExpr:
         return ir3.ListExpr(elem_type=expr.elem_type,
                             elem_exprs=[self.transform_expr(elem)
-                                        for elem in expr.elem_exprs])
+                                        for elem in expr.elem_exprs],
+                            list_extraction_expr=self.transform_var_reference(expr.list_extraction_expr)
+                                                 if expr.list_extraction_expr else None)
 
     def transform_atomic_type_literal_expr(self, expr: ir3.AtomicTypeLiteral) -> ir3.AtomicTypeLiteral:
         return expr
@@ -285,6 +287,7 @@ class Transformation:
     def transform_match_case(self, match_case: ir3.MatchCase) -> ir3.MatchCase:
       return ir3.MatchCase(type_patterns=match_case.type_patterns,
                            matched_var_names=match_case.matched_var_names,
+                           matched_variadic_var_names=match_case.matched_variadic_var_names,
                            expr=self.transform_expr(match_case.expr))
 
     def transform_var_reference(self, expr: ir3.VarReference) -> ir3.VarReference:

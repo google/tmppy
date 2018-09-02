@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _py2tmp import ir0
-from _py2tmp import ir1
-from _py2tmp import utils
+from _py2tmp import ir0, ir1, utils, transform_ir0
 from typing import List, Tuple, Optional, Iterator, Union, Callable, Dict
 
 class Writer:
     def new_id(self) -> str: ...  # pragma: no cover
 
-    def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]): ...  # pragma: no cover
+    def write(self, elem: ir0.TemplateBodyElement): ...  # pragma: no cover
 
     def get_is_instance_template_name_for_error(self, error_name: str) -> str: ...  # pragma: no cover
 
@@ -35,7 +33,7 @@ class ToplevelWriter(Writer):
     def new_id(self):
         return next(self.identifier_generator)
 
-    def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
+    def write(self, elem: ir0.TemplateBodyElement):
         if isinstance(elem, ir0.TemplateDefn):
             self.template_defns.append(elem)
         else:
@@ -71,7 +69,7 @@ class TemplateBodyWriter(Writer):
     def new_id(self):
         return self.writer.new_id()
 
-    def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
+    def write(self, elem: ir0.TemplateBodyElement):
         if isinstance(elem, ir0.TemplateDefn):
             self.writer.write(elem)
         else:
@@ -130,6 +128,9 @@ def type_to_ir0(type: ir1.ExprType):
         return function_type_to_ir0(type)
     elif isinstance(type, ir1.BottomType):
         return ir0.TypeType()
+    elif isinstance(type, ir1.ParameterPackType):
+        assert type.element_type == ir1.TypeType()
+        return ir0.VariadicType()
     else:
         raise NotImplementedError('Unexpected type: %s' % str(type.__class__))
 
@@ -195,6 +196,8 @@ def expr_to_ir0(expr: ir1.Expr, writer: Writer) -> Tuple[Optional[ir0.Expr], Opt
         return set_equality_comparison_expr_to_ir0(expr), None
     elif isinstance(expr, ir1.ListToSetExpr):
         return list_to_set_expr_to_ir0(expr), None
+    elif isinstance(expr, ir1.ParameterPackExpansion):
+        return parameter_pack_expansion_expr_to_ir0(expr), None
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
@@ -280,7 +283,7 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
     forwarded_args = []  # type: List[ir1.VarReference]
     forwarded_args_names = set()
     for match_case in match_expr.match_cases:
-        local_vars = set(match_case.matched_var_names)
+        local_vars = set(match_case.matched_var_names).union(match_case.matched_variadic_var_names)
         for var in match_case.expr.get_free_variables():
             if var.name not in local_vars and var.name not in forwarded_args_names:
                 forwarded_args_names.add(var.name)
@@ -303,24 +306,58 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
         forwarded_args_patterns = [ir0.AtomicTypeLiteral.for_local(cpp_type=dummy_param_name,
                                                                    type=ir0.TypeType())]
 
-    matched_vars = [var_reference_to_ir0(var)
-                    for var in match_expr.matched_vars]
+    matched_vars = []
+    for var in match_expr.matched_vars:
+        matched_vars.append(var_reference_to_ir0(var))
 
     main_definition = None
     specializations = []
     for match_case in match_expr.match_cases:
-        specialization_arg_decls = forwarded_args_decls + [ir0.TemplateArgDecl(type=ir0.TypeType(), name=arg_name)
-                                                           for arg_name in match_case.matched_var_names]
+        # We use the pre-existing identifiers for typedefs that wrap the variadic type as List<Ts...>.
+        variadic_var_name_by_list_var_name = {list_var_name: writer.new_id()
+                                              for list_var_name in match_case.matched_variadic_var_names}
 
-        specialization_patterns = forwarded_args_patterns.copy()
+        specialization_arg_decls = (
+                forwarded_args_decls
+                + [ir0.TemplateArgDecl(type=ir0.TypeType(), name=arg_name)
+                   for arg_name in match_case.matched_var_names]
+                # So we rename the template params here.
+                + [ir0.TemplateArgDecl(type=ir0.VariadicType(), name=variadic_var_name_by_list_var_name[arg_name])
+                   for arg_name in match_case.matched_variadic_var_names])
+
+        # And we rename the pattern expressions here to match.
+        pattern_writer = writer.create_sibling_writer(parent_arbitrary_arg=writer.parent_arbitrary_arg,
+                                                      parent_return_type=writer.parent_return_type)
+        pattern_result_exprs_before_rename = []
         for pattern in match_case.type_patterns:
-            result_expr, error_expr = expr_to_ir0(pattern, writer)
+            result_expr, error_expr = expr_to_ir0(pattern, pattern_writer)
             assert error_expr is None, str(pattern)
-            specialization_patterns.append(result_expr)
+            pattern_result_exprs_before_rename.append(result_expr)
+
+        rename_pattern_transformation = transform_ir0.NameReplacementTransformation(replacements=variadic_var_name_by_list_var_name)
+        transformation_writer = ToplevelWriter(identifier_generator=iter([]))
+        renamed_pattern_elems = rename_pattern_transformation.transform_template_body_elems(pattern_writer.elems, transformation_writer)
+
+        for elem in renamed_pattern_elems:
+            writer.write(elem)
+        pattern_result_exprs_after_rename = [rename_pattern_transformation.transform_expr(expr, transformation_writer)
+                                             for expr in pattern_result_exprs_before_rename]
+        assert not transformation_writer.template_defns
+        assert not transformation_writer.toplevel_content
+
+        specialization_patterns = forwarded_args_patterns + pattern_result_exprs_after_rename
 
         match_case_writer = TemplateBodyWriter(writer,
                                                parent_arbitrary_arg=writer.parent_arbitrary_arg,
                                                parent_return_type=type_to_ir0(match_case.expr.type))
+        for list_var_name, variadic_var_name in variadic_var_name_by_list_var_name.items():
+            match_case_writer.write(ir0.Typedef(name=list_var_name,
+                                                expr=ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='List',
+                                                                                                                                         arg_types=[ir0.VariadicType()],
+                                                                                                                                         is_metafunction_that_may_return_error=False),
+                                                                               instantiation_might_trigger_static_asserts=False,
+                                                                               args=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type=variadic_var_name,
+                                                                                                                                               type=ir0.VariadicType()))])))
 
         expr_ir0, error_expr = expr_to_ir0(match_case.expr, match_case_writer)
         match_case_writer.write_result_body_elements(result_expr=expr_ir0,
@@ -861,6 +898,9 @@ def list_to_set_expr_to_ir0(expr: ir1.ListToSetExpr):
     return ir0.ClassMemberAccess(class_type_expr=set_equals_instantiation,
                                  member_name='type',
                                  member_type=ir0.TypeType())
+
+def parameter_pack_expansion_expr_to_ir0(expr: ir1.ParameterPackExpansion):
+    return ir0.VariadicTypeExpansion(var_reference_to_ir0(expr.expr))
 
 def assert_to_ir0(assert_stmt: ir1.Assert, writer: Writer):
     expr = var_reference_to_ir0(assert_stmt.var)

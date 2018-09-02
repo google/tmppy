@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from typing import List, Tuple, Set, Optional, Iterable, Union, Dict
-from _py2tmp import ir0
+from _py2tmp import ir0, utils
 
 class Writer:
     def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]): ...  # pragma: no cover
@@ -44,7 +44,7 @@ class ToplevelWriter(Writer):
         self.allow_toplevel_elems = allow_toplevel_elems
         self.allow_template_defns = allow_template_defns
 
-    def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
+    def write(self, elem: ir0.TemplateBodyElement):
         if isinstance(elem, ir0.TemplateDefn):
             assert self.allow_template_defns
             self.template_defns.append(elem)
@@ -66,7 +66,7 @@ class TemplateBodyWriter(Writer):
     def new_id(self):
         return self.toplevel_writer.new_id()
 
-    def write_toplevel_elem(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
+    def write_toplevel_elem(self, elem: ir0.TemplateBodyElement):
         self.toplevel_writer.write(elem)
 
     def write(self, elem: ir0.TemplateBodyElement):
@@ -252,3 +252,41 @@ class Transformation:
     def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: Writer):
         return ir0.VariadicTypeExpansion(self.transform_expr(expr.expr, writer))
 
+class NameReplacementTransformation(Transformation):
+    def __init__(self, replacements: Dict[str, str]):
+        super().__init__()
+        self.replacements = replacements
+
+    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: Writer):
+        return ir0.AtomicTypeLiteral(cpp_type=utils.replace_identifiers(type_literal.cpp_type, self.replacements),
+                                     is_local=type_literal.is_local,
+                                     is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
+                                     type=type_literal.type)
+
+    def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: Writer):
+        writer.write(ir0.ConstantDef(name=self._transform_name(constant_def.name),
+                                     expr=self.transform_expr(constant_def.expr, writer)))
+
+    def transform_typedef(self, typedef: ir0.Typedef, writer: Writer):
+        writer.write(ir0.Typedef(name=self._transform_name(typedef.name),
+                                 expr=self.transform_expr(typedef.expr, writer)))
+
+    def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: Writer):
+        writer.write(ir0.TemplateDefn(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args],
+                                      main_definition=self.transform_template_specialization(template_defn.main_definition, writer)
+                                          if template_defn.main_definition is not None else None,
+                                      specializations=[self.transform_template_specialization(specialization, writer)
+                                                       for specialization in template_defn.specializations],
+                                      name=self._transform_name(template_defn.name),
+                                      description=template_defn.description,
+                                      result_element_names=template_defn.result_element_names))
+
+    def transform_template_arg_decl(self, arg_decl: ir0.TemplateArgDecl):
+        return ir0.TemplateArgDecl(type=arg_decl.type,
+                                   name=self._transform_name(arg_decl.name))
+
+    def _transform_name(self, name: str):
+        if name in self.replacements:
+            return self.replacements[name]
+        else:
+            return name
