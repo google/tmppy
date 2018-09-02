@@ -136,8 +136,7 @@ template <bool TmppyInternal_5> struct TmppyInternal_10<TmppyInternal_5, true> {
 // (meta)function generated for an if-else statement
 template <bool TmppyInternal_5>
 struct TmppyInternal_10<TmppyInternal_5, false> {
-  static constexpr int64_t value =
-      g<Select1stBoolBool<true, TmppyInternal_5>::value>::value;
+  static constexpr int64_t value = g<true>::value;
   using error = void;
 };
 template <bool TmppyInternal_5> struct f {
@@ -159,3 +158,58 @@ def test_optimization_of_mutually_recursive_functions():
             return g(True)
     def g(b: bool) -> int:
         return f(b)
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename> struct CheckIfError { using type = void; };
+template <typename TmppyInternal_22, typename> struct TmppyInternal_24;
+// (meta)function wrapping a match expression
+template <typename TmppyInternal_22, typename... TmppyInternal_23>
+struct TmppyInternal_24<TmppyInternal_22, std::tuple<TmppyInternal_23...>> {
+  using type = List<TmppyInternal_23...>;
+  using error = void;
+};
+template <typename TmppyInternal_9, typename TmppyInternal_8, bool>
+struct TmppyInternal_26;
+// (meta)function generated for an if-else statement
+template <typename TmppyInternal_9, typename TmppyInternal_8>
+struct TmppyInternal_26<TmppyInternal_9, TmppyInternal_8, true> {
+  using type = void;
+  using error = TmppyInternal_9;
+};
+// (meta)function generated for an if-else statement
+template <typename TmppyInternal_9, typename TmppyInternal_8>
+struct TmppyInternal_26<TmppyInternal_9, TmppyInternal_8, false> {
+  using error = void;
+  using type = TmppyInternal_8;
+};
+template <typename> struct TmppyInternal_28;
+// (meta)function to expand the list of args for a template instantiation
+template <typename... TmppyInternal_27>
+struct TmppyInternal_28<List<TmppyInternal_27...>> {
+  using type = std::tuple<TmppyInternal_27...>;
+};
+using TmppyInternal_45 =
+    typename TmppyInternal_28<List<int, float, double>>::type;
+using TmppyInternal_47 =
+    typename TmppyInternal_24<void, TmppyInternal_45>::error;
+static_assert(
+    std::is_same<typename TmppyInternal_26<
+                     TmppyInternal_47,
+                     typename TmppyInternal_24<void, TmppyInternal_45>::type,
+                     !(std::is_same<TmppyInternal_47, void>::value)>::type,
+                 List<int, float, double>>::value,
+    "TMPPy assertion failed: \n<unknown>:7: assert "
+    "_unpack_tuple(Type.template_instantiation('std::tuple', [Type('int'), "
+    "Type('float'), Type('double')])) \\");
+''')
+def test_match_expr_extract_list_optimization():
+    from tmppy import Type, match
+    def _unpack_tuple(t: Type):
+        return match(t)(lambda Ts: {
+            Type.template_instantiation('std::tuple', [*Ts]):
+                Ts
+        })
+    assert _unpack_tuple(Type.template_instantiation('std::tuple', [Type('int'), Type('float'), Type('double')])) \
+        == [Type('int'), Type('float'), Type('double')]

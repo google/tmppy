@@ -310,6 +310,73 @@ class CanTriggerStaticAsserts(transform_ir0.Transformation):
     # static asserts (even though the template might trigger assertions when instantiated).
     return specialization
 
+class ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(transform_ir0.Transformation):
+    def __init__(self, template_instantiation_can_trigger_static_asserts: Dict[str, bool]):
+        self.template_instantiation_can_trigger_static_asserts = template_instantiation_can_trigger_static_asserts
+
+    def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: transform_ir0.Writer):
+        if isinstance(template_instantiation.template_expr, ir0.AtomicTypeLiteral):
+            instantiation_might_trigger_static_asserts = self.template_instantiation_can_trigger_static_asserts.get(template_instantiation.template_expr.cpp_type,
+                                                                                                                    template_instantiation.instantiation_might_trigger_static_asserts)
+            return ir0.TemplateInstantiation(template_expr=self.transform_expr(template_instantiation.template_expr, writer),
+                                             args=[self.transform_expr(arg, writer) for arg in template_instantiation.args],
+                                             instantiation_might_trigger_static_asserts=instantiation_might_trigger_static_asserts)
+
+        return super().transform_template_instantiation(template_instantiation, writer)
+
+def apply_template_instantiation_can_trigger_static_asserts_info(header: ir0.Header, template_instantiation_can_trigger_static_asserts: Dict[str, bool]):
+    return ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(template_instantiation_can_trigger_static_asserts).transform_header(header, identifier_generator=iter([]))
+
+class TemplateDefnContainsStaticAssertStmt(transform_ir0.Transformation):
+    def __init__(self):
+        self.found_static_assert_stmt = False
+
+    def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
+        self.found_static_assert_stmt = True
+        return static_assert
+
+def template_defn_contains_static_assert_stmt(template_defn: ir0.TemplateDefn):
+    transformation = TemplateDefnContainsStaticAssertStmt()
+    transformation.transform_template_defn(template_defn, transform_ir0.ToplevelWriter(identifier_generator=iter([])))
+    return transformation.found_static_assert_stmt
+
+def recalculate_template_instantiation_can_trigger_static_asserts_info(header: ir0.Header):
+    if not header.template_defns:
+        return header
+
+    template_defn_by_name = {template_defn.name: template_defn
+                             for template_defn in header.template_defns}
+    template_defn_dependency_graph = compute_template_dependency_graph(header, template_defn_by_name)
+
+    condensed_graph = nx.condensation(template_defn_dependency_graph)
+    assert isinstance(condensed_graph, nx.DiGraph)
+
+    template_defn_dependency_graph_transitive_closure = nx.transitive_closure(template_defn_dependency_graph)
+    assert isinstance(template_defn_dependency_graph_transitive_closure, nx.DiGraph)
+
+    # Determine which connected components can trigger static assert errors.
+    condensed_node_can_trigger_static_asserts = defaultdict(lambda: False)
+    for connected_component_index in reversed(list(nx.topological_sort(condensed_graph))):
+        condensed_node = condensed_graph.node[connected_component_index]
+
+        # If a template defn in this connected component can trigger a static assert, the whole component can.
+        for template_defn_name in condensed_node['members']:
+            if template_defn_contains_static_assert_stmt(template_defn_by_name[template_defn_name]):
+                condensed_node_can_trigger_static_asserts[connected_component_index] = True
+
+        # If a template defn in this connected component references a template defn in a connected component that can
+        # trigger static asserts, this connected component can also trigger them.
+        for called_condensed_node_index in condensed_graph.successors(connected_component_index):
+            if condensed_node_can_trigger_static_asserts[called_condensed_node_index]:
+                condensed_node_can_trigger_static_asserts[connected_component_index] = True
+
+    template_defn_can_trigger_static_asserts = dict()
+    for connected_component_index in condensed_graph:
+        for template_defn_name in condensed_graph.node[connected_component_index]['members']:
+            template_defn_can_trigger_static_asserts[template_defn_name] = condensed_node_can_trigger_static_asserts[connected_component_index]
+
+    return apply_template_instantiation_can_trigger_static_asserts_info(header, template_defn_can_trigger_static_asserts)
+
 def _elem_can_trigger_static_asserts(stmt: ir0.TemplateBodyElement):
     writer = transform_ir0.ToplevelWriter(identifier_generator=iter([]))
     transformation = CanTriggerStaticAsserts()
@@ -442,14 +509,7 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                     continue
 
                 # Actually inline `var' into `stmt`.
-                try:
-                  stmt = replace_var_with_expr(stmt, var, defining_stmt.expr)
-                except NotImplementedError as e:
-                  # TODO: remove this once ReplaceVarWithExprTransformation is implemented for the general case (see the
-                  # TODO there).
-                  referenced_var_list.pop()
-                  continue
-
+                stmt = replace_var_with_expr(stmt, var, defining_stmt.expr)
                 stmts[i] = stmt
                 num_replacements = remaining_uses_of_var_by_stmt_index[i][var]
 
@@ -793,6 +853,7 @@ def optimize_header_second_pass(header: ir0.Header):
                     public_names=header.public_names)
 
 def optimize_header(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool = False):
+    header = recalculate_template_instantiation_can_trigger_static_asserts_info(header)
     header = optimize_header_first_pass(header, identifier_generator, verbose)
     header = optimize_header_second_pass(header)
     return header
