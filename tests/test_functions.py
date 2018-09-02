@@ -473,3 +473,21 @@ def test_recursive_function_call_without_return_type_decl_error():
             return 1
         else:
             return n * fact(n - 1)  # error: Recursive function references are only allowed if the return type is declared explicitly.
+
+@assert_compilation_succeeds()
+def test_function_call_with_result_not_assigned():
+    class MyError(Exception):
+        def __init__(self, n: int):
+            self.message = 'Something went wrong'
+            self.n = n
+    def f(b: bool):
+        if True:
+            raise MyError(42)
+        return 4
+    def g(b: bool):
+        try:
+            f(True)
+        except MyError as e:
+            return e.n
+        return 5
+    assert g(True) == 42

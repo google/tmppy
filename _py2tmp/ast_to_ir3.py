@@ -684,6 +684,8 @@ def statements_ast_to_ir3(ast_nodes: List[ast.AST],
             statements.append(try_except_stmt)
         elif isinstance(statement_node, ast.Pass):
             pass
+        elif isinstance(statement_node, ast.Expr):
+            statements.append(expression_stmt_to_ir3(statement_node, compilation_context))
         else:
             raise CompilationError(compilation_context, statement_node, 'Unsupported statement.')
 
@@ -867,6 +869,25 @@ def assignment_ast_to_ir3(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssi
                                  rhs=expr)
     else:
         raise CompilationError(compilation_context, ast_node, 'Assignment not supported.')
+
+def expression_stmt_to_ir3(stmt: ast.Expr, compilation_context: CompilationContext):
+    expr = expression_ast_to_ir3(stmt.value,
+                                 compilation_context,
+                                 in_match_pattern=False,
+                                 check_var_reference=lambda ast_node: None)
+
+    lhs_var_name = next(compilation_context.identifier_generator)
+    compilation_context.add_symbol(name=lhs_var_name,
+                                   type=expr.type,
+                                   definition_ast_node=stmt,
+                                   is_only_partially_defined=False,
+                                   is_function_that_may_throw=isinstance(expr.type, ir3.FunctionType))
+
+    return ir3.Assignment(lhs=ir3.VarReference(type=expr.type,
+                                               name=lhs_var_name,
+                                               is_global_function=False,
+                                               is_function_that_may_throw=isinstance(expr.type, ir3.FunctionType)),
+                             rhs=expr)
 
 def int_comparison_ast_to_ir3(lhs_ast_node: ast.AST,
                               rhs_ast_node: ast.AST,
