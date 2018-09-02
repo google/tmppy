@@ -15,7 +15,7 @@ import re
 import textwrap
 from _py2tmp import ir3
 import typed_ast.ast3 as ast
-from typing import List, Tuple, Dict, Optional, Union, Callable
+from typing import List, Tuple, Dict, Optional, Union, Callable, Iterator
 from _py2tmp.utils import ast_to_string
 
 class Symbol:
@@ -65,6 +65,7 @@ class CompilationContext:
                  custom_types_symbol_table: SymbolTable,
                  filename: str,
                  source_lines: List[str],
+                 identifier_generator: Iterator[str],
                  function_name: Optional[str] = None,
                  partially_typechecked_function_definitions_by_name: Dict[str, ast.FunctionDef] = None):
         self.symbol_table = symbol_table
@@ -73,12 +74,14 @@ class CompilationContext:
         self.filename = filename
         self.source_lines = source_lines
         self.current_function_name = function_name
+        self.identifier_generator = identifier_generator
 
     def create_child_context(self, function_name=None):
         return CompilationContext(SymbolTable(parent=self.symbol_table),
                                   self.custom_types_symbol_table,
                                   self.filename,
                                   self.source_lines,
+                                  self.identifier_generator,
                                   function_name=function_name or self.current_function_name,
                                   partially_typechecked_function_definitions_by_name=self.partially_typechecked_function_definitions_by_name)
 
@@ -198,11 +201,12 @@ class CompilationError(Exception):
                         line=compilation_context.source_lines[first_line_number - 1],
                         error_marker=error_marker)
 
-def module_ast_to_ir3(module_ast_node: ast.Module, filename: str, source_lines: List[str]):
+def module_ast_to_ir3(module_ast_node: ast.Module, filename: str, source_lines: List[str], identifier_generator: Iterator[str]):
     compilation_context = CompilationContext(SymbolTable(),
                                              SymbolTable(),
                                              filename,
-                                             source_lines)
+                                             source_lines,
+                                             identifier_generator)
 
     function_defns = []
     toplevel_assertions = []
@@ -817,14 +821,17 @@ def assignment_ast_to_ir3(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssi
 
         var_refs = []
         for lhs_elem_ast_node in target.elts:
-            compilation_context.add_symbol(name=lhs_elem_ast_node.id,
+            lhs_var_name = lhs_elem_ast_node.id
+            if lhs_var_name == '_':
+                lhs_var_name = next(compilation_context.identifier_generator)
+            compilation_context.add_symbol(name=lhs_var_name,
                                            type=elem_type,
                                            definition_ast_node=lhs_elem_ast_node,
                                            is_only_partially_defined=False,
                                            is_function_that_may_throw=isinstance(elem_type, ir3.FunctionType))
 
             var_ref = ir3.VarReference(type=elem_type,
-                                       name=lhs_elem_ast_node.id,
+                                       name=lhs_var_name,
                                        is_global_function=False,
                                        is_function_that_may_throw=isinstance(elem_type, ir3.FunctionType))
             var_refs.append(var_ref)
@@ -844,14 +851,17 @@ def assignment_ast_to_ir3(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssi
         # This is a "normal" assignment
         expr = expression_ast_to_ir3(ast_node.value, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None)
 
-        compilation_context.add_symbol(name=target.id,
+        lhs_var_name = target.id
+        if lhs_var_name == '_':
+            lhs_var_name = next(compilation_context.identifier_generator)
+        compilation_context.add_symbol(name=lhs_var_name,
                                        type=expr.type,
                                        definition_ast_node=target,
                                        is_only_partially_defined=False,
                                        is_function_that_may_throw=isinstance(expr.type, ir3.FunctionType))
 
         return ir3.Assignment(lhs=ir3.VarReference(type=expr.type,
-                                                   name=target.id,
+                                                   name=lhs_var_name,
                                                    is_global_function=False,
                                                    is_function_that_may_throw=isinstance(expr.type, ir3.FunctionType)),
                                  rhs=expr)

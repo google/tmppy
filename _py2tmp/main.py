@@ -36,7 +36,7 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
             yield 'TmppyInternal_%s' % i
     identifier_generator = iter(identifier_generator_fun())
 
-    module_ir3 = ast_to_ir3.module_ast_to_ir3(source_ast, filename, python_source.splitlines())
+    module_ir3 = ast_to_ir3.module_ast_to_ir3(source_ast, filename, python_source.splitlines(), identifier_generator)
     if verbose:
         print('TMPPy IR3:')
         print(utils.ir_to_string(module_ir3))

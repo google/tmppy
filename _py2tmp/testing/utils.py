@@ -623,7 +623,7 @@ def create_identifier_generator():
 def _convert_tmppy_source_to_ir(python_source, identifier_generator):
     filename='<unknown>'
     source_ast = ast.parse(python_source, filename)
-    module_ir3 = ast_to_ir3.module_ast_to_ir3(source_ast, filename, python_source.splitlines())
+    module_ir3 = ast_to_ir3.module_ast_to_ir3(source_ast, filename, python_source.splitlines(), identifier_generator)
     module_ir3 = optimize_ir3.optimize_module(module_ir3)
     module_ir2 = ir3_to_ir2.module_to_ir2(module_ir3, identifier_generator)
     module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2)
