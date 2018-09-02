@@ -568,7 +568,10 @@ class ReturnStmt(Stmt):
         return ReturnTypeInfo(type=self.expr.type, always_returns=True)
 
 def _combine_return_type_of_branches(branch1_stmts: List[Stmt], branch2_stmts: List[Stmt]):
-    branch1_return_type_info = branch1_stmts[-1].get_return_type()
+    if branch1_stmts:
+        branch1_return_type_info = branch1_stmts[-1].get_return_type()
+    else:
+        branch1_return_type_info = ReturnTypeInfo(type=None, always_returns=False)
     if branch2_stmts:
         branch2_return_type_info = branch2_stmts[-1].get_return_type()
     else:
@@ -587,7 +590,6 @@ def _combine_return_type_of_branches(branch1_stmts: List[Stmt], branch2_stmts: L
 class IfStmt(Stmt):
     def __init__(self, cond_expr: Expr, if_stmts: List[Stmt], else_stmts: List[Stmt]):
         assert cond_expr.type == BoolType()
-        assert if_stmts
         self.cond_expr = cond_expr
         self.if_stmts = if_stmts
         self.else_stmts = else_stmts

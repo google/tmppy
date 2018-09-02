@@ -802,7 +802,6 @@ class ReturnStmt(Stmt):
 class IfStmt(Stmt):
     def __init__(self, cond: VarReference, if_stmts: List[Stmt], else_stmts: List[Stmt]):
         assert cond.type == BoolType()
-        assert if_stmts
         self.cond = cond
         self.if_stmts = tuple(if_stmts)
         self.else_stmts = tuple(else_stmts)

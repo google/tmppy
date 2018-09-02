@@ -435,3 +435,129 @@ def test_exception_type_with_no_message_error():
     class MyError(Exception):
         def __init__(self, b: bool):
             self.b = b  # error: Unexpected statement. The first statement in the constructor of an exception class must be of the form: self.message = '...'.
+
+@assert_compilation_succeeds()
+def test_try_except_followed_by_stmts_with_no_free_vars():
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(b: bool):
+        try:
+            raise MyError(True)
+        except MyError as e:
+            x = 1
+        return 2
+    assert f(True) == 2
+
+@assert_compilation_succeeds()
+def test_try_except_where_try_maybe_returns():
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(b: bool):
+        try:
+            if b:
+                return 1
+        except MyError as e:
+            return 2
+        return 3
+    assert f(True) == 1
+    assert f(False) == 3
+
+@assert_compilation_succeeds()
+def test_try_except_where_try_maybe_throws():
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(b: bool):
+        try:
+            if b:
+                raise MyError(True)
+        except MyError as e:
+            return 1
+        return 2
+    assert f(True) == 1
+    assert f(False) == 2
+
+@assert_compilation_succeeds()
+def test_try_except_where_except_maybe_returns():
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(b: bool):
+        try:
+            raise MyError(b)
+        except MyError as e:
+            if e.b:
+                return 1
+        return 2
+    assert f(True) == 1
+    assert f(False) == 2
+
+@assert_compilation_succeeds()
+def test_try_except_where_except_maybe_throws():
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def g(b: bool):
+        try:
+            raise MyError(b)
+        except MyError as e:
+            if e.b:
+                raise e
+        return 2
+    def f(b: bool):
+        try:
+            return g(b)
+        except MyError as e:
+            return 1
+    assert f(True) == 1
+    assert f(False) == 2
+
+@assert_compilation_succeeds()
+def test_try_except_where_both_try_and_except_maybe_return():
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def f(b1: bool, b2: bool):
+        try:
+            if b1:
+                raise MyError(b2)
+        except MyError as e:
+            if e.b:
+                return 1
+        return 2
+    assert f(True, True) == 1
+    assert f(True, False) == 2
+    assert f(False, True) == 2
+    assert f(False, False) == 2
+
+@assert_compilation_succeeds()
+def test_try_except_where_both_try_and_except_maybe_throw():
+    class MyError(Exception):
+        def __init__(self, b: bool):
+            self.message = 'Something went wrong'
+            self.b = b
+    def g(b1: bool, b2: bool):
+        try:
+            if b1:
+                raise MyError(b2)
+        except MyError as e:
+            if e.b:
+                raise e
+        return 1
+    def f(b1: bool, b2: bool):
+        try:
+            return g(b1, b2)
+        except MyError as e:
+            return 2
+    assert f(True, True) == 2
+    assert f(True, False) == 1
+    assert f(False, True) == 1
+    assert f(False, False) == 1

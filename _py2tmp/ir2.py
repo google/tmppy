@@ -977,7 +977,7 @@ class Assignment(Stmt):
                  lhs: VarReference,
                  rhs: Expr,
                  lhs2: Optional[VarReference] = None):
-        assert lhs.type == rhs.type
+        assert lhs.type == rhs.type, '%s vs %s' % (str(lhs.type), str(rhs.type))
         if lhs2:
             assert isinstance(lhs2.type, ErrorOrVoidType)
             assert isinstance(rhs, (MatchExpr, FunctionCall, ListComprehensionExpr))
@@ -1062,7 +1062,6 @@ class ReturnStmt(Stmt):
 class IfStmt(Stmt):
     def __init__(self, cond: VarReference, if_stmts: List[Stmt], else_stmts: List[Stmt]):
         assert cond.type == BoolType()
-        assert if_stmts
         self.cond = cond
         self.if_stmts = if_stmts
         self.else_stmts = else_stmts

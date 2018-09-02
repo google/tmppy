@@ -252,6 +252,8 @@ def module_ast_to_ir3(module_ast_node: ast.Module, filename: str, source_lines: 
         elif isinstance(ast_node, ast.Assert):
             # We'll process this in the 2nd pass (since we need to infer function return types first).
             pass
+        elif isinstance(ast_node, ast.Pass):
+            pass
         else:
             # raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy:\n%s' % ast_to_string(ast_node))
             raise CompilationError(compilation_context, ast_node, 'This Python construct is not supported in TMPPy')
@@ -432,9 +434,9 @@ def if_stmt_ast_to_ir3(ast_node: ast.If,
 
     if_branch_compilation_context = compilation_context.create_child_context()
     if_stmts, first_return_stmt = statements_ast_to_ir3(ast_node.body, if_branch_compilation_context,
-                                                       previous_return_stmt=previous_return_stmt,
-                                                       check_block_always_returns=check_always_returns,
-                                                       stmts_are_toplevel_in_function=False)
+                                                        previous_return_stmt=previous_return_stmt,
+                                                        check_block_always_returns=check_always_returns,
+                                                        stmts_are_toplevel_in_function=False)
 
     if not previous_return_stmt and first_return_stmt:
         previous_return_stmt = first_return_stmt
@@ -443,9 +445,9 @@ def if_stmt_ast_to_ir3(ast_node: ast.If,
 
     if ast_node.orelse:
         else_stmts, first_return_stmt = statements_ast_to_ir3(ast_node.orelse, else_branch_compilation_context,
-                                                             previous_return_stmt=previous_return_stmt,
-                                                             check_block_always_returns=check_always_returns,
-                                                             stmts_are_toplevel_in_function=False)
+                                                              previous_return_stmt=previous_return_stmt,
+                                                              check_block_always_returns=check_always_returns,
+                                                              stmts_are_toplevel_in_function=False)
 
         if not previous_return_stmt and first_return_stmt:
             previous_return_stmt = first_return_stmt
@@ -468,7 +470,10 @@ def _join_definitions_in_branches(parent_context: CompilationContext,
                                   branch1_stmts: List[ir3.Stmt],
                                   branch2_context: CompilationContext,
                                   branch2_stmts: List[ir3.Stmt]):
-    branch1_return_info = branch1_stmts[-1].get_return_type()
+    if branch1_stmts:
+        branch1_return_info = branch1_stmts[-1].get_return_type()
+    else:
+        branch1_return_info = ir3.ReturnTypeInfo(type=None, always_returns=False)
     if branch2_stmts:
         branch2_return_info = branch2_stmts[-1].get_return_type()
     else:
@@ -617,10 +622,10 @@ def try_stmt_ast_to_ir3(ast_node: ast.Try,
     return try_except_stmt, previous_return_stmt
 
 def statements_ast_to_ir3(ast_nodes: List[ast.AST],
-                         compilation_context: CompilationContext,
-                         previous_return_stmt: Optional[Tuple[ir3.ExprType, ast.Return]],
-                         check_block_always_returns: bool,
-                         stmts_are_toplevel_in_function: bool):
+                          compilation_context: CompilationContext,
+                          previous_return_stmt: Optional[Tuple[ir3.ExprType, ast.Return]],
+                          check_block_always_returns: bool,
+                          stmts_are_toplevel_in_function: bool):
     assert ast_nodes
 
     statements = []
@@ -673,6 +678,8 @@ def statements_ast_to_ir3(ast_nodes: List[ast.AST],
             if not previous_return_stmt:
                 previous_return_stmt = first_return_stmt
             statements.append(try_except_stmt)
+        elif isinstance(statement_node, ast.Pass):
+            pass
         else:
             raise CompilationError(compilation_context, statement_node, 'Unsupported statement.')
 
@@ -732,9 +739,9 @@ def function_def_ast_to_ir3(ast_node: ast.FunctionDef, compilation_context: Comp
         args.append(ir3.FunctionArgDecl(type=arg_type, name=arg.arg))
 
     statements, first_return_stmt = statements_ast_to_ir3(ast_node.body, function_body_compilation_context,
-                                                         previous_return_stmt=None,
-                                                         check_block_always_returns=True,
-                                                         stmts_are_toplevel_in_function=True)
+                                                          previous_return_stmt=None,
+                                                          check_block_always_returns=True,
+                                                          stmts_are_toplevel_in_function=True)
 
     if first_return_stmt:
         return_type, first_return_stmt_ast_node = first_return_stmt
