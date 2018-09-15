@@ -12,3 +12,4 @@ branch = True
 exclude_lines =
     pragma: no cover
     raise NotImplementedError
+    : \.\.\.
