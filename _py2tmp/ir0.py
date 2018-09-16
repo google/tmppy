@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import itertools
 from typing import List, Set, Optional, Iterable, Union, Dict, Hashable, Tuple
 from enum import Enum
 import re
@@ -23,6 +23,27 @@ class ExprKind(Enum):
     TYPE = 3
     TEMPLATE = 4
     VARIADIC_TYPE = 5
+
+class TemplateBodyElementOrExpr:
+    def get_referenced_identifiers(self) -> Iterable[str]:
+        for expr in self.get_transitive_subexpressions():
+            for identifier in expr.get_local_referenced_identifiers():
+                yield identifier
+
+    # Returns all transitive subexpressions
+    def get_transitive_subexpressions(self):
+        if isinstance(self, Expr):
+            yield self
+        for elem in self.get_direct_subelements():
+            for subexpr in elem.get_transitive_subexpressions():
+                yield subexpr
+        for expr in self.get_direct_subexpressions():
+            for subexpr in expr.get_transitive_subexpressions():
+                yield subexpr
+
+    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']: ...
+
+    def get_direct_subexpressions(self) -> Iterable['Expr']: ...
 
 class ExprType(utils.ValueType):
     def __init__(self, kind: ExprKind):
@@ -49,18 +70,32 @@ class VariadicType(ExprType):
     def __init__(self):
         super().__init__(kind=ExprKind.VARIADIC_TYPE)
 
-class Expr(utils.ValueType):
+class Expr(utils.ValueType, TemplateBodyElementOrExpr):
     def __init__(self, type: ExprType):
         self.type = type
 
-    def references_any_of(self, variables: Set[str]) -> bool: ...  # pragma: no cover
+    def references_any_of(self, variables: Set[str]):
+        return any(isinstance(expr, AtomicTypeLiteral) and expr.cpp_type in variables
+                   for expr in self.get_transitive_subexpressions())
 
-    def get_free_vars(self) -> Iterable['AtomicTypeLiteral']: ...  # pragma: no cover
+    def get_free_vars(self) -> Iterable['AtomicTypeLiteral']:
+        for expr in self.get_transitive_subexpressions():
+            if isinstance(expr, AtomicTypeLiteral) and expr.is_local:
+                yield expr
 
-    def get_referenced_identifiers(self) -> Iterable[str]: ...  # pragma: no cover
+    def get_local_referenced_identifiers(self) -> Iterable[str]:
+        if isinstance(self, AtomicTypeLiteral):
+            yield self.cpp_type
 
-class TemplateBodyElement:
-    def get_referenced_identifiers(self) -> Iterable[str]: ...  # pragma: no cover
+    def get_direct_subelements(self):
+        return []
+
+    def is_same_expr_excluding_subexpressions(self, other: 'Expr') -> bool: ...
+
+    def copy_with_subexpressions(self, new_subexpressions: List['Expr']): ...
+
+class TemplateBodyElement(TemplateBodyElementOrExpr):
+    pass
 
 class StaticAssert(TemplateBodyElement):
     def __init__(self, expr: Expr, message: str):
@@ -68,9 +103,11 @@ class StaticAssert(TemplateBodyElement):
         self.expr = expr
         self.message = message
 
-    def get_referenced_identifiers(self):
-        for identifier in self.expr.get_referenced_identifiers():
-            yield identifier
+    def get_direct_subelements(self):
+        return []
+
+    def get_direct_subexpressions(self):
+        yield self.expr
 
 class ConstantDef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr):
@@ -78,9 +115,11 @@ class ConstantDef(TemplateBodyElement):
         self.name = name
         self.expr = expr
 
-    def get_referenced_identifiers(self):
-        for identifier in self.expr.get_referenced_identifiers():
-            yield identifier
+    def get_direct_subelements(self):
+        return []
+
+    def get_direct_subexpressions(self):
+        yield self.expr
 
 class Typedef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr):
@@ -88,9 +127,11 @@ class Typedef(TemplateBodyElement):
         self.name = name
         self.expr = expr
 
-    def get_referenced_identifiers(self):
-        for identifier in self.expr.get_referenced_identifiers():
-            yield identifier
+    def get_direct_subelements(self):
+        return []
+
+    def get_direct_subexpressions(self):
+        yield self.expr
 
 class TemplateArgDecl:
     def __init__(self, type: ExprType, name: str = ''):
@@ -108,15 +149,6 @@ class TemplateSpecialization:
 
         self.patterns = tuple(patterns) if patterns is not None else None
         self.body = tuple(body)
-
-    def get_referenced_identifiers(self):
-        if self.patterns:
-            for type_pattern in self.patterns:
-                for identifier in type_pattern.get_referenced_identifiers():
-                    yield identifier
-        for elem in self.body:
-            for identifier in elem.get_referenced_identifiers():
-                yield identifier
 
 class TemplateDefn(TemplateBodyElement):
     def __init__(self,
@@ -136,13 +168,17 @@ class TemplateDefn(TemplateBodyElement):
         self.description = description
         self.result_element_names = tuple(sorted(result_element_names))
 
-    def get_referenced_identifiers(self):
-        if self.main_definition:
-            for identifier in self.main_definition.get_referenced_identifiers():
-                yield identifier
-        for specialization in self.specializations:
-            for identifier in specialization.get_referenced_identifiers():
-                yield identifier
+    def get_direct_subelements(self):
+        for specialization in itertools.chain((self.main_definition,), self.specializations):
+            if specialization:
+                for elem in specialization.body:
+                    yield elem
+
+    def get_direct_subexpressions(self):
+        for specialization in itertools.chain((self.main_definition,), self.specializations):
+            if specialization and specialization.patterns:
+                for expr in specialization.patterns:
+                    yield expr
 
 class Literal(Expr):
     def __init__(self, value: Union[bool, int]):
@@ -155,16 +191,15 @@ class Literal(Expr):
         super().__init__(type)
         self.value = value
 
-    def references_any_of(self, variables: Set[str]):
-        return False
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, Literal) and self.value == other.value
 
-    def get_free_vars(self):
-        if False:
-            yield  # pragma: no cover
+    def get_direct_subexpressions(self):
+        return []
 
-    def get_referenced_identifiers(self):
-        if False:
-            yield  # pragma: no cover
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        assert not new_subexpressions
+        return self
 
 class AtomicTypeLiteral(Expr):
     def __init__(self,
@@ -178,6 +213,20 @@ class AtomicTypeLiteral(Expr):
         self.is_local = is_local
         self.type = type
         self.is_metafunction_that_may_return_error = is_metafunction_that_may_return_error
+
+    def get_direct_free_vars(self):
+        if self.is_local:
+            yield self
+
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, AtomicTypeLiteral) and self.__dict__ == other.__dict__
+
+    def get_direct_subexpressions(self):
+        return []
+
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        assert not new_subexpressions
+        return self
 
     @staticmethod
     def for_local(cpp_type: str,
@@ -217,32 +266,21 @@ class AtomicTypeLiteral(Expr):
                                                        arg_types=[arg.type for arg in template_defn.args],
                                                        is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
 
-    def references_any_of(self, variables: Set[str]):
-        return self.cpp_type in variables
-
-    def get_free_vars(self):
-        if self.is_local:
-            yield self
-
-    def get_referenced_identifiers(self):
-        yield self.cpp_type
-
 class PointerTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
         super().__init__(type=TypeType())
         assert type_expr.type == TypeType()
         self.type_expr = type_expr
 
-    def references_any_of(self, variables: Set[str]):
-        return self.type_expr.references_any_of(variables)
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, PointerTypeExpr)
 
-    def get_free_vars(self):
-        for var in self.type_expr.get_free_vars():
-            yield var
+    def get_direct_subexpressions(self):
+        yield self.type_expr
 
-    def get_referenced_identifiers(self):
-        for identifier in self.type_expr.get_referenced_identifiers():
-            yield identifier
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [new_type_expr] = new_subexpressions
+        return PointerTypeExpr(new_type_expr)
 
 class ReferenceTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
@@ -250,16 +288,15 @@ class ReferenceTypeExpr(Expr):
         assert type_expr.type == TypeType()
         self.type_expr = type_expr
 
-    def references_any_of(self, variables: Set[str]):
-        return self.type_expr.references_any_of(variables)
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, ReferenceTypeExpr)
 
-    def get_free_vars(self):
-        for var in self.type_expr.get_free_vars():
-            yield var
+    def get_direct_subexpressions(self):
+        yield self.type_expr
 
-    def get_referenced_identifiers(self):
-        for identifier in self.type_expr.get_referenced_identifiers():
-            yield identifier
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [new_type_expr] = new_subexpressions
+        return ReferenceTypeExpr(new_type_expr)
 
 class RvalueReferenceTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
@@ -267,16 +304,15 @@ class RvalueReferenceTypeExpr(Expr):
         assert type_expr.type == TypeType()
         self.type_expr = type_expr
 
-    def references_any_of(self, variables: Set[str]):
-        return self.type_expr.references_any_of(variables)
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, RvalueReferenceTypeExpr)
 
-    def get_free_vars(self):
-        for var in self.type_expr.get_free_vars():
-            yield var
+    def get_direct_subexpressions(self):
+        yield self.type_expr
 
-    def get_referenced_identifiers(self):
-        for identifier in self.type_expr.get_referenced_identifiers():
-            yield identifier
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [new_type_expr] = new_subexpressions
+        return RvalueReferenceTypeExpr(new_type_expr)
 
 class ConstTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
@@ -284,16 +320,15 @@ class ConstTypeExpr(Expr):
         assert type_expr.type == TypeType()
         self.type_expr = type_expr
 
-    def references_any_of(self, variables: Set[str]):
-        return self.type_expr.references_any_of(variables)
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, ConstTypeExpr)
 
-    def get_free_vars(self):
-        for var in self.type_expr.get_free_vars():
-            yield var
-
-    def get_referenced_identifiers(self):
-        for identifier in self.type_expr.get_referenced_identifiers():
-            yield identifier
+    def get_direct_subexpressions(self):
+        yield self.type_expr
+    
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [new_type_expr] = new_subexpressions
+        return ConstTypeExpr(new_type_expr)
 
 class ArrayTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
@@ -301,16 +336,15 @@ class ArrayTypeExpr(Expr):
         assert type_expr.type == TypeType()
         self.type_expr = type_expr
 
-    def references_any_of(self, variables: Set[str]):
-        return self.type_expr.references_any_of(variables)
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, ArrayTypeExpr)
 
-    def get_free_vars(self):
-        for var in self.type_expr.get_free_vars():
-            yield var
-
-    def get_referenced_identifiers(self):
-        for identifier in self.type_expr.get_referenced_identifiers():
-            yield identifier
+    def get_direct_subexpressions(self):
+        yield self.type_expr
+    
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [new_type_expr] = new_subexpressions
+        return ArrayTypeExpr(new_type_expr)
 
 class FunctionTypeExpr(Expr):
     def __init__(self, return_type_expr: Expr, arg_exprs: List[Expr]):
@@ -320,37 +354,25 @@ class FunctionTypeExpr(Expr):
         self.return_type_expr = return_type_expr
         self.arg_exprs = tuple(arg_exprs)
 
-    def references_any_of(self, variables: Set[str]):
-        return self.return_type_expr.references_any_of(variables) or any(expr.references_any_of(variables)
-                                                                         for expr in self.arg_exprs)
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, FunctionTypeExpr)
 
-    def get_free_variables(self):
-        for exprs in (self.return_type_expr,), self.arg_exprs:
-            for expr in exprs:
-                for var in expr.get_free_vars():
-                    yield var
+    def get_direct_subexpressions(self):
+        yield self.return_type_expr
+        for expr in self.arg_exprs:
+            yield expr
 
-    def get_referenced_identifiers(self):
-        for exprs in (self.return_type_expr,), self.arg_exprs:
-            for expr in exprs:
-                for identifier in expr.get_referenced_identifiers():
-                    yield identifier
+    def copy_with_subexpressions(self, new_subexpressions: List['Expr']):
+        [new_return_type_expr, *new_arg_exprs] = new_subexpressions
+        return FunctionTypeExpr(new_return_type_expr, new_arg_exprs)
 
 class UnaryExpr(Expr):
     def __init__(self, expr: Expr, result_type: ExprType):
         super().__init__(type=result_type)
         self.expr = expr
 
-    def references_any_of(self, variables: Set[str]):
-        return self.expr.references_any_of(variables)
-
-    def get_free_vars(self):
-        for var in self.expr.get_free_vars():
-            yield var
-
-    def get_referenced_identifiers(self):
-        for identifier in self.expr.get_referenced_identifiers():
-            yield identifier
+    def get_direct_subexpressions(self):
+        yield self.expr
 
 class BinaryExpr(Expr):
     def __init__(self, lhs: Expr, rhs: Expr, result_type: ExprType):
@@ -358,18 +380,9 @@ class BinaryExpr(Expr):
         self.lhs = lhs
         self.rhs = rhs
 
-    def references_any_of(self, variables: Set[str]):
-        return self.lhs.references_any_of(variables) or self.rhs.references_any_of(variables)
-
-    def get_free_vars(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_vars():
-                yield var
-
-    def get_referenced_identifiers(self):
-        for expr in (self.lhs, self.rhs):
-            for identifier in expr.get_referenced_identifiers():
-                yield identifier
+    def get_direct_subexpressions(self):
+        yield self.lhs
+        yield self.rhs
 
 class ComparisonExpr(BinaryExpr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):
@@ -383,6 +396,13 @@ class ComparisonExpr(BinaryExpr):
         super().__init__(lhs, rhs, result_type=BoolType())
         self.op = op
 
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, ComparisonExpr) and self.op == other.op
+
+    def copy_with_subexpressions(self, new_subexpressions: List['Expr']):
+        [lhs, rhs] = new_subexpressions
+        return ComparisonExpr(lhs, rhs, self.op)
+
 class Int64BinaryOpExpr(BinaryExpr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):
         super().__init__(lhs, rhs, result_type=Int64Type())
@@ -390,6 +410,13 @@ class Int64BinaryOpExpr(BinaryExpr):
         assert isinstance(rhs.type, Int64Type)
         assert op in ('+', '-', '*', '/', '%')
         self.op = op
+
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, Int64BinaryOpExpr) and self.op == other.op
+
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [lhs, rhs] = new_subexpressions
+        return Int64BinaryOpExpr(lhs, rhs, self.op)
 
 class TemplateInstantiation(Expr):
     def __init__(self,
@@ -413,38 +440,62 @@ class TemplateInstantiation(Expr):
         self.args = tuple(args)
         self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
 
-    def references_any_of(self, variables: Set[str]):
-        return self.template_expr.references_any_of(variables) or any(expr.references_any_of(variables)
-                                                                      for expr in self.args)
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, TemplateInstantiation) and self.instantiation_might_trigger_static_asserts == other.instantiation_might_trigger_static_asserts
 
-    def get_free_vars(self):
-        for exprs in ((self.template_expr,), self.args):
-            for expr in exprs:
-                for var in expr.get_free_vars():
-                    yield var
+    def get_direct_subexpressions(self):
+        yield self.template_expr
+        for expr in self.args:
+            yield expr
 
-    def get_referenced_identifiers(self):
-        for exprs in ((self.template_expr,), self.args):
-            for expr in exprs:
-                for identifier in expr.get_referenced_identifiers():
-                    yield identifier
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [template_expr, *args] = new_subexpressions
+        return TemplateInstantiation(template_expr, args, self.instantiation_might_trigger_static_asserts)
 
 class ClassMemberAccess(UnaryExpr):
     def __init__(self, class_type_expr: Expr, member_name: str, member_type: ExprType):
         super().__init__(class_type_expr, result_type=member_type)
         self.member_name = member_name
 
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, ClassMemberAccess) and self.member_name == other.member_name
+
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        assert not new_subexpressions
+        return self
+
 class NotExpr(UnaryExpr):
     def __init__(self, expr: Expr):
         super().__init__(expr, result_type=BoolType())
+
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, NotExpr)
+
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [expr] = new_subexpressions
+        return NotExpr(expr)
 
 class UnaryMinusExpr(UnaryExpr):
     def __init__(self, expr: Expr):
         super().__init__(expr, result_type=Int64Type())
 
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, UnaryMinusExpr)
+
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [expr] = new_subexpressions
+        return UnaryMinusExpr(expr)
+
 class VariadicTypeExpansion(UnaryExpr):
     def __init__(self, expr: Expr):
         super().__init__(expr, result_type=TypeType())
+
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, VariadicTypeExpansion)
+
+    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+        [expr] = new_subexpressions
+        return VariadicTypeExpansion(expr)
 
 class Header:
     def __init__(self,
