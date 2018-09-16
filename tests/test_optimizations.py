@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
@@ -213,3 +214,6 @@ def test_match_expr_extract_list_optimization():
         })
     assert _unpack_tuple(Type.template_instantiation('std::tuple', [Type('int'), Type('float'), Type('double')])) \
         == [Type('int'), Type('float'), Type('double')]
+
+if __name__== '__main__':
+    main(__file__)

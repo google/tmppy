@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_exception_raised_and_caught_success():
@@ -561,3 +562,6 @@ def test_try_except_where_both_try_and_except_maybe_throw():
     assert f(True, False) == 1
     assert f(False, True) == 1
     assert f(False, False) == 1
+
+if __name__== '__main__':
+    main(__file__)

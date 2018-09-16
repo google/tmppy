@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_bool_variable_success():
@@ -250,3 +251,6 @@ def test_match_variable_named_error_in_match_returning_value_ok():
                 15,
         })
     assert f(True) == 15
+
+if __name__== '__main__':
+    main(__file__)

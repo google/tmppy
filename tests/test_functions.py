@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_identity():
@@ -491,3 +492,6 @@ def test_function_call_with_result_not_assigned():
             return e.n
         return 5
     assert g(True) == 42
+
+if __name__== '__main__':
+    main(__file__)

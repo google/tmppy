@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_conversion_fails
 def test_global_variable_error():
@@ -42,3 +43,6 @@ def test_add_pointer_multiple_example():
     assert add_pointer_multiple(Type('int'), 0) == Type('int')
     assert add_pointer_multiple(Type('int'), 2) == Type.pointer(Type.pointer(Type('int')))
     assert add_pointer_multiple(Type.pointer(Type('int')), 2) == Type.pointer(Type.pointer(Type.pointer(Type('int'))))
+
+if __name__== '__main__':
+    main(__file__)

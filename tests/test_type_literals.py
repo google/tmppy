@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_type_literal_success():
@@ -386,3 +387,6 @@ def test_type_undefined_static_method():
     from tmppy import Type
     def f(x: bool):
         return Type.i_do_not_exist()  # error: Undefined Type factory method
+
+if __name__== '__main__':
+    main(__file__)

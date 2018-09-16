@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_bool_equals_success():
@@ -97,3 +98,6 @@ def test_custom_class_second_field_not_equal_success():
             self.x = x
             self.y = y
     assert MyType(True, 15) != MyType(True, 17)
+
+if __name__== '__main__':
+    main(__file__)

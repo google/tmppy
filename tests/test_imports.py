@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_conversion_fails
 def test_import_unsupported_module():
@@ -33,3 +34,6 @@ def test_import_symbol_as_alias_error():
 @assert_compilation_succeeds()
 def test_import_multiple_ok():
     from typing import List, Callable
+
+if __name__== '__main__':
+    main(__file__)

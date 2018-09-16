@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_pass_toplevel():
@@ -124,3 +125,6 @@ def test_pass_in_except_alone():
             pass
         return 4
     assert f(42) == 4
+
+if __name__== '__main__':
+    main(__file__)

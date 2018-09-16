@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_conversion_fails
 def test_unsupported_type():
@@ -28,3 +29,6 @@ def test_unsupported_type_declaration_int_literal():
 def test_unsupported_type_declaration_int_with_bracket():
     def f(x: int[int]): # error: Unsupported type declaration.
         return x
+
+if __name__== '__main__':
+    main(__file__)

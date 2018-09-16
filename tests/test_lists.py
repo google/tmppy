@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_conversion_fails
 def test_empty_list_expression_error():
@@ -687,3 +688,6 @@ def test_list_unpacking_as_list_wrong_number_of_elements_error():
         [a, b, c] = f(b1)
         return b
     assert g(True) == 20
+
+if __name__== '__main__':
+    main(__file__)

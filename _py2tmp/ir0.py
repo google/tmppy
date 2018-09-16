@@ -458,11 +458,11 @@ class ClassMemberAccess(UnaryExpr):
         self.member_name = member_name
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
-        return isinstance(other, ClassMemberAccess) and self.member_name == other.member_name
+        return isinstance(other, ClassMemberAccess) and self.member_name == other.member_name and self.type == other.type
 
     def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
-        assert not new_subexpressions
-        return self
+        [expr] = new_subexpressions
+        return ClassMemberAccess(class_type_expr=expr, member_name=self.member_name, member_type=self.type)
 
 class NotExpr(UnaryExpr):
     def __init__(self, expr: Expr):
@@ -488,6 +488,7 @@ class UnaryMinusExpr(UnaryExpr):
 
 class VariadicTypeExpansion(UnaryExpr):
     def __init__(self, expr: Expr):
+        assert expr.type == VariadicType()
         super().__init__(expr, result_type=TypeType())
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_not_false():
@@ -152,3 +153,6 @@ def test_or_int_bool_error():
         assert (1  # error: The "or" operator is only supported for booleans, but this value has type int.
                 or True)
         return True
+
+if __name__== '__main__':
+    main(__file__)

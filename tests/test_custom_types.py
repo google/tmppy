@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_custom_class_simple_success():
@@ -419,3 +420,6 @@ def test_custom_type_non_argument_assigned_to_field_error():
     class MyType:
         def __init__(self, y: bool):
             self.f = f  # error: Unsupported assignment. All assigments in __init__ methods must assign a parameter to a field with the same name.
+
+if __name__== '__main__':
+    main(__file__)

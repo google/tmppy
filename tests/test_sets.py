@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_conversion_fails
 def test_empty_set_no_arguments_error():
@@ -491,3 +492,6 @@ def test_custom_type_containing_set_equality_error():
 @assert_compilation_succeeds()
 def test_set_of_lists_ok():
     assert {[1, 2], [3, 4]} != {[1, 2]}
+
+if __name__== '__main__':
+    main(__file__)

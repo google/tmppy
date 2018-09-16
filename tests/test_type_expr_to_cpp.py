@@ -15,6 +15,7 @@
 from _py2tmp import ir0
 from _py2tmp import ir0_to_cpp
 from typing import List
+from _py2tmp.testing.utils import main
 
 def type_expr_to_cpp(expr: ir0.Expr):
     writer = ir0_to_cpp.ToplevelWriter(identifier_generator=iter([]))
@@ -252,3 +253,6 @@ def test_type_expr_to_cpp_member_access_as_arg_of_function_type():
 def test_type_expr_to_cpp_member_access_as_return_type_of_function_type():
     expr = fun(type_member_access(X, 'some_type'), [Y])
     assert type_expr_to_cpp(expr) == 'typename X::some_type (Y)'
+
+if __name__== '__main__':
+    main(__file__)

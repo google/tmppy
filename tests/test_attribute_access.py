@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_attribute_access_success():
@@ -63,3 +64,6 @@ def test_attribute_access_on_function_error():
     def f(x: Type):
         return x
     assert f.type == Type('int')  # error: Attribute access is not supported for values of type \(Type\) -> Type.
+
+if __name__== '__main__':
+    main(__file__)

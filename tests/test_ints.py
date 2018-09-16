@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_int_success():
@@ -246,3 +247,6 @@ def test_int_greater_than_or_equal_to_bool_error():
 def test_bool_greater_than_or_equal_to_int_error():
     assert (True  # error: The ">=" operator is only supported for ints, but this value has type bool.
             >= 1)
+
+if __name__== '__main__':
+    main(__file__)

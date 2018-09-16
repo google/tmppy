@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_if_else_success():
@@ -635,3 +636,6 @@ def test_three_nested_if_else():
     assert g(False, True, False) == 6
     assert g(False, False, True) == 7
     assert g(False, False, False) == 8
+
+if __name__== '__main__':
+    main(__file__)

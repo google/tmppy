@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from py2tmp.testing import *
+from _py2tmp.testing.utils import main
 
 @assert_compilation_succeeds()
 def test_simple_assertion():
@@ -306,3 +307,6 @@ def test_assert_false_in_function_call_with_constant_args_called_type_type_error
 @assert_conversion_fails
 def test_assert_expression_wrong_type():
     assert 1  # error: The value passed to assert must have type bool, but got a value with type int.
+
+if __name__== '__main__':
+    main(__file__)
