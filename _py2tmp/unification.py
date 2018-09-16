@@ -29,24 +29,11 @@ class UnificationStrategy(Generic[TermT]):
     # Gets the args of a term.
     def get_term_args(self, term: TermT) -> List[Expr]: ...
 
-    # Returns a copy of `term` with the given new args.
-    # This is only called if canonicalize=True is passed to unify()
-    def term_copy_with_args(self, term: TermT, new_args: List[Expr]) -> TermT: ...
-
-def unify(expr_expr_equations: List[Tuple[Union[str, TermT], Union[str, TermT]]],
-          strategy: UnificationStrategy[TermT],
-          canonicalize: bool = False) \
-        -> Dict[str, Union[str, TermT]]:
-    var_expr_equations = _convert_to_var_expr_equations(expr_expr_equations, strategy)
-    if canonicalize:
-        var_expr_equations = _canonicalize_var_expr_equations(var_expr_equations, strategy)
-    return var_expr_equations
-
 _Expr = Union[str, TermT]
 
-def _convert_to_var_expr_equations(expr_expr_equations: List[Tuple[_Expr, _Expr]],
-                                   strategy: UnificationStrategy[TermT]):
-    var_expr_equations: Dict[str, TermT] = dict()
+def unify(expr_expr_equations: List[Tuple[Union[str, TermT], Union[str, TermT]]],
+          strategy: UnificationStrategy[TermT]) -> Dict[str, Union[str, TermT]]:
+    var_expr_equations: Dict[str, _Expr] = dict()
 
     expr_expr_equations = expr_expr_equations.copy()
     while expr_expr_equations:
@@ -82,8 +69,105 @@ def _convert_to_var_expr_equations(expr_expr_equations: List[Tuple[_Expr, _Expr]
 
         raise UnificationFailedException()
 
-
     return var_expr_equations
+
+class CanonicalizationFailedException(Exception):
+    pass
+
+class UnificationStrategyForCanonicalization(Generic[TermT], UnificationStrategy[TermT]):
+    # Returns a copy of `term` with the given new args.
+    def term_copy_with_args(self, term: TermT, new_args: List[UnificationStrategy.Expr]) -> TermT: ...
+
+    # Returns true if the var is allowed to be in the LHS of an equation in the result.
+    def can_var_be_on_lhs(self, str) -> bool: ...
+
+def canonicalize(var_expr_equations: Dict[str, _Expr],
+                 strategy: UnificationStrategyForCanonicalization[TermT]) -> Dict[str, _Expr]:
+    if not var_expr_equations:
+        return dict()
+
+    var_expr_equations = var_expr_equations.copy()
+
+    # A graph that has all variables on the LHS of equations as nodes and an edge var1->var2 if we have the equation
+    # var1=expr and var2 appears in expr.
+    vars_dependency_graph = nx.DiGraph()
+    for lhs, rhs in var_expr_equations.items():
+        for var in _get_free_variables(rhs, strategy):
+            vars_dependency_graph.add_edge(lhs, var)
+        if isinstance(rhs, str):
+            # This is a var-var equation. We also add an edge for the flipped equation.
+            # That's going to cause a cycle, but we'll deal with the cycle below once we know if any other vars are
+            # part of the cycle.
+            vars_dependency_graph.add_edge(rhs, lhs)
+
+    condensed_graph = nx.condensation(vars_dependency_graph)
+    assert isinstance(condensed_graph, nx.DiGraph)
+
+    for connected_component_index in reversed(list(nx.topological_sort(condensed_graph))):
+        vars_in_connected_component = condensed_graph.node[connected_component_index]['members'].copy()
+
+        if len(vars_in_connected_component) == 1:
+            [var] = vars_in_connected_component
+            if var in var_expr_equations:
+                # We can't flip the equation for this var since it's a "var=term" equation.
+                assert not isinstance(var_expr_equations[var], str)
+                if not strategy.can_var_be_on_lhs(var):
+                    raise CanonicalizationFailedException()
+            else:
+                # This var is just part of a larger term in some other equation.
+                assert not vars_dependency_graph.successors(var)
+        else:
+            assert len(vars_in_connected_component) > 1
+            # We have a loop.
+            # If any expression of the loop is a term, unification would be impossible because we can deduce var1=expr1
+            # in which expr1 is not just var1 and var1 appears in expr1.
+            # But in this case unify() would have failed, so here we can assume that all exprs in the loop are
+            # variables, i.e. the loop is of the form var1=var2=...=varN.
+            for var in vars_in_connected_component:
+                if var in var_expr_equations:
+                    assert isinstance(var_expr_equations[var], str)
+
+            # We have a choice of what var to put on the RHS.
+            vars_in_rhs = [var
+                           for var in vars_in_connected_component
+                           if not strategy.can_var_be_on_lhs(var)]
+            if len(vars_in_rhs) == 0:
+                # Any var would do. We pick the max just to make this function deterministic.
+                rhs_var = max(*vars_in_connected_component)
+            elif len(vars_in_rhs) == 1:
+                # This is the only one we can pick.
+                [rhs_var] = vars_in_rhs
+            else:
+                # We need at least n-1 distinct LHS vars but we don't have enough vars allowed on the LHS.
+                raise CanonicalizationFailedException()
+
+            # Now we remove all equations defining these vars and the corresponding edges in the graph.
+            for var in vars_in_connected_component:
+                if var in var_expr_equations:
+                    del var_expr_equations[var]
+                for successor in vars_dependency_graph.successors(var):
+                    vars_dependency_graph.remove_edge(var, successor)
+
+            # And finally we add the rearranged equations.
+            for var in vars_in_connected_component:
+                if var != rhs_var:
+                    var_expr_equations[var] = rhs_var
+                    vars_dependency_graph.add_edge(var, rhs_var)
+
+    # Invariant:
+    # assert not any(key in _get_free_variables(value, strategy)
+    #                for key in canonical_var_expr_equations.keys()
+    #                for value in canonical_var_expr_equations.values())
+    canonical_var_expr_equations: Dict[str, _Expr] = dict()
+
+    for var in reversed(list(nx.topological_sort(vars_dependency_graph))):
+        expr = var_expr_equations.get(var)
+        if expr is None:
+            continue
+        expr = _replace_variables_in_expr(expr, canonical_var_expr_equations, strategy)
+        canonical_var_expr_equations[var] = expr
+
+    return canonical_var_expr_equations
 
 def _occurence_check(var1: str,
                      expr1: _Expr,
@@ -116,7 +200,7 @@ def _get_free_variables(expr: _Expr,
 
 def _replace_variables_in_expr(expr: _Expr,
                                replacements: Dict[str, _Expr],
-                               strategy: UnificationStrategy[TermT]):
+                               strategy: UnificationStrategyForCanonicalization[TermT]):
     if isinstance(expr, str):
         if expr in replacements:
             return replacements[expr]
@@ -125,30 +209,3 @@ def _replace_variables_in_expr(expr: _Expr,
 
     return strategy.term_copy_with_args(expr, [_replace_variables_in_expr(arg, replacements, strategy)
                                                for arg in strategy.get_term_args(expr)])
-
-def _canonicalize_var_expr_equations(var_expr_equations: Dict[str, _Expr],
-                                     strategy: UnificationStrategy[TermT]):
-    if not var_expr_equations:
-        return dict()
-
-    # A graph that has all variables on the LHS of equations as nodes and an edge var1->var2 if we have the equation
-    # var1=expr and var2 appears in expr.
-    vars_dependency_graph = nx.DiGraph()
-    for lhs, rhs in var_expr_equations.items():
-        for var in _get_free_variables(rhs, strategy):
-            vars_dependency_graph.add_edge(lhs, var)
-
-    # Invariant:
-    # assert not any(key in _get_free_variables(value, strategy)
-    #                for key in canonical_var_expr_equations.keys()
-    #                for value in canonical_var_expr_equations.values())
-    canonical_var_expr_equations: Dict[str, TermT] = dict()
-
-    for var in reversed(list(nx.topological_sort(vars_dependency_graph))):
-        expr = var_expr_equations.get(var)
-        if expr is None:
-            continue
-        expr = _replace_variables_in_expr(expr, canonical_var_expr_equations, strategy)
-        canonical_var_expr_equations[var] = expr
-
-    return canonical_var_expr_equations
