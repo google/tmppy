@@ -59,7 +59,7 @@ def bisect_with_predicate(last_known_good: int, first_known_bad: int, is_good: C
     assert last_known_good + 1 == first_known_bad
     return first_known_bad
 
-def run_test_with_optional_optimization(run: Callable[[], Any]):
+def run_test_with_optional_optimization(run: Callable[[], Any], allow_reaching_max_optimization_loops=False):
     try:
         optimize_ir0.ConfigurationKnobs.verbose = optimize_ir0.DEFAULT_VERBOSE_SETTING
 
@@ -74,6 +74,7 @@ def run_test_with_optional_optimization(run: Callable[[], Any]):
         try:
             optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
             optimize_ir0.ConfigurationKnobs.optimization_step_counter = 0
+            optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
             run()
         except TestFailedException as e:
             e2 = e
@@ -82,6 +83,8 @@ def run_test_with_optional_optimization(run: Callable[[], Any]):
             raise e2
 
         if not e1 and not e2:
+            if optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0 and not allow_reaching_max_optimization_loops:
+                raise TestFailedException('The test passed, but hit max_num_remaining_loops')
             return
 
         def predicate(max_num_optimization_steps):
@@ -759,6 +762,7 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
             try:
                 optimize_ir0.ConfigurationKnobs.verbose = optimize_ir0.DEFAULT_VERBOSE_SETTING
                 optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
+                optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
                 module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
 
                 assert expected_cpp_source[0] == '\n'
@@ -792,6 +796,10 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
                                                                                      cpp_source.splitlines(True),
                                                                                      fromfile='expected.h',
                                                                                      tofile='actual.h'))))
+
+                if optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0:
+                    raise TestFailedException('The generated code was the expected one, but hit max_num_remaining_loops')
+
             except TestFailedException as e:
                 [message] = e.args
                 pytest.fail(message, pytrace=False)
@@ -818,7 +826,7 @@ def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_e
     return eval
 
 # TODO: Check that the error is s reported on the desired line (moving the regex to a comment in the test).
-def assert_compilation_fails_with_generic_error(expected_error_regex: str):
+def assert_compilation_fails_with_generic_error(expected_error_regex: str, allow_reaching_max_optimization_loops=False):
     def eval(f):
         @wraps(f)
         def wrapper():
@@ -831,7 +839,7 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str):
                     module_ir2,
                     module_ir1,
                     cpp_source)
-            run_test_with_optional_optimization(run_test)
+            run_test_with_optional_optimization(run_test, allow_reaching_max_optimization_loops)
         return wrapper
     return eval
 

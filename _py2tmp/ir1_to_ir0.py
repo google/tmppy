@@ -17,6 +17,17 @@ from typing import List, Tuple, Optional, Iterator, Union, Callable, Dict
 
 class GlobalLiterals:
     VOID = ir0.AtomicTypeLiteral.for_nonlocal_type('void', may_be_alias=False)
+    CHAR = ir0.AtomicTypeLiteral.for_nonlocal_type('char', may_be_alias=False)
+    SHORT = ir0.AtomicTypeLiteral.for_nonlocal_type('short', may_be_alias=False)
+    INT = ir0.AtomicTypeLiteral.for_nonlocal_type('int', may_be_alias=False)
+    UNSIGNED = ir0.AtomicTypeLiteral.for_nonlocal_type('unsigned', may_be_alias=False)
+    INT32_T = ir0.AtomicTypeLiteral.for_nonlocal_type('int32_t', may_be_alias=False)
+    INT64_T = ir0.AtomicTypeLiteral.for_nonlocal_type('int64_t', may_be_alias=False)
+    UINT32_T = ir0.AtomicTypeLiteral.for_nonlocal_type('uint32_t', may_be_alias=False)
+    UINT64_T = ir0.AtomicTypeLiteral.for_nonlocal_type('uint64_t', may_be_alias=False)
+    LONG = ir0.AtomicTypeLiteral.for_nonlocal_type('long', may_be_alias=False)
+    FLOAT = ir0.AtomicTypeLiteral.for_nonlocal_type('float', may_be_alias=False)
+    DOUBLE = ir0.AtomicTypeLiteral.for_nonlocal_type('double', may_be_alias=False)
 
     LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='List',
                                                        arg_types=[ir0.VariadicType()],

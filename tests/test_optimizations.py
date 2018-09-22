@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import pytest
 
 from py2tmp.testing import *
 from _py2tmp.testing.utils import main
@@ -232,7 +233,7 @@ struct TmppyInternal_17<TmppyInternal_5, false> {
   using error = void;
 };
 static_assert(
-    (TmppyInternal_17<float, std::is_same<float, int>::value>::value) == (3LL),
+    (3LL) == (3LL),
     "TMPPy assertion failed: \n<unknown>:9: assert g(Type('float')) == 3");
 ''')
 def test_optimization_of_mutually_recursive_functions_with_type_param():
@@ -246,7 +247,128 @@ def test_optimization_of_mutually_recursive_functions_with_type_param():
         return f(t)
     assert g(Type('float')) == 3
 
-@assert_compilation_fails_with_generic_error('template instantiation depth exceeds maximum')
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('char')");
+''')
+def test_is_same_optimization_void_char():
+    from tmppy import Type
+    assert Type('void') != Type('char')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('short')");
+''')
+def test_is_same_optimization_void_short():
+    from tmppy import Type
+    assert Type('void') != Type('short')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('int')");
+''')
+def test_is_same_optimization_void_int():
+    from tmppy import Type
+    assert Type('void') != Type('int')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('int32_t')");
+''')
+def test_is_same_optimization_void_int32_t():
+    from tmppy import Type
+    assert Type('void') != Type('int32_t')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('int64_t')");
+''')
+def test_is_same_optimization_void_int64_t():
+    from tmppy import Type
+    assert Type('void') != Type('int64_t')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('uint32_t')");
+''')
+def test_is_same_optimization_void_uint32_t():
+    from tmppy import Type
+    assert Type('void') != Type('uint32_t')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('uint64_t')");
+''')
+def test_is_same_optimization_void_uint64_t():
+    from tmppy import Type
+    assert Type('void') != Type('uint64_t')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('unsigned')");
+''')
+def test_is_same_optimization_void_unsigned():
+    from tmppy import Type
+    assert Type('void') != Type('unsigned')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('long')");
+''')
+def test_is_same_optimization_void_long():
+    from tmppy import Type
+    assert Type('void') != Type('long')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('float')");
+''')
+def test_is_same_optimization_void_float():
+    from tmppy import Type
+    assert Type('void') != Type('float')
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
+static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
+                        "Type('void') != Type('double')");
+''')
+def test_is_same_optimization_void_double():
+    from tmppy import Type
+    assert Type('void') != Type('double')
+
+@assert_compilation_fails_with_generic_error('template instantiation depth exceeds maximum', allow_reaching_max_optimization_loops=True)
 def test_optimization_of_mutually_recursive_functions_infinite_loop():
     def f(n: int) -> int:
         return g(n)
@@ -500,22 +622,6 @@ def test_match_optimization_with_multiple_specializations_chooses_main_definitio
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_22> struct CheckIfError { using type = void; };
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6> struct TmppyInternal_23 {
-  using type = TmppyInternal_6 &;
-  using error = void;
-};
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6> struct TmppyInternal_23<TmppyInternal_6 *> {
-  using type = TmppyInternal_6 &&;
-  using error = void;
-};
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6>
-struct TmppyInternal_23<TmppyInternal_6 **> {
-  using type = TmppyInternal_6[];
-  using error = void;
-};
 template <typename TmppyInternal_14, typename TmppyInternal_13, bool>
 struct TmppyInternal_25;
 // (meta)function generated for an if-else statement
@@ -530,12 +636,11 @@ struct TmppyInternal_25<TmppyInternal_14, TmppyInternal_13, false> {
   using error = void;
   using type = TmppyInternal_13;
 };
-using TmppyInternal_96 = typename TmppyInternal_23<int *>::error;
+using TmppyInternal_119 = int &&;
 static_assert(
-    std::is_same<typename TmppyInternal_25<
-                     TmppyInternal_96, typename TmppyInternal_23<int *>::type,
-                     !(std::is_same<TmppyInternal_96, void>::value)>::type,
-                 int &&>::value,
+    std::is_same<
+        typename TmppyInternal_25<void, TmppyInternal_119, !(true)>::type,
+        TmppyInternal_119>::value,
     "TMPPy assertion failed: \n<unknown>:11: assert "
     "_f(Type.pointer(Type('int'))) == Type.rvalue_reference(Type('int'))");
 ''')

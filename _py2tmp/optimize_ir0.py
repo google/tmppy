@@ -25,6 +25,7 @@ class ConfigurationKnobs:
     # If this is >=0, the number of optimization steps is capped to this value.
     max_num_optimization_steps = -1
     optimization_step_counter = 0
+    reached_max_num_remaining_loops_counter = 0
     verbose = DEFAULT_VERBOSE_SETTING
 
 GLOBAL_INLINEABLE_TEMPLATES_BY_NAME = {
@@ -832,8 +833,8 @@ def perform_local_optimizations_on_toplevel_elems(toplevel_elems: List[Union[ir0
 class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
     def __init__(self, inlineable_templates_by_name: Dict[str, ir0.TemplateDefn]):
         super().__init__()
-        self.inlineable_templates_by_name = inlineable_templates_by_name
         self.needs_another_loop = False
+        self.inlineable_templates_by_name = inlineable_templates_by_name.copy()
 
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
         assert isinstance(writer, transform_ir0.TemplateBodyWriter)
@@ -968,6 +969,11 @@ def compute_template_dependency_graph(header: ir0.Header, template_defn_by_name:
                 template_dependency_graph.add_edge(template_defn.name, identifier)
     return template_dependency_graph
 
+def calculate_max_num_optimization_loops(num_templates_in_connected_component):
+    # This is just a heuristic. We want to make enough loops to fully optimize the code but without looping forever
+    # when there are mutually-recursive functions.
+    return num_templates_in_connected_component * 10 + 10
+
 def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str]):
     new_template_defns = {elem.name: elem
                           for elem in header.template_defns}
@@ -979,7 +985,7 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
 
     for connected_component in reversed(list(utils.compute_condensation_in_topological_order(template_dependency_graph))):
         needs_another_loop = True
-        max_num_remaining_loops = len(connected_component) + 1
+        max_num_remaining_loops = calculate_max_num_optimization_loops(len(connected_component))
         while needs_another_loop and max_num_remaining_loops:
             needs_another_loop = False
             max_num_remaining_loops -= 1
@@ -1005,6 +1011,9 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
                 
                 new_template_defns[template_name] = template_defn
 
+        if not max_num_remaining_loops:
+            ConfigurationKnobs.reached_max_num_remaining_loops_counter += 1
+
 
     new_toplevel_content = header.toplevel_content
 
@@ -1023,7 +1032,7 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
             inlineable_refs.add(template_name)
 
     needs_another_loop = True
-    max_num_remaining_loops = len(new_toplevel_content) + 1
+    max_num_remaining_loops = calculate_max_num_optimization_loops(len(new_toplevel_content))
     while needs_another_loop and max_num_remaining_loops:
         needs_another_loop = False
         max_num_remaining_loops -= 1
@@ -1050,6 +1059,9 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
                                                                                                   inline_template_instantiations_with_multiple_references=False)
         if needs_another_loop1:
             needs_another_loop = True
+
+    if not max_num_remaining_loops:
+        ConfigurationKnobs.reached_max_num_remaining_loops_counter += 1
 
     return ir0.Header(template_defns=[new_template_defns[template_defn.name]
                                       for template_defn in header.template_defns] + additional_toplevel_template_defns,
