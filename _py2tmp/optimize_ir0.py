@@ -46,6 +46,20 @@ GLOBAL_INLINEABLE_TEMPLATES_BY_NAME = {
                                                                                  body=[ir0.ConstantDef(name='value',
                                                                                                        expr=ir0.Literal(True))],
                                                                                  is_metafunction=True)]),
+    'std::remove_pointer': ir0.TemplateDefn(name='std::remove_pointer',
+                                            description='',
+                                            result_element_names=['type'],
+                                            args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType())],
+                                            main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType())],
+                                                                                       patterns=None,
+                                                                                       body=[ir0.Typedef(name='type',
+                                                                                                         expr=ir0.AtomicTypeLiteral.for_local('T', ir0.TypeType()))],
+                                                                                       is_metafunction=True),
+                                            specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType())],
+                                                                                        patterns=[ir0.PointerTypeExpr(ir0.AtomicTypeLiteral.for_local(cpp_type='T', type=ir0.TypeType()))],
+                                                                                        body=[ir0.Typedef(name='type',
+                                                                                                          expr=ir0.AtomicTypeLiteral.for_local('T', ir0.TypeType()))],
+                                                                                        is_metafunction=True)]),
 }
 
 def template_defn_to_cpp(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
