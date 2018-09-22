@@ -423,8 +423,7 @@ class ClassMemberAccess(Expr):
             yield var
 
     def __str__(self):
-        return str(TypeLiteral(cpp_type='X::%s' % self.member_name,
-                               args={'X': self.class_type_expr}))
+        return '%s::%s' % (self.class_type_expr, self.member_name)
 
     def describe_other_fields(self):
         return self.class_type_expr.describe_other_fields()
