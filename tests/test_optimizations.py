@@ -401,23 +401,15 @@ struct TmppyInternal_27<TmppyInternal_9, TmppyInternal_8, false> {
   using error = void;
   using type = TmppyInternal_8;
 };
-template <typename> struct TmppyInternal_29;
-// (meta)function to expand the list of args for a template instantiation
-template <typename... TmppyInternal_28>
-struct TmppyInternal_29<List<TmppyInternal_28...>> {
-  using type = std::tuple<TmppyInternal_28...>;
-};
-using TmppyInternal_89 = typename TmppyInternal_25<
-    void, typename TmppyInternal_29<List<int, float, double>>::type>::error;
-using TmppyInternal_129 = List<int, float, double>;
+using TmppyInternal_125 =
+    typename TmppyInternal_25<void, std::tuple<int, float, double>>::error;
 static_assert(
-    std::is_same<
-        typename TmppyInternal_27<
-            TmppyInternal_89,
-            typename TmppyInternal_25<
-                void, typename TmppyInternal_29<TmppyInternal_129>::type>::type,
-            !(std::is_same<TmppyInternal_89, void>::value)>::type,
-        TmppyInternal_129>::value,
+    std::is_same<typename TmppyInternal_27<
+                     TmppyInternal_125,
+                     typename TmppyInternal_25<
+                         void, std::tuple<int, float, double>>::type,
+                     !(std::is_same<TmppyInternal_125, void>::value)>::type,
+                 List<int, float, double>>::value,
     "TMPPy assertion failed: \n<unknown>:7: assert "
     "_unpack_tuple(Type.template_instantiation('std::tuple', [Type('int'), "
     "Type('float'), Type('double')])) \\");
@@ -436,13 +428,6 @@ def test_match_expr_extract_list_optimization():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_17> struct CheckIfError { using type = void; };
-template <typename TmppyInternal_5, typename> struct TmppyInternal_18;
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_5, typename TmppyInternal_8>
-struct TmppyInternal_18<TmppyInternal_5, TmppyInternal_8 *> {
-  using type = float;
-  using error = void;
-};
 template <typename TmppyInternal_10, typename TmppyInternal_9, bool>
 struct TmppyInternal_20;
 // (meta)function generated for an if-else statement
@@ -457,14 +442,9 @@ struct TmppyInternal_20<TmppyInternal_10, TmppyInternal_9, false> {
   using error = void;
   using type = TmppyInternal_9;
 };
-using TmppyInternal_92 = int *;
 static_assert(
-    std::is_same<
-        typename TmppyInternal_20<
-            void,
-            typename TmppyInternal_18<TmppyInternal_92, TmppyInternal_92>::type,
-            !(true)>::type,
-        float>::value,
+    std::is_same<typename TmppyInternal_20<void, float, !(true)>::type,
+                 float>::value,
     "TMPPy assertion failed: \n<unknown>:7: assert "
     "_f(Type.pointer(Type('int'))) == Type('float')");
 ''')
@@ -505,11 +485,11 @@ struct TmppyInternal_22<TmppyInternal_12, TmppyInternal_11, false> {
   using error = void;
   using type = TmppyInternal_11;
 };
-using TmppyInternal_85 = typename TmppyInternal_20<int>::error;
+using TmppyInternal_120 = typename TmppyInternal_20<int>::error;
 static_assert(
     std::is_same<typename TmppyInternal_22<
-                     TmppyInternal_85, typename TmppyInternal_20<int>::type,
-                     !(std::is_same<TmppyInternal_85, void>::value)>::type,
+                     TmppyInternal_120, typename TmppyInternal_20<int>::type,
+                     !(std::is_same<TmppyInternal_120, void>::value)>::type,
                  int &>::value,
     "TMPPy assertion failed: \n<unknown>:9: assert _f(Type('int')) == "
     "Type.reference(Type('int'))");
@@ -543,11 +523,11 @@ struct TmppyInternal_23<TmppyInternal_12, TmppyInternal_11, false> {
   using error = void;
   using type = TmppyInternal_11;
 };
-using TmppyInternal_108 = int &&;
+using TmppyInternal_139 = int &&;
 static_assert(
     std::is_same<
-        typename TmppyInternal_23<void, TmppyInternal_108, !(true)>::type,
-        TmppyInternal_108>::value,
+        typename TmppyInternal_23<void, TmppyInternal_139, !(true)>::type,
+        TmppyInternal_139>::value,
     "TMPPy assertion failed: \n<unknown>:9: assert "
     "_f(Type.pointer(Type('int'))) == Type.rvalue_reference(Type('int'))");
 ''')
@@ -596,11 +576,11 @@ struct TmppyInternal_24<TmppyInternal_14, TmppyInternal_13, false> {
   using error = void;
   using type = TmppyInternal_13;
 };
-using TmppyInternal_95 = typename TmppyInternal_22<int>::error;
+using TmppyInternal_132 = typename TmppyInternal_22<int>::error;
 static_assert(
     std::is_same<typename TmppyInternal_24<
-                     TmppyInternal_95, typename TmppyInternal_22<int>::type,
-                     !(std::is_same<TmppyInternal_95, void>::value)>::type,
+                     TmppyInternal_132, typename TmppyInternal_22<int>::type,
+                     !(std::is_same<TmppyInternal_132, void>::value)>::type,
                  int &>::value,
     "TMPPy assertion failed: \n<unknown>:11: assert _f(Type('int')) == "
     "Type.reference(Type('int'))");
@@ -636,11 +616,11 @@ struct TmppyInternal_25<TmppyInternal_14, TmppyInternal_13, false> {
   using error = void;
   using type = TmppyInternal_13;
 };
-using TmppyInternal_119 = int &&;
+using TmppyInternal_153 = int &&;
 static_assert(
     std::is_same<
-        typename TmppyInternal_25<void, TmppyInternal_119, !(true)>::type,
-        TmppyInternal_119>::value,
+        typename TmppyInternal_25<void, TmppyInternal_153, !(true)>::type,
+        TmppyInternal_153>::value,
     "TMPPy assertion failed: \n<unknown>:11: assert "
     "_f(Type.pointer(Type('int'))) == Type.rvalue_reference(Type('int'))");
 ''')
@@ -691,11 +671,13 @@ struct TmppyInternal_26<TmppyInternal_14, TmppyInternal_13, false> {
   using error = void;
   using type = TmppyInternal_13;
 };
-using TmppyInternal_97 = typename TmppyInternal_24<int **>::error;
+using TmppyInternal_134 = int **;
+using TmppyInternal_136 = typename TmppyInternal_24<TmppyInternal_134>::error;
 static_assert(
     std::is_same<typename TmppyInternal_26<
-                     TmppyInternal_97, typename TmppyInternal_24<int **>::type,
-                     !(std::is_same<TmppyInternal_97, void>::value)>::type,
+                     TmppyInternal_136,
+                     typename TmppyInternal_24<TmppyInternal_134>::type,
+                     !(std::is_same<TmppyInternal_136, void>::value)>::type,
                  int[]>::value,
     "TMPPy assertion failed: \n<unknown>:11: assert "
     "_f(Type.pointer(Type.pointer(Type('int')))) == Type.array(Type('int'))");

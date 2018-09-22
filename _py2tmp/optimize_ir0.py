@@ -351,7 +351,7 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
         if values_by_variadic_var_to_expand:
             self._check_variadic_var_replacement(values_by_variadic_var_to_expand)
 
-            num_values_to_expand = len(next(iter(values_by_variadic_var_to_expand)))
+            num_values_to_expand = len(next(iter(values_by_variadic_var_to_expand.values())))
             assert all(len(values) == num_values_to_expand
                        for values in values_by_variadic_var_to_expand.values())
             for i in range(0, num_values_to_expand):
@@ -360,8 +360,8 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
                     child_replacement_expr_by_var[var] = values[i]
                 child_transformation = ReplaceVarWithExprTransformation(child_replacement_expr_by_var)
                 transformed_expr = child_transformation.transform_expr(expr.expr, writer)
-                for expr in (transformed_expr if isinstance(transformed_expr, list) else [transformed_expr]):
-                    transformed_exprs.append(expr)
+                for expr1 in (transformed_expr if isinstance(transformed_expr, list) else [transformed_expr]):
+                    transformed_exprs.append(expr1)
         else:
             transformed_expr = self.transform_expr(expr.expr, writer)
             for expr in (transformed_expr if isinstance(transformed_expr, list) else [transformed_expr]):
@@ -415,12 +415,14 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
 
     def _check_variadic_var_replacement(self,
                                         values_by_variadic_var_to_expand: Dict[str, Union[ir0.Expr, List[ir0.Expr]]]):
-        num_values_to_expand_in_first_replacement = len(next(iter(values_by_variadic_var_to_expand)))
+        num_values_to_expand_in_first_replacement = len(next(iter(values_by_variadic_var_to_expand.values())))
         if not all(len(values) == num_values_to_expand_in_first_replacement
                    for values in values_by_variadic_var_to_expand.values()):
             # We can't perform the replacement syntactically, even if it might make sense semantically.
             # E.g. we can't replace Ts={Xs...}, Us={Ys..., float} in "std::pair<Ts, Us>...".
-            raise VariadicVarReplacementNotPossibleException()
+            raise VariadicVarReplacementNotPossibleException('We can\'t perform the replacement syntactically, even if it might make sense semantically. '
+                                                             'num_values_to_expand_in_first_replacement = %s, values_by_variadic_var_to_expand = %s' % (
+                num_values_to_expand_in_first_replacement, str(values_by_variadic_var_to_expand)))
 
         values_lists = [list(values) for values in values_by_variadic_var_to_expand.values()]
         while values_lists[0]:
@@ -475,7 +477,7 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
                 # We can perform the replacement syntactically, but it doesn't make sense semantically.
                 # E.g. when replacing Ts={int, Xs...}, Us={Ys..., float} in "std::pair<Ts, Us>..." we can't output
                 # "std::pair<int, Ys>..., std::pair<Xs, float>...", it would be wrong.
-                raise VariadicVarReplacementNotPossibleException()
+                raise VariadicVarReplacementNotPossibleException('We can perform the replacement syntactically, but it doesn\'t make sense semantically')
 
 def replace_var_with_expr(elem: ir0.TemplateBodyElement, var: str, expr: ir0.Expr) -> ir0.TemplateBodyElement:
     toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[], allow_template_defns=False, allow_toplevel_elems=False)
@@ -835,6 +837,38 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
         super().__init__()
         self.needs_another_loop = False
         self.inlineable_templates_by_name = inlineable_templates_by_name.copy()
+        self.parent_template_specialization_definitions = dict()
+
+    def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: transform_ir0.Writer):
+        old_parent_template_specialization_definitions = self.parent_template_specialization_definitions
+        self.parent_template_specialization_definitions = dict()
+        result = super().transform_template_specialization(specialization, writer)
+        self.parent_template_specialization_definitions = old_parent_template_specialization_definitions
+        return result
+
+    def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: transform_ir0.Writer):
+        super().transform_constant_def(constant_def, writer)
+
+        if isinstance(writer, transform_ir0.ToplevelWriter):
+            result = writer.toplevel_elems[-1]
+        else:
+            assert isinstance(writer, transform_ir0.TemplateBodyWriter)
+            result = writer.elems[-1]
+
+        assert isinstance(result, ir0.ConstantDef)
+        self.parent_template_specialization_definitions[result.name] = result.expr
+
+    def transform_typedef(self, typedef: ir0.Typedef, writer: transform_ir0.Writer):
+        super().transform_typedef(typedef, writer)
+
+        if isinstance(writer, transform_ir0.ToplevelWriter):
+            result = writer.toplevel_elems[-1]
+        else:
+            assert isinstance(writer, transform_ir0.TemplateBodyWriter)
+            result = writer.elems[-1]
+
+        assert isinstance(result, ir0.Typedef)
+        self.parent_template_specialization_definitions[result.name] = result.expr
 
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
         assert isinstance(writer, transform_ir0.TemplateBodyWriter)
@@ -854,6 +888,7 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
 
         toplevel_writer = writer.get_toplevel_writer()
         unification = unify_ir0.unify_template_instantiation_with_definition(template_instantiation,
+                                                                             self.parent_template_specialization_definitions,
                                                                              template_defn_to_inline,
                                                                              toplevel_writer.identifier_generator,
                                                                              verbose=ConfigurationKnobs.verbose)
@@ -872,9 +907,10 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
         transformation = ReplaceVarWithExprTransformation(value_by_pattern_variable)
         try:
             body = transformation.transform_template_body_elems(specialization.body, tmp_writer)
-        except VariadicVarReplacementNotPossibleException:
+        except VariadicVarReplacementNotPossibleException as e:
+            [message] = e.args
             # We thought we could perform the inlining but we actually can't.
-            print('VariadicVarReplacementNotPossibleException raised for template %s, we can\'t inline that.' % template_instantiation.template_expr.cpp_type)
+            print('VariadicVarReplacementNotPossibleException raised for template %s (reason: %s), we can\'t inline that.' % (template_instantiation.template_expr.cpp_type, message))
             return class_member_access
 
         new_var_name_by_old_var_name = dict()

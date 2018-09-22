@@ -70,7 +70,7 @@ def unify(expr_expr_equations: List[Tuple[Expr, Expr]],
           vars_forbidden_on_lhs: List[str] = [],
           list_vars: Set[str] = set()):
     strategy = ExampleUnificationStrategy(vars_forbidden_on_lhs, list_vars)
-    var_expr_equations = unification.unify(expr_expr_equations, strategy)
+    var_expr_equations = unification.unify(expr_expr_equations, dict(), strategy)
     if canonicalize:
         var_expr_equations = unification.canonicalize(var_expr_equations, strategy)
     result_dict = dict()

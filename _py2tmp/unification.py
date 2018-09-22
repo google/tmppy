@@ -62,6 +62,7 @@ def exprs_to_string(strategy: UnificationStrategy[TermT], exprs: List[_NonListEx
     return '[' + ', '.join(expr_to_string(strategy, expr) for expr in exprs) + ']'
 
 def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
+          context_var_expr_equations: Dict[str, List[_NonListExpr]],
           strategy: UnificationStrategy[TermT]) -> Dict[str, Union[str, _Expr]]:
     var_expr_equations: Dict[str, List[_NonListExpr]] = dict()
 
@@ -85,9 +86,16 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
                 expr_expr_equations.append((var_expr_equations[lhs], rhs_list))
                 continue
 
+            if lhs in context_var_expr_equations:
+                expr_expr_equations.append((context_var_expr_equations[lhs], rhs_list))
+                continue
+
             if len(rhs_list) == 1 and isinstance(rhs_list[0], str):
                 if rhs_list[0] in var_expr_equations:
                     expr_expr_equations.append(([lhs], var_expr_equations[rhs_list[0]]))
+                    continue
+                if rhs_list[0] in context_var_expr_equations:
+                    expr_expr_equations.append(([lhs], context_var_expr_equations[rhs_list[0]]))
                     continue
 
             if len(rhs_list) != 1 and not strategy.is_list_var(lhs) and not any(isinstance(expr, str) and strategy.is_list_var(expr)
@@ -97,7 +105,7 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
                     exprs_to_string(strategy, lhs_list), exprs_to_string(strategy, rhs_list)))
 
             for rhs in rhs_list:
-                _occurence_check(lhs, rhs, strategy, var_expr_equations, expanded_non_syntactically_comparable_expr)
+                _occurence_check(lhs, rhs, strategy, var_expr_equations, context_var_expr_equations, expanded_non_syntactically_comparable_expr)
             var_expr_equations[lhs] = rhs_list
             continue
 
@@ -308,6 +316,7 @@ def _occurence_check(var1: str,
                      expr1: _Expr,
                      strategy: UnificationStrategy[TermT],
                      var_expr_equations: Dict[str, List[_NonListExpr]],
+                     context_var_expr_equations: Dict[str, List[_NonListExpr]],
                      expanded_non_syntactically_comparable_expr: Optional[_NonListExpr]):
     if isinstance(expr1, str):
         var_expr_pairs_to_check = [(var1, expr1, None)]
@@ -333,6 +342,9 @@ def _occurence_check(var1: str,
                                                                     for var, expr in var_expr_equations.items()}))
             if expr in var_expr_equations:
                 for elem in var_expr_equations[expr]:
+                    var_expr_pairs_to_check.append((var, elem, only_expanded_terms_with_syntactical_equality))
+            if expr in context_var_expr_equations:
+                for elem in context_var_expr_equations[expr]:
                     var_expr_pairs_to_check.append((var, elem, only_expanded_terms_with_syntactical_equality))
         else:
             is_term_with_syntactical_equality = strategy.equality_requires_syntactical_equality(expr)

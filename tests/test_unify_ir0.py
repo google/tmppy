@@ -28,7 +28,7 @@ def unify(exprs: List[ir0.Expr],
           patterns: List[ir0.Expr],
           expr_variables: Set[str],
           pattern_variables: Set[str]) -> unify_ir0.UnificationResult:
-    return unify_ir0.unify(exprs, patterns, expr_variables, pattern_variables, iter(identifier_generator_fun()))
+    return unify_ir0.unify(exprs, dict(), patterns, expr_variables, pattern_variables, iter(identifier_generator_fun()))
 
 def literal(value: Union[bool, int]):
     return ir0.Literal(value)

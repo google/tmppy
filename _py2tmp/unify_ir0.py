@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import itertools
 from enum import Enum
 from typing import List, Tuple, Set, Optional, Iterable, Union, Dict
 
@@ -141,6 +141,7 @@ class UnificationResult:
         self.value_by_pattern_variable = pattern_var_expr_equations
 
 def unify_template_instantiation_with_definition(template_instantiation: ir0.TemplateInstantiation,
+                                                 local_var_definitions: Dict[str, ir0.Expr],
                                                  template_defn: ir0.TemplateDefn,
                                                  identifier_generator: Iterable[str],
                                                  verbose: bool) -> Optional[Tuple[ir0.TemplateSpecialization,
@@ -154,6 +155,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
         []
     for specialization in template_defn.specializations:
         result = unify(template_instantiation.args,
+                       local_var_definitions,
                        specialization.patterns,
                        instantiation_vars,
                        {arg.name
@@ -173,6 +175,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
         patterns = [ir0.AtomicTypeLiteral.for_local(var.name, var.type)
                     for var in template_defn.main_definition.args]
         result = unify(template_instantiation.args,
+                       local_var_definitions,
                        patterns,
                        instantiation_vars,
                        {arg.name
@@ -203,7 +206,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
                     if value1 is None:
                         break
 
-                    result = unify(value1, value2, specialization1_arg_vars, specialization2_arg_vars, identifier_generator)
+                    result = unify(value1, dict(), value2, specialization1_arg_vars, specialization2_arg_vars, identifier_generator)
                     if result != UnificationResultKind.CERTAIN:
                         break
                 else:
@@ -225,6 +228,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
     return None
 
 def unify(exprs: List[ir0.Expr],
+          local_var_definitions: Dict[str, ir0.Expr],
           patterns: List[ir0.Expr],
           expr_variables: Set[str],
           pattern_variables: Set[str],
@@ -233,9 +237,14 @@ def unify(exprs: List[ir0.Expr],
     # We need to replace local literals before doing the unification, to avoid assuming that e.g. T in an expr
     # is equal to T in a pattern just because they have the same name.
 
-    unique_var_name_by_expr_type_literal_name = bidict({expr_literal.cpp_type: next(identifier_generator)
-                                                        for expr in exprs
-                                                        for expr_literal in expr.get_free_vars()})
+    lhs_type_literal_names = set(local_var_definitions.keys())
+    for expr in itertools.chain(exprs, local_var_definitions.values()):
+        for expr_literal in expr.get_free_vars():
+            lhs_type_literal_names.add(expr_literal.cpp_type)
+
+    unique_var_name_by_expr_type_literal_name = bidict({lhs_type_literal_name: next(identifier_generator)
+                                                        for lhs_type_literal_name in lhs_type_literal_names})
+
     unique_var_name_by_pattern_type_literal_name = bidict({pattern_literal.cpp_type: next(identifier_generator)
                                                            for pattern in patterns
                                                            for pattern_literal in pattern.get_free_vars()})
@@ -243,7 +252,7 @@ def unify(exprs: List[ir0.Expr],
 
     unique_var_names = set()
     for expr_var_name, unique_var_name in unique_var_name_by_expr_type_literal_name.items():
-        if expr_var_name in expr_variables:
+        if expr_var_name in expr_variables or expr_var_name in local_var_definitions:
             unique_var_names.add(unique_var_name)
     for pattern_var_name, unique_var_name in unique_var_name_by_pattern_type_literal_name.items():
         if pattern_var_name in pattern_variables:
@@ -255,19 +264,24 @@ def unify(exprs: List[ir0.Expr],
            for expr in exprs]
     rhs = [_replace_var_names_in_expr(pattern, unique_var_name_by_pattern_type_literal_name)
            for pattern in patterns]
+    context = [(unique_var_name_by_expr_type_literal_name[local_var_name], _replace_var_names_in_expr(value, unique_var_name_by_expr_type_literal_name))
+               for local_var_name, value in local_var_definitions.items()]
 
     is_variadic = dict()
     lhs = [_unpack_if_variable(expr, unique_var_names, is_variadic, literal_expr_by_unique_name)
            for expr in lhs]
     rhs = [_unpack_if_variable(pattern, unique_var_names, is_variadic, literal_expr_by_unique_name)
            for pattern in rhs]
+    context = {_unpack_if_variable(var, unique_var_names, is_variadic, literal_expr_by_unique_name): [_unpack_if_variable(expr, unique_var_names, is_variadic, literal_expr_by_unique_name)]
+               for var, expr in context}
 
     unification_strategy = _ExprUnificationStrategy(unique_var_names,
-                                                    unique_var_name_by_pattern_type_literal_name.inv.keys(),
+                                                    set(unique_var_name_by_pattern_type_literal_name.inv.keys()),
                                                     is_variadic,
                                                     literal_expr_by_unique_name)
     try:
         var_expr_equations = unification.unify([(lhs, rhs)],
+                                               context,
                                                unification_strategy)
     except unification.UnificationFailedException:
         if verbose:
@@ -335,10 +349,10 @@ def unify(exprs: List[ir0.Expr],
     for lhs_var, exprs in var_expr_equations:
         if isinstance(lhs_var, ir0.VariadicTypeExpansion):
             lhs_var = lhs_var.expr
-        assert lhs_var.cpp_type in unique_var_name_by_pattern_type_literal_name.inv
-        for expr in exprs:
-            for rhs_var in expr.get_free_vars():
-                assert rhs_var.cpp_type not in unique_var_name_by_pattern_type_literal_name.inv
+        if lhs_var.cpp_type in unique_var_name_by_pattern_type_literal_name.inv:
+            for expr in exprs:
+                for rhs_var in expr.get_free_vars():
+                    assert rhs_var.cpp_type not in unique_var_name_by_pattern_type_literal_name.inv
 
     # We reverse the var renaming done above
     result_var_expr_equations = []
