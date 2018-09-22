@@ -119,7 +119,7 @@ def apply_toplevel_elems_optimization(toplevel_elems: List[Union[ir0.StaticAsser
 
     return new_toplevel_elems, needs_another_loop
 
-class ExprSimplifyingTransformation(transform_ir0.Transformation):
+class NormalizeExpressionsTransformation(transform_ir0.Transformation):
     def __init__(self):
         super().__init__()
 
@@ -148,7 +148,7 @@ def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generato
   Unlike other constants/typedefs, the exprs that initialize "result" and "error" will always have 0 operations.
   '''
   writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
-  ExprSimplifyingTransformation().transform_template_defn(template_defn, writer)
+  NormalizeExpressionsTransformation().transform_template_defn(template_defn, writer)
   [new_template_defn] = writer.template_defns
 
   return new_template_defn, False
@@ -161,7 +161,7 @@ def normalize_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.Co
   '''
   writer = transform_ir0.ToplevelWriter(identifier_generator, allow_template_defns=False)
   for toplevel_elem in toplevel_elems:
-    transformation = ExprSimplifyingTransformation()
+    transformation = NormalizeExpressionsTransformation()
     transformation.transform_toplevel_elem(toplevel_elem, writer)
 
   return writer.toplevel_elems, False
@@ -772,6 +772,133 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
                                         from_stmt_index=stmt_index_defining_var,
                                         by=remaining_uses_of_var_by_stmt_index[stmt_index_defining_var][referenced_var])
 
+class ExpressionSimplificationTransformation(transform_ir0.Transformation):
+    def __init__(self):
+        super().__init__()
+
+    def transform_not_expr(self, not_expr: ir0.NotExpr, writer: transform_ir0.Writer) -> ir0.Expr:
+        expr = self.transform_expr(not_expr.expr, writer)
+        # not True => False
+        # not False => True
+        if isinstance(expr, ir0.Literal):
+            assert isinstance(expr.value, bool)
+            return ir0.Literal(not expr.value)
+        # not not x => x
+        if isinstance(expr, ir0.NotExpr):
+            return expr.expr
+        return ir0.NotExpr(expr)
+
+    def transform_unary_minus_expr(self, unary_minus: ir0.UnaryMinusExpr, writer: transform_ir0.Writer) -> ir0.Expr:
+        expr = self.transform_expr(unary_minus.expr, writer)
+        # -(3) => -3
+        if isinstance(expr, ir0.Literal):
+            assert isinstance(expr.value, int)
+            return ir0.Literal(-expr.value)
+        # -(x - y) => y - x
+        if isinstance(expr, ir0.Int64BinaryOpExpr) and expr.op == '-':
+            return ir0.Int64BinaryOpExpr(lhs=expr.rhs, rhs=expr.lhs, op='-')
+        return ir0.UnaryMinusExpr(expr)
+
+    def transform_int64_binary_op_expr(self, binary_op: ir0.Int64BinaryOpExpr, writer: transform_ir0.Writer) -> ir0.Expr:
+        lhs = binary_op.lhs
+        rhs = binary_op.rhs
+        op = binary_op.op
+        # (x - y) => (x + -y)
+        # This pushes down the minus, so that e.g. (x - (-y)) => (x + y).
+        if op == '-':
+            rhs = ir0.UnaryMinusExpr(rhs)
+            op = '+'
+
+        lhs = self.transform_expr(lhs, writer)
+        rhs = self.transform_expr(rhs, writer)
+
+        if op == '+' and isinstance(rhs, ir0.UnaryMinusExpr):
+            # We could not push down the minus, so switch back to a subtraction.
+            op = '-'
+            rhs = rhs.expr
+
+        if op == '+':
+            # 3 + 5 => 8
+            if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
+                return ir0.Literal(lhs.value + rhs.value)
+            # 0 + x => x
+            if isinstance(lhs, ir0.Literal) and lhs.value == 0:
+                return rhs
+            # x + 0 => x
+            if isinstance(rhs, ir0.Literal) and rhs.value == 0:
+                return lhs
+
+        if op == '-':
+            # 8 - 5 => 3
+            if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
+                return ir0.Literal(lhs.value - rhs.value)
+            # 0 - x => -x
+            if isinstance(lhs, ir0.Literal) and lhs.value == 0:
+                return ir0.UnaryMinusExpr(rhs)
+            # x - 0 => x
+            if isinstance(rhs, ir0.Literal) and rhs.value == 0:
+                return lhs
+
+        if op == '*':
+            # 3 * 5 => 15
+            if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
+                return ir0.Literal(lhs.value * rhs.value)
+            # 0 * x => 0
+            if isinstance(lhs, ir0.Literal) and lhs.value == 0:
+                return ir0.Literal(0)
+            # x * 0 => 0
+            if isinstance(rhs, ir0.Literal) and rhs.value == 0:
+                return ir0.Literal(0)
+            # 1 * x => x
+            if isinstance(lhs, ir0.Literal) and lhs.value == 1:
+                return rhs
+            # x * 1 => x
+            if isinstance(rhs, ir0.Literal) and rhs.value == 1:
+                return lhs
+
+        if op == '//':
+            # 16 // 3 => 5
+            if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
+                return ir0.Literal(lhs.value // rhs.value)
+            # x / 1 => x
+            if isinstance(rhs, ir0.Literal) and rhs.value == 1:
+                return lhs
+
+        return ir0.Int64BinaryOpExpr(lhs, rhs, op)
+
+    def transform_comparison_expr(self, comparison: ir0.ComparisonExpr, writer: transform_ir0.Writer) -> ir0.Expr:
+        lhs = comparison.lhs
+        rhs = comparison.rhs
+        op = comparison.op
+
+        lhs = self.transform_expr(lhs, writer)
+        rhs = self.transform_expr(rhs, writer)
+
+        if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
+            if op == '==':
+                return ir0.Literal(lhs.value == rhs.value)
+            if op == '!=':
+                return ir0.Literal(lhs.value != rhs.value)
+            if op == '<':
+                return ir0.Literal(lhs.value < rhs.value)
+            if op == '<=':
+                return ir0.Literal(lhs.value <= rhs.value)
+            if op == '>':
+                return ir0.Literal(lhs.value > rhs.value)
+            if op == '>=':
+                return ir0.Literal(lhs.value >= rhs.value)
+
+        return ir0.ComparisonExpr(lhs, rhs, op)
+
+    def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
+        expr = self.transform_expr(static_assert.expr, writer)
+
+        if isinstance(expr, ir0.Literal) and expr.value is True:
+            return
+
+        writer.write(ir0.StaticAssert(expr=expr,
+                                      message=static_assert.message))
+
 def perform_constant_folding(template_defn: ir0.TemplateDefn,
                              identifier_generator: Iterator[str],
                              inline_template_instantiations_with_multiple_references: bool):
@@ -782,10 +909,24 @@ def perform_constant_folding(template_defn: ir0.TemplateDefn,
   return template_defn, False
 
 def perform_constant_folding_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
-                                               identifier_generator: Iterator[str],
                                                inline_template_instantiations_with_multiple_references: bool):
   transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
   toplevel_elems = transformation._transform_template_body_elems(toplevel_elems, result_element_names=tuple())
+  return toplevel_elems, False
+
+def perform_expression_simplification(template_defn: ir0.TemplateDefn):
+  writer = transform_ir0.ToplevelWriter(iter([]), allow_toplevel_elems=False)
+  transformation = ExpressionSimplificationTransformation()
+  transformation.transform_template_defn(template_defn, writer)
+  [template_defn] = writer.template_defns
+  return template_defn, False
+
+def perform_expression_simplification_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]]):
+  transformation = ExpressionSimplificationTransformation()
+  writer = transform_ir0.ToplevelWriter(iter([]), allow_toplevel_elems=False)
+  toplevel_elems = transformation.transform_template_body_elems(toplevel_elems, writer)
+  assert not writer.template_defns
+  assert not writer.toplevel_elems
   return toplevel_elems, False
 
 def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn,
@@ -808,7 +949,12 @@ def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn
                                                                                                           inline_template_instantiations_with_multiple_references),
                                                             optimization_name='perform_constant_folding()')
 
-    return template_defn, any((needs_another_loop1, needs_another_loop2, needs_another_loop3))
+    template_defn, needs_another_loop4 = apply_optimization(template_defn,
+                                                            identifier_generator,
+                                                            optimization=lambda: perform_expression_simplification(template_defn),
+                                                            optimization_name='perform_expression_simplification()')
+
+    return template_defn, any((needs_another_loop1, needs_another_loop2, needs_another_loop3, needs_another_loop4))
 
 def perform_local_optimizations_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
                                                   identifier_generator: Iterator[str],
@@ -826,11 +972,15 @@ def perform_local_optimizations_on_toplevel_elems(toplevel_elems: List[Union[ir0
   toplevel_elems, needs_another_loop3 = apply_toplevel_elems_optimization(toplevel_elems,
                                                                           identifier_generator,
                                                                           optimization=lambda: perform_constant_folding_on_toplevel_elems(toplevel_elems,
-                                                                                                                                          identifier_generator,
                                                                                                                                           inline_template_instantiations_with_multiple_references),
                                                                           optimization_name='perform_constant_folding_on_toplevel_elems()')
 
-  return toplevel_elems, any((needs_another_loop1, needs_another_loop2, needs_another_loop3))
+  toplevel_elems, needs_another_loop4 = apply_toplevel_elems_optimization(toplevel_elems,
+                                                                          identifier_generator,
+                                                                          optimization=lambda: perform_expression_simplification_on_toplevel_elems(toplevel_elems),
+                                                                          optimization_name='perform_expression_simplification_on_toplevel_elems()')
+
+  return toplevel_elems, any((needs_another_loop1, needs_another_loop2, needs_another_loop3, needs_another_loop4))
 
 class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
     def __init__(self, inlineable_templates_by_name: Dict[str, ir0.TemplateDefn]):

@@ -33,8 +33,6 @@ def test_optimization_one_function():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_10> struct CheckIfError { using type = void; };
-static_assert(((1LL) + (1LL)) == (2LL),
-              "TMPPy assertion failed: \n<unknown>:1: assert 1 + 1 == 2");
 ''')
 def test_optimization_toplevel_code():
     assert 1 + 1 == 2
@@ -68,11 +66,6 @@ def test_common_subexpression_elimination():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_22> struct CheckIfError { using type = void; };
-static constexpr int64_t TmppyInternal_9 = (2LL) * ((3LL) + (1LL));
-static_assert(
-    ((TmppyInternal_9) == (TmppyInternal_9)) == (true),
-    "TMPPy assertion failed: \n<unknown>:2: assert (2*(3+1) == 2*(3+1)) == "
-    "(Type.pointer(Type('int')) == Type.pointer(Type('int')))");
 ''')
 def test_common_subexpression_elimination_toplevel():
     from tmppy import Type
@@ -82,11 +75,6 @@ def test_common_subexpression_elimination_toplevel():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_22> struct CheckIfError { using type = void; };
-static constexpr int64_t TmppyInternal_9 = (2LL) * ((3LL) + (1LL));
-static_assert(
-    ((TmppyInternal_9) == (TmppyInternal_9)) == (true),
-    "TMPPy assertion failed: \n<unknown>:2: assert (2*(3 + 1) == 2*(3 + 1)) == "
-    "(Type.pointer(Type('int')) == Type.pointer(Type('int')))");
 ''')
 def test_common_subexpression_elimination_at_toplevel():
     from tmppy import Type
@@ -111,8 +99,6 @@ def test_optimization_two_functions_with_call():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_13> struct CheckIfError { using type = void; };
-static_assert(((3LL) + (1LL)) == (4LL),
-              "TMPPy assertion failed: \n<unknown>:3: assert _plus(3, 1) == 4");
 ''')
 def test_optimization_function_call_at_toplevel():
     def _plus(n: int, m: int):
@@ -147,8 +133,6 @@ struct TmppyInternal_15<TmppyInternal_5, false> {
   static constexpr int64_t value = g<true>::value;
   using error = void;
 };
-static_assert((3LL) == (3LL),
-              "TMPPy assertion failed: \n<unknown>:8: assert g(False) == 3");
 ''')
 def test_optimization_of_mutually_recursive_functions():
     def f(b: bool) -> int:
@@ -188,8 +172,6 @@ template <bool TmppyInternal_5> struct TmppyInternal_15<TmppyInternal_5, true> {
   static constexpr int64_t value = g<false>::value;
   using error = void;
 };
-static_assert((3LL) == (3LL),
-              "TMPPy assertion failed: \n<unknown>:8: assert g(True) == 3");
 ''')
 def test_optimization_of_mutually_recursive_functions_branches_swapped():
     def f(b: bool) -> int:
@@ -232,9 +214,6 @@ struct TmppyInternal_17<TmppyInternal_5, false> {
   static constexpr int64_t value = g<int>::value;
   using error = void;
 };
-static_assert(
-    (3LL) == (3LL),
-    "TMPPy assertion failed: \n<unknown>:9: assert g(Type('float')) == 3");
 ''')
 def test_optimization_of_mutually_recursive_functions_with_type_param():
     from tmppy import Type
@@ -251,8 +230,6 @@ def test_optimization_of_mutually_recursive_functions_with_type_param():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('char')");
 ''')
 def test_is_same_optimization_void_char():
     from tmppy import Type
@@ -262,8 +239,6 @@ def test_is_same_optimization_void_char():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('short')");
 ''')
 def test_is_same_optimization_void_short():
     from tmppy import Type
@@ -273,8 +248,6 @@ def test_is_same_optimization_void_short():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('int')");
 ''')
 def test_is_same_optimization_void_int():
     from tmppy import Type
@@ -284,8 +257,6 @@ def test_is_same_optimization_void_int():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('int32_t')");
 ''')
 def test_is_same_optimization_void_int32_t():
     from tmppy import Type
@@ -295,8 +266,6 @@ def test_is_same_optimization_void_int32_t():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('int64_t')");
 ''')
 def test_is_same_optimization_void_int64_t():
     from tmppy import Type
@@ -306,8 +275,6 @@ def test_is_same_optimization_void_int64_t():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('uint32_t')");
 ''')
 def test_is_same_optimization_void_uint32_t():
     from tmppy import Type
@@ -317,8 +284,6 @@ def test_is_same_optimization_void_uint32_t():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('uint64_t')");
 ''')
 def test_is_same_optimization_void_uint64_t():
     from tmppy import Type
@@ -328,8 +293,6 @@ def test_is_same_optimization_void_uint64_t():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('unsigned')");
 ''')
 def test_is_same_optimization_void_unsigned():
     from tmppy import Type
@@ -339,8 +302,6 @@ def test_is_same_optimization_void_unsigned():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('long')");
 ''')
 def test_is_same_optimization_void_long():
     from tmppy import Type
@@ -350,8 +311,6 @@ def test_is_same_optimization_void_long():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('float')");
 ''')
 def test_is_same_optimization_void_float():
     from tmppy import Type
@@ -361,8 +320,6 @@ def test_is_same_optimization_void_float():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_9> struct CheckIfError { using type = void; };
-static_assert(!(false), "TMPPy assertion failed: \n<unknown>:2: assert "
-                        "Type('void') != Type('double')");
 ''')
 def test_is_same_optimization_void_double():
     from tmppy import Type
@@ -380,27 +337,6 @@ def test_optimization_of_mutually_recursive_functions_infinite_loop():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_22> struct CheckIfError { using type = void; };
-template <typename TmppyInternal_9, typename TmppyInternal_8, bool>
-struct TmppyInternal_27;
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_9, typename TmppyInternal_8>
-struct TmppyInternal_27<TmppyInternal_9, TmppyInternal_8, true> {
-  using type = void;
-  using error = TmppyInternal_9;
-};
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_9, typename TmppyInternal_8>
-struct TmppyInternal_27<TmppyInternal_9, TmppyInternal_8, false> {
-  using error = void;
-  using type = TmppyInternal_8;
-};
-using TmppyInternal_203 = List<int, float, double>;
-static_assert(std::is_same<typename TmppyInternal_27<void, TmppyInternal_203,
-                                                     !(true)>::type,
-                           TmppyInternal_203>::value,
-              "TMPPy assertion failed: \n<unknown>:7: assert "
-              "_unpack_tuple(Type.template_instantiation('std::tuple', "
-              "[Type('int'), Type('float'), Type('double')])) \\");
 ''')
 def test_match_expr_extract_list_optimization():
     from tmppy import Type, match
@@ -416,25 +352,6 @@ def test_match_expr_extract_list_optimization():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_17> struct CheckIfError { using type = void; };
-template <typename TmppyInternal_10, typename TmppyInternal_9, bool>
-struct TmppyInternal_20;
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_10, typename TmppyInternal_9>
-struct TmppyInternal_20<TmppyInternal_10, TmppyInternal_9, true> {
-  using type = void;
-  using error = TmppyInternal_10;
-};
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_10, typename TmppyInternal_9>
-struct TmppyInternal_20<TmppyInternal_10, TmppyInternal_9, false> {
-  using error = void;
-  using type = TmppyInternal_9;
-};
-static_assert(
-    std::is_same<typename TmppyInternal_20<void, float, !(true)>::type,
-                 float>::value,
-    "TMPPy assertion failed: \n<unknown>:7: assert "
-    "_f(Type.pointer(Type('int'))) == Type('float')");
 ''')
 def test_match_optimization_only_one_definition():
     from tmppy import Type, match
@@ -497,27 +414,6 @@ def test_match_optimization_with_specialization_chooses_main_definition():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_20> struct CheckIfError { using type = void; };
-template <typename TmppyInternal_12, typename TmppyInternal_11, bool>
-struct TmppyInternal_23;
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_12, typename TmppyInternal_11>
-struct TmppyInternal_23<TmppyInternal_12, TmppyInternal_11, true> {
-  using type = void;
-  using error = TmppyInternal_12;
-};
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_12, typename TmppyInternal_11>
-struct TmppyInternal_23<TmppyInternal_12, TmppyInternal_11, false> {
-  using error = void;
-  using type = TmppyInternal_11;
-};
-using TmppyInternal_139 = int &&;
-static_assert(
-    std::is_same<
-        typename TmppyInternal_23<void, TmppyInternal_139, !(true)>::type,
-        TmppyInternal_139>::value,
-    "TMPPy assertion failed: \n<unknown>:9: assert "
-    "_f(Type.pointer(Type('int'))) == Type.rvalue_reference(Type('int'))");
 ''')
 def test_match_optimization_with_specialization_chooses_specialization():
     from tmppy import Type, match
@@ -590,27 +486,6 @@ def test_match_optimization_with_multiple_specializations_chooses_main_definitio
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_22> struct CheckIfError { using type = void; };
-template <typename TmppyInternal_14, typename TmppyInternal_13, bool>
-struct TmppyInternal_25;
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_14, typename TmppyInternal_13>
-struct TmppyInternal_25<TmppyInternal_14, TmppyInternal_13, true> {
-  using type = void;
-  using error = TmppyInternal_14;
-};
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_14, typename TmppyInternal_13>
-struct TmppyInternal_25<TmppyInternal_14, TmppyInternal_13, false> {
-  using error = void;
-  using type = TmppyInternal_13;
-};
-using TmppyInternal_153 = int &&;
-static_assert(
-    std::is_same<
-        typename TmppyInternal_25<void, TmppyInternal_153, !(true)>::type,
-        TmppyInternal_153>::value,
-    "TMPPy assertion failed: \n<unknown>:11: assert "
-    "_f(Type.pointer(Type('int'))) == Type.rvalue_reference(Type('int'))");
 ''')
 def test_match_optimization_with_multiple_specializations_chooses_less_specific_specialization():
     from tmppy import Type, match

@@ -412,7 +412,7 @@ class ComparisonExpr(BinaryExpr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):
         assert lhs.type == rhs.type
         if isinstance(lhs.type, BoolType):
-            assert op == '=='
+            assert op in ('==', '!=')
         elif isinstance(lhs.type, Int64Type):
             assert op in ('==', '!=', '<', '>', '<=', '>=')
         else:
