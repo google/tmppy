@@ -176,6 +176,12 @@ class TemplateDefn(TemplateBodyElement):
         self.name = name
         self.args = tuple(args)
         self.main_definition = main_definition
+        if main_definition:
+            declaration_args = [(arg.type, arg.name) for arg in args]
+            main_defn_args = [(arg.type, arg.name) for arg in main_definition.args]
+            assert declaration_args == main_defn_args, '%s != %s' % (
+                ', '.join('(%s, %s)' % (str(type), name) for type, name in declaration_args),
+                ', '.join('(%s, %s)' % (str(type), name) for type, name in main_defn_args))
         self.specializations = tuple(specializations)
         self.description = description
         self.result_element_names = tuple(sorted(result_element_names))

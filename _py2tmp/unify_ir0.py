@@ -178,8 +178,8 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
                        local_var_definitions,
                        patterns,
                        instantiation_vars,
-                       {arg.name
-                        for arg in template_defn.args},
+                       {var.name
+                        for var in template_defn.main_definition.args},
                        identifier_generator,
                        verbose)
         if result.kind == UnificationResultKind.CERTAIN:
@@ -285,8 +285,9 @@ def unify(exprs: List[ir0.Expr],
                                                unification_strategy)
     except unification.UnificationFailedException:
         if verbose:
-            print('unify(exprs=[%s], patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning IMPOSSIBLE due to exception: %s' % (
+            print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning IMPOSSIBLE due to exception: %s' % (
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+                ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
                 ', '.join(expr_variable for expr_variable in expr_variables),
                 ', '.join(pattern_variable for pattern_variable in pattern_variables),
@@ -296,8 +297,9 @@ def unify(exprs: List[ir0.Expr],
         return UnificationResult(UnificationResultKind.IMPOSSIBLE)
     except unification.UnificationAmbiguousException:
         if verbose:
-            print('unify(exprs=[%s], patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning POSSIBLE due to exception: %s' % (
+            print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning POSSIBLE due to exception: %s' % (
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+                ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
                 ', '.join(expr_variable for expr_variable in expr_variables),
                 ', '.join(pattern_variable for pattern_variable in pattern_variables),
@@ -306,8 +308,9 @@ def unify(exprs: List[ir0.Expr],
                 traceback.format_exc()))
         return UnificationResult(UnificationResultKind.POSSIBLE)
     except AssertionError as e:
-        print('unify(exprs=[%s], patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nAssertionError' % (
+        print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nAssertionError' % (
             ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+            ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
             ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
             ', '.join(expr_variable for expr_variable in expr_variables),
             ', '.join(pattern_variable for pattern_variable in pattern_variables),
@@ -319,8 +322,9 @@ def unify(exprs: List[ir0.Expr],
         var_expr_equations = unification.canonicalize(var_expr_equations, unification_strategy)
     except unification.CanonicalizationFailedException:
         if verbose:
-            print('unify(exprs=[%s], patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning POSSIBLE due to exception: %s' % (
+            print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning POSSIBLE due to exception: %s' % (
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+                ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
                 ', '.join(expr_variable for expr_variable in expr_variables),
                 ', '.join(pattern_variable for pattern_variable in pattern_variables),
@@ -329,8 +333,9 @@ def unify(exprs: List[ir0.Expr],
                 traceback.format_exc()))
         return UnificationResult(UnificationResultKind.POSSIBLE)
     except AssertionError as e:
-        print('unify(exprs=[%s], patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nvar_expr_equations = %s\nAssertionError' % (
+        print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nvar_expr_equations = %s\nAssertionError' % (
             ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+            ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
             ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
             ', '.join(expr_variable for expr_variable in expr_variables),
             ', '.join(pattern_variable for pattern_variable in pattern_variables),

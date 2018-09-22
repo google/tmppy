@@ -1181,13 +1181,12 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
                 inlineable_refs = {other_node
                                    for other_node in template_dependency_graph.successors(template_name)
                                    if not template_dependency_graph_transitive_closure.has_edge(other_node, template_name)}
-                if inlineable_refs:
-                    template_defn, needs_another_loop1 = perform_template_inlining(template_defn,
-                                                                                   inlineable_refs,
-                                                                                   new_template_defns,
-                                                                                   identifier_generator)
-                    if needs_another_loop1:
-                        needs_another_loop = True
+                template_defn, needs_another_loop1 = perform_template_inlining(template_defn,
+                                                                               inlineable_refs,
+                                                                               new_template_defns,
+                                                                               identifier_generator)
+                if needs_another_loop1:
+                    needs_another_loop = True
 
                 template_defn, needs_another_loop1 = perform_local_optimizations_on_template_defn(template_defn,
                                                                                                   identifier_generator,
@@ -1223,23 +1222,20 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
         needs_another_loop = False
         max_num_remaining_loops -= 1
     
-        if inlineable_refs:
-          elems, needs_another_loop1 = perform_template_inlining_on_toplevel_elems(new_toplevel_content,
-                                                                                   inlineable_refs,
-                                                                                   new_template_defns,
-                                                                                   identifier_generator)
-          if needs_another_loop1:
-              needs_another_loop = True
-              
-          additional_toplevel_template_defns = [elem
-                                                for elem in elems
-                                                if isinstance(elem, ir0.TemplateDefn)]
-          new_toplevel_content = [elem
-                                  for elem in elems
-                                  if not isinstance(elem, ir0.TemplateDefn)]
-        else:
-          additional_toplevel_template_defns = []
-    
+        elems, needs_another_loop1 = perform_template_inlining_on_toplevel_elems(new_toplevel_content,
+                                                                                 inlineable_refs,
+                                                                                 new_template_defns,
+                                                                                 identifier_generator)
+        if needs_another_loop1:
+            needs_another_loop = True
+
+        additional_toplevel_template_defns = [elem
+                                              for elem in elems
+                                              if isinstance(elem, ir0.TemplateDefn)]
+        new_toplevel_content = [elem
+                                for elem in elems
+                                if not isinstance(elem, ir0.TemplateDefn)]
+
         new_toplevel_content, needs_another_loop1 = perform_local_optimizations_on_toplevel_elems(new_toplevel_content,
                                                                                                   identifier_generator,
                                                                                                   inline_template_instantiations_with_multiple_references=False)

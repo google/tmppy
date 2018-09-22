@@ -432,8 +432,11 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
                                                                        patterns=specialization_patterns,
                                                                        body=match_case_writer.elems))
 
-    args_decls = forwarded_args_decls + [ir0.TemplateArgDecl(type=ir0.TypeType(), name='')
-                                         for _ in match_expr.matched_vars]
+    if main_definition:
+        args_decls = main_definition.args
+    else:
+        args_decls = forwarded_args_decls + [ir0.TemplateArgDecl(type=ir0.TypeType(), name='')
+                                             for _ in match_expr.matched_vars]
 
     args_exprs = forwarded_args_exprs + matched_vars
 
@@ -1083,10 +1086,11 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
 
     writer.set_holder_template_name_for_error(custom_type.name, holder_template_id)
 
+    args = [ir0.TemplateArgDecl(type=ir0.TypeType(), name=writer.new_id())]
     is_instance_template = ir0.TemplateDefn(name=writer.new_id(),
                                             description='isinstance() (meta)function for the custom type %s' % custom_type.name,
-                                            args=[ir0.TemplateArgDecl(type=ir0.TypeType())],
-                                            main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(type=ir0.TypeType(), name=writer.new_id())],
+                                            args=args,
+                                            main_definition=ir0.TemplateSpecialization(args=args,
                                                                                        patterns=None,
                                                                                        body=[ir0.ConstantDef(name='value',
                                                                                                              expr=ir0.Literal(value=False))],

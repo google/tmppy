@@ -44,12 +44,8 @@ template <typename TmppyInternal_25> struct CheckIfError { using type = void; };
 template <int64_t TmppyInternal_5> struct f {
   static constexpr int64_t TmppyInternal_10 =
       (2LL) * ((TmppyInternal_5) + (1LL));
-  using TmppyInternal_18 = int *;
   static constexpr bool value =
-      ((TmppyInternal_10) == (TmppyInternal_10)) ==
-      (std::is_same<
-          typename Select1stTypeInt64<TmppyInternal_18, TmppyInternal_5>::value,
-          TmppyInternal_18>::value);
+      ((TmppyInternal_10) == (TmppyInternal_10)) == (true);
   using error = void;
 };
 ''')
@@ -366,38 +362,6 @@ def test_match_optimization_only_one_definition():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_19> struct CheckIfError { using type = void; };
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6> struct TmppyInternal_20 {
-  using type = TmppyInternal_6 &;
-  using error = void;
-};
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6> struct TmppyInternal_20<TmppyInternal_6 *> {
-  using type = TmppyInternal_6 &&;
-  using error = void;
-};
-template <typename TmppyInternal_12, typename TmppyInternal_11, bool>
-struct TmppyInternal_22;
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_12, typename TmppyInternal_11>
-struct TmppyInternal_22<TmppyInternal_12, TmppyInternal_11, true> {
-  using type = void;
-  using error = TmppyInternal_12;
-};
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_12, typename TmppyInternal_11>
-struct TmppyInternal_22<TmppyInternal_12, TmppyInternal_11, false> {
-  using error = void;
-  using type = TmppyInternal_11;
-};
-using TmppyInternal_120 = typename TmppyInternal_20<int>::error;
-static_assert(
-    std::is_same<typename TmppyInternal_22<
-                     TmppyInternal_120, typename TmppyInternal_20<int>::type,
-                     !(std::is_same<TmppyInternal_120, void>::value)>::type,
-                 int &>::value,
-    "TMPPy assertion failed: \n<unknown>:9: assert _f(Type('int')) == "
-    "Type.reference(Type('int'))");
 ''')
 def test_match_optimization_with_specialization_chooses_main_definition():
     from tmppy import Type, match
@@ -430,44 +394,6 @@ def test_match_optimization_with_specialization_chooses_specialization():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_21> struct CheckIfError { using type = void; };
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6> struct TmppyInternal_22 {
-  using type = TmppyInternal_6 &;
-  using error = void;
-};
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6> struct TmppyInternal_22<TmppyInternal_6 *> {
-  using type = TmppyInternal_6 &&;
-  using error = void;
-};
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6>
-struct TmppyInternal_22<TmppyInternal_6 **> {
-  using type = TmppyInternal_6[];
-  using error = void;
-};
-template <typename TmppyInternal_14, typename TmppyInternal_13, bool>
-struct TmppyInternal_24;
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_14, typename TmppyInternal_13>
-struct TmppyInternal_24<TmppyInternal_14, TmppyInternal_13, true> {
-  using type = void;
-  using error = TmppyInternal_14;
-};
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_14, typename TmppyInternal_13>
-struct TmppyInternal_24<TmppyInternal_14, TmppyInternal_13, false> {
-  using error = void;
-  using type = TmppyInternal_13;
-};
-using TmppyInternal_132 = typename TmppyInternal_22<int>::error;
-static_assert(
-    std::is_same<typename TmppyInternal_24<
-                     TmppyInternal_132, typename TmppyInternal_22<int>::type,
-                     !(std::is_same<TmppyInternal_132, void>::value)>::type,
-                 int &>::value,
-    "TMPPy assertion failed: \n<unknown>:11: assert _f(Type('int')) == "
-    "Type.reference(Type('int'))");
 ''')
 def test_match_optimization_with_multiple_specializations_chooses_main_definition():
     from tmppy import Type, match
@@ -534,13 +460,13 @@ struct TmppyInternal_26<TmppyInternal_14, TmppyInternal_13, false> {
   using error = void;
   using type = TmppyInternal_13;
 };
-using TmppyInternal_134 = int **;
-using TmppyInternal_136 = typename TmppyInternal_24<TmppyInternal_134>::error;
+using TmppyInternal_138 = int **;
+using TmppyInternal_140 = typename TmppyInternal_24<TmppyInternal_138>::error;
 static_assert(
     std::is_same<typename TmppyInternal_26<
-                     TmppyInternal_136,
-                     typename TmppyInternal_24<TmppyInternal_134>::type,
-                     !(std::is_same<TmppyInternal_136, void>::value)>::type,
+                     TmppyInternal_140,
+                     typename TmppyInternal_24<TmppyInternal_138>::type,
+                     !(std::is_same<TmppyInternal_140, void>::value)>::type,
                  int[]>::value,
     "TMPPy assertion failed: \n<unknown>:11: assert "
     "_f(Type.pointer(Type.pointer(Type('int')))) == Type.array(Type('int'))");
