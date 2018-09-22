@@ -23,6 +23,10 @@ def test_not_false():
 def test_not_true():
     assert (not True) == False
 
+@assert_compilation_succeeds()
+def test_not_equal():
+    assert (not True) != True
+
 @assert_conversion_fails
 def test_not_int_error():
     assert not 1  # error: The "not" operator is only supported for booleans, but this value has type int.
