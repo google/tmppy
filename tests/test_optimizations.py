@@ -42,10 +42,7 @@ def test_optimization_toplevel_code():
 #include <type_traits>
 template <typename TmppyInternal_25> struct CheckIfError { using type = void; };
 template <int64_t TmppyInternal_5> struct f {
-  static constexpr int64_t TmppyInternal_10 =
-      (2LL) * ((TmppyInternal_5) + (1LL));
-  static constexpr bool value =
-      ((TmppyInternal_10) == (TmppyInternal_10)) == (true);
+  static constexpr bool value = true;
   using error = void;
 };
 ''')

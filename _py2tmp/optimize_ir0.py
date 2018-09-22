@@ -580,6 +580,12 @@ def _elem_can_trigger_static_asserts(stmt: ir0.TemplateBodyElement):
     transformation.transform_template_body_elems([stmt], writer)
     return transformation.can_trigger_static_asserts
 
+def _expr_can_trigger_static_asserts(expr: ir0.Expr):
+    writer = transform_ir0.ToplevelWriter(identifier_generator=iter([]))
+    transformation = CanTriggerStaticAsserts()
+    transformation.transform_expr(expr, writer)
+    return transformation.can_trigger_static_asserts
+
 class ConstantFoldingTransformation(transform_ir0.Transformation):
     def __init__(self, inline_template_instantiations_with_multiple_references: bool):
         super().__init__()
@@ -888,6 +894,12 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
             if op == '>=':
                 return ir0.Literal(lhs.value >= rhs.value)
 
+        if op in ('==', '!=') and self._is_syntactically_equal(lhs, rhs) and not _expr_can_trigger_static_asserts(lhs):
+            return {
+                '==': ir0.Literal(True),
+                '!=': ir0.Literal(False),
+            }[op]
+
         return ir0.ComparisonExpr(lhs, rhs, op)
 
     def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
@@ -898,6 +910,16 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
 
         writer.write(ir0.StaticAssert(expr=expr,
                                       message=static_assert.message))
+
+    def _is_syntactically_equal(self, lhs, rhs):
+        if not lhs.is_same_expr_excluding_subexpressions(rhs):
+            return False
+        lhs_exprs = lhs.get_direct_subelements()
+        rhs_exprs = rhs.get_direct_subelements()
+        if len(lhs_exprs) != len(rhs_exprs):
+            return False
+        return all(self._is_syntactically_equal(lhs_expr, rhs_expr)
+                   for lhs_expr, rhs_expr in zip(lhs_exprs, rhs_exprs))
 
 def perform_constant_folding(template_defn: ir0.TemplateDefn,
                              identifier_generator: Iterator[str],
