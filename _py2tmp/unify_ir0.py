@@ -193,24 +193,19 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
 
     might_be_best_match = [True for _ in certain_matches]
     for i, (specialization1, value_by_pattern_variable1) in enumerate(certain_matches):
-        value_by_pattern_variable1_dict = {(pattern.cpp_type if isinstance(pattern, ir0.AtomicTypeLiteral) else pattern.expr.cpp_type): value
-                                           for pattern, value in value_by_pattern_variable1}
         specialization1_arg_vars = {var.name for var in specialization1.args}
         for j, (specialization2, value_by_pattern_variable2) in enumerate(certain_matches):
             if i != j and might_be_best_match[i] and might_be_best_match[j]:
                 specialization2_arg_vars = {var.name for var in specialization2.args}
 
                 # Let's see if we can prove that certain_matches[i] is more strict than certain_matches[j]
-                for pattern_var, value2 in value_by_pattern_variable2:
-                    value1 = value_by_pattern_variable1_dict.get(pattern_var.cpp_type if isinstance(pattern_var, ir0.AtomicTypeLiteral) else pattern_var.expr.cpp_type)
-                    if value1 is None:
-                        break
-
-                    result = unify(value1, dict(), value2, specialization1_arg_vars, specialization2_arg_vars, identifier_generator)
-                    if result != UnificationResultKind.CERTAIN:
-                        break
-                else:
-                    # If we didn't break out of the loop, certain_matches[i] is more strict than certain_matches[j].
+                result = unify(specialization1.patterns,
+                               dict(),
+                               specialization2.patterns,
+                               specialization1_arg_vars,
+                               specialization2_arg_vars,
+                               identifier_generator)
+                if result.kind == UnificationResultKind.CERTAIN:
                     might_be_best_match[j] = False
 
     indexes = [index
@@ -224,7 +219,11 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
     # We've found multiple specializations that definitely match and aren't stricter than each other. So we can't say
     # for certain which one will be chosen (it probably depends on the specific arguments of the caller template).
     if verbose:
-        print('No unification found for template %s because there were multiple specializations with kind==CERTAIN and none of them was stricter than the others.' % template_defn.name)
+        print('No unification found for template %s because there were multiple specializations with kind==CERTAIN and none of them was stricter than the others. Solutions:\n%s' % (
+            template_defn.name,
+            '\n'.join('{%s}' % ', '.join('%s = [%s]' % (pattern_var.cpp_type, ', '.join(ir0_to_cpp.expr_to_cpp_simple(value) for value in values))
+                                                        for pattern_var, values in certain_matches[index][1])
+                      for index, might_be_best in enumerate(might_be_best_match))))
     return None
 
 def unify(exprs: List[ir0.Expr],
@@ -375,8 +374,9 @@ def unify(exprs: List[ir0.Expr],
         assert isinstance(var, ir0.AtomicTypeLiteral) or (isinstance(var, ir0.VariadicTypeExpansion) and isinstance(var.expr, ir0.AtomicTypeLiteral))
 
         if verbose:
-            print('unify(exprs=[%s], patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning CERTAIN with result_var_expr_equations:\n%s' % (
+            print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning CERTAIN with result_var_expr_equations:\n%s' % (
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+                ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
                 ', '.join(expr_variable for expr_variable in expr_variables),
                 ', '.join(pattern_variable for pattern_variable in pattern_variables),

@@ -427,46 +427,6 @@ def test_match_optimization_with_multiple_specializations_chooses_less_specific_
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_23> struct CheckIfError { using type = void; };
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6> struct TmppyInternal_24 {
-  using type = TmppyInternal_6 &;
-  using error = void;
-};
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6> struct TmppyInternal_24<TmppyInternal_6 *> {
-  using type = TmppyInternal_6 &&;
-  using error = void;
-};
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_6>
-struct TmppyInternal_24<TmppyInternal_6 **> {
-  using type = TmppyInternal_6[];
-  using error = void;
-};
-template <typename TmppyInternal_14, typename TmppyInternal_13, bool>
-struct TmppyInternal_26;
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_14, typename TmppyInternal_13>
-struct TmppyInternal_26<TmppyInternal_14, TmppyInternal_13, true> {
-  using type = void;
-  using error = TmppyInternal_14;
-};
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_14, typename TmppyInternal_13>
-struct TmppyInternal_26<TmppyInternal_14, TmppyInternal_13, false> {
-  using error = void;
-  using type = TmppyInternal_13;
-};
-using TmppyInternal_138 = int **;
-using TmppyInternal_140 = typename TmppyInternal_24<TmppyInternal_138>::error;
-static_assert(
-    std::is_same<typename TmppyInternal_26<
-                     TmppyInternal_140,
-                     typename TmppyInternal_24<TmppyInternal_138>::type,
-                     !(std::is_same<TmppyInternal_140, void>::value)>::type,
-                 int[]>::value,
-    "TMPPy assertion failed: \n<unknown>:11: assert "
-    "_f(Type.pointer(Type.pointer(Type('int')))) == Type.array(Type('int'))");
 ''')
 def test_match_optimization_with_multiple_specializations_chooses_more_specific_specialization():
     from tmppy import Type, match
