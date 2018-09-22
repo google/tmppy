@@ -234,7 +234,9 @@ class AtomicTypeLiteral(Expr):
             yield self
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
-        return isinstance(other, AtomicTypeLiteral) and self.__dict__ == other.__dict__
+        # We intentionally don't compare type, is_metafunction_that_may_return_error, may_be_alias since we might have
+        # different information for different literal expressions (e.g. a 2-arg std::tuple vs a 3-arg one).
+        return isinstance(other, AtomicTypeLiteral) and self.cpp_type == other.cpp_type and self.is_local == other.is_local
 
     def get_direct_subexpressions(self):
         return []
@@ -463,7 +465,7 @@ class TemplateInstantiation(Expr):
         self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
-        return isinstance(other, TemplateInstantiation) and self.instantiation_might_trigger_static_asserts == other.instantiation_might_trigger_static_asserts
+        return isinstance(other, TemplateInstantiation)
 
     def get_direct_subexpressions(self):
         yield self.template_expr
@@ -480,7 +482,7 @@ class ClassMemberAccess(UnaryExpr):
         self.member_name = member_name
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
-        return isinstance(other, ClassMemberAccess) and self.member_name == other.member_name and self.type == other.type
+        return isinstance(other, ClassMemberAccess) and self.member_name == other.member_name
 
     def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
         [expr] = new_subexpressions

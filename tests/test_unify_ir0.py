@@ -107,6 +107,16 @@ def test_unify_ir0_term_equality_variadic_type_expansion(expr1, expr2):
      ir0.AtomicTypeLiteral.for_nonlocal_type('float', may_be_alias=False)),
     (ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False),
      ir0.AtomicTypeLiteral.for_nonlocal_template('std::list', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False)),
+], ids = [
+    'Literal, different value',
+    'AtomicTypeLiteral.for_nonlocal_type, different cpp_type',
+    'AtomicTypeLiteral.for_nonlocal_template, different cpp_type',
+])
+def test_unify_ir0_term_equality_fails_different_direct_values_in_term_syntactically_comparable_expr(expr1, expr2):
+    result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
+    assert result.kind == UnificationResultKind.IMPOSSIBLE
+
+@pytest.mark.parametrize('expr1,expr2', [
     (ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False),
      ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[ir0.TypeType()], is_metafunction_that_may_return_error=False, may_be_alias=False)),
     (ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False),
@@ -124,16 +134,13 @@ def test_unify_ir0_term_equality_variadic_type_expansion(expr1, expr2):
                                args=[],
                                instantiation_might_trigger_static_asserts=True)),
 ], ids = [
-    'Literal, different value',
-    'AtomicTypeLiteral.for_nonlocal_type, different cpp_type',
-    'AtomicTypeLiteral.for_nonlocal_template, different cpp_type',
     'AtomicTypeLiteral.for_nonlocal_template, different arg_types',
     'AtomicTypeLiteral.for_nonlocal_template, different is_metafunction_that_may_return_error',
     'TemplateInstantiation, different instantiation_might_trigger_static_asserts',
 ])
-def test_unify_ir0_term_equality_fails_different_direct_values_in_term_syntactically_comparable_expr(expr1, expr2):
+def test_unify_ir0_term_equality_fails_different_direct_values_in_term_syntactically_comparable_expr_not_affecting_equality(expr1, expr2):
     result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
-    assert result.kind == UnificationResultKind.IMPOSSIBLE
+    assert result.kind == UnificationResultKind.CERTAIN
 
 @pytest.mark.parametrize('expr1,expr2', [
     (ir0.AtomicTypeLiteral.for_local('int', type=ir0.TypeType()),
@@ -142,41 +149,48 @@ def test_unify_ir0_term_equality_fails_different_direct_values_in_term_syntactic
      ir0.AtomicTypeLiteral.for_local('int', type=ir0.VariadicType())),
     (ir0.AtomicTypeLiteral.for_nonlocal_type('X', may_be_alias=True),
      ir0.AtomicTypeLiteral.for_nonlocal_type('Y', may_be_alias=True)),
-    (ir0.AtomicTypeLiteral.for_nonlocal_type('X', may_be_alias=True),
-     ir0.AtomicTypeLiteral.for_nonlocal_type('X', may_be_alias=False)),
     (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
      ir0.AtomicTypeLiteral.for_nonlocal_template('G', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True)),
-    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
-     ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[ir0.TypeType()], is_metafunction_that_may_return_error=False, may_be_alias=True)),
-    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
-     ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=True, may_be_alias=True)),
-    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
-     ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False)),
     (ir0.ComparisonExpr(literal(1), literal(2), op='=='),
      ir0.ComparisonExpr(literal(1), literal(2), op='!=')),
     (ir0.Int64BinaryOpExpr(literal(1), literal(2), op='+'),
      ir0.Int64BinaryOpExpr(literal(1), literal(2), op='-')),
     (ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.TypeType()),
      ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='pointer_type', member_type=ir0.TypeType())),
-    (ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.TypeType()),
-     ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.VariadicType())),
 ], ids = [
     'AtomicTypeLiteral.for_local(), different cpp_type',
     'AtomicTypeLiteral.for_local(), different type',
     'AtomicTypeLiteral.for_nonlocal_type, different cpp_type',
-    'AtomicTypeLiteral.for_nonlocal_type, different may_be_alias',
     'AtomicTypeLiteral.for_nonlocal_template, different cpp_type',
-    'AtomicTypeLiteral.for_nonlocal_template, different arg_types',
-    'AtomicTypeLiteral.for_nonlocal_template, different is_metafunction_that_may_return_error',
-    'AtomicTypeLiteral.for_nonlocal_template, different may_be_alias',
     'ComparisonExpr, different op',
     'Int64BinaryOpExpr, different op',
     'ClassMemberAccess, different member_name',
-    'ClassMemberAccess, different member_type',
 ])
 def test_unify_ir0_term_equality_fails_different_direct_values_in_term_non_syntactically_comparable_expr(expr1, expr2):
     result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
     assert result.kind == UnificationResultKind.POSSIBLE
+
+@pytest.mark.parametrize('expr1,expr2', [
+    (ir0.AtomicTypeLiteral.for_nonlocal_type('X', may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_type('X', may_be_alias=False)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[ir0.TypeType()], is_metafunction_that_may_return_error=False, may_be_alias=True)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=True, may_be_alias=True)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False)),
+    (ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.TypeType()),
+     ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.VariadicType())),
+], ids = [
+    'AtomicTypeLiteral.for_nonlocal_type, different may_be_alias',
+    'AtomicTypeLiteral.for_nonlocal_template, different arg_types',
+    'AtomicTypeLiteral.for_nonlocal_template, different is_metafunction_that_may_return_error',
+    'AtomicTypeLiteral.for_nonlocal_template, different may_be_alias',
+    'ClassMemberAccess, different member_type',
+])
+def test_unify_ir0_term_equality_fails_different_direct_values_in_term_non_syntactically_comparable_expr_not_affecting_equality(expr1, expr2):
+    result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
+    assert result.kind == UnificationResultKind.CERTAIN
 
 @pytest.mark.parametrize('expr_variables,pattern_variables', [
     (set(), {'T'}),
@@ -234,6 +248,21 @@ def test_unify_ir0_same_type_variable_name_considered_different_from_pattern_loc
                                                                                          may_be_alias=False),
                                args=[type_literal('float')],
                                instantiation_might_trigger_static_asserts=False)),
+], ids=[
+    'PointerTypeExpr',
+    'ConstTypeExpr',
+    'ArrayTypeExpr',
+    'FunctionTypeExpr, different return_type_expr',
+    'FunctionTypeExpr, different arg_exprs values',
+    'FunctionTypeExpr, different arg_exprs length',
+    'TemplateInstantiation, different template_expr',
+    'TemplateInstantiation, different args',
+])
+def test_unify_ir0_term_equality_fails_different_subexpressions_syntactically_comparable(expr1, expr2):
+    result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
+    assert result.kind == UnificationResultKind.IMPOSSIBLE
+
+@pytest.mark.parametrize('expr1,expr2', [
     (ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
                                                                                          arg_types=[],
                                                                                          is_metafunction_that_may_return_error=False,
@@ -247,19 +276,11 @@ def test_unify_ir0_same_type_variable_name_considered_different_from_pattern_loc
                                args=[],
                                instantiation_might_trigger_static_asserts=True)),
 ], ids=[
-    'PointerTypeExpr',
-    'ConstTypeExpr',
-    'ArrayTypeExpr',
-    'FunctionTypeExpr, different return_type_expr',
-    'FunctionTypeExpr, different arg_exprs values',
-    'FunctionTypeExpr, different arg_exprs length',
-    'TemplateInstantiation, different template_expr',
-    'TemplateInstantiation, different args',
     'TemplateInstantiation, different instantiation_might_trigger_static_asserts',
 ])
-def test_unify_ir0_term_equality_fails_different_subexpressions_syntactically_comparable(expr1, expr2):
+def test_unify_ir0_term_equality_fails_different_subexpressions_syntactically_comparable_not_affecting_equality(expr1, expr2):
     result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
-    assert result.kind == UnificationResultKind.IMPOSSIBLE
+    assert result.kind == UnificationResultKind.CERTAIN
 
 @pytest.mark.parametrize('expr1,expr2', [
     (ir0.ReferenceTypeExpr(type_literal('int')),

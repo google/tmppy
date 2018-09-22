@@ -380,13 +380,6 @@ def test_optimization_of_mutually_recursive_functions_infinite_loop():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_22> struct CheckIfError { using type = void; };
-template <typename TmppyInternal_23, typename> struct TmppyInternal_25;
-// (meta)function wrapping a match expression
-template <typename TmppyInternal_23, typename... TmppyInternal_24>
-struct TmppyInternal_25<TmppyInternal_23, std::tuple<TmppyInternal_24...>> {
-  using type = List<TmppyInternal_24...>;
-  using error = void;
-};
 template <typename TmppyInternal_9, typename TmppyInternal_8, bool>
 struct TmppyInternal_27;
 // (meta)function generated for an if-else statement
@@ -401,18 +394,13 @@ struct TmppyInternal_27<TmppyInternal_9, TmppyInternal_8, false> {
   using error = void;
   using type = TmppyInternal_8;
 };
-using TmppyInternal_125 =
-    typename TmppyInternal_25<void, std::tuple<int, float, double>>::error;
-static_assert(
-    std::is_same<typename TmppyInternal_27<
-                     TmppyInternal_125,
-                     typename TmppyInternal_25<
-                         void, std::tuple<int, float, double>>::type,
-                     !(std::is_same<TmppyInternal_125, void>::value)>::type,
-                 List<int, float, double>>::value,
-    "TMPPy assertion failed: \n<unknown>:7: assert "
-    "_unpack_tuple(Type.template_instantiation('std::tuple', [Type('int'), "
-    "Type('float'), Type('double')])) \\");
+using TmppyInternal_203 = List<int, float, double>;
+static_assert(std::is_same<typename TmppyInternal_27<void, TmppyInternal_203,
+                                                     !(true)>::type,
+                           TmppyInternal_203>::value,
+              "TMPPy assertion failed: \n<unknown>:7: assert "
+              "_unpack_tuple(Type.template_instantiation('std::tuple', "
+              "[Type('int'), Type('float'), Type('double')])) \\");
 ''')
 def test_match_expr_extract_list_optimization():
     from tmppy import Type, match
