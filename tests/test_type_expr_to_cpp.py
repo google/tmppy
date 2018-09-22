@@ -23,12 +23,13 @@ def type_expr_to_cpp(expr: ir0.Expr):
     return ''.join(writer.strings)
 
 def literal(cpp_type: str):
-    return ir0.AtomicTypeLiteral.for_nonlocal_type(cpp_type)
+    return ir0.AtomicTypeLiteral.for_nonlocal_type(cpp_type, may_be_alias=False)
 
 def template(cpp_type: str, num_args: int):
     return ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type,
                                                        arg_types=[ir0.TypeType()] * num_args,
-                                                       is_metafunction_that_may_return_error=False)
+                                                       is_metafunction_that_may_return_error=False,
+                                                       may_be_alias=False)
 
 def pointer(expr: ir0.Expr):
     return ir0.PointerTypeExpr(expr)

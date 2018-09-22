@@ -34,14 +34,14 @@ def literal(value: Union[bool, int]):
     return ir0.Literal(value)
 
 def type_literal(cpp_type: str):
-    return ir0.AtomicTypeLiteral.for_nonlocal_type(cpp_type)
+    return ir0.AtomicTypeLiteral.for_nonlocal_type(cpp_type, may_be_alias=False)
 
 def local_type_literal(cpp_type: str):
     return ir0.AtomicTypeLiteral.for_local(cpp_type, type=ir0.TypeType())
 
 @pytest.mark.parametrize('expr_generator', [
     lambda: ir0.Literal(1),
-    lambda: ir0.AtomicTypeLiteral.for_nonlocal_type('int'),
+    lambda: ir0.AtomicTypeLiteral.for_nonlocal_type('int', may_be_alias=False),
     lambda: ir0.PointerTypeExpr(type_literal('int')),
     lambda: ir0.ReferenceTypeExpr(type_literal('int')),
     lambda: ir0.RvalueReferenceTypeExpr(type_literal('int')),
@@ -55,12 +55,14 @@ def local_type_literal(cpp_type: str):
     lambda: ir0.UnaryMinusExpr(literal(1)),
     lambda: ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
                                                                                                 arg_types=[],
-                                                                                                is_metafunction_that_may_return_error=False),
+                                                                                                is_metafunction_that_may_return_error=False,
+                                                                                                may_be_alias=False),
                                       args=[],
                                       instantiation_might_trigger_static_asserts=False),
     lambda: ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
                                                                                                 arg_types=[ir0.TypeType()],
-                                                                                                is_metafunction_that_may_return_error=False),
+                                                                                                is_metafunction_that_may_return_error=False,
+                                                                                                may_be_alias=False),
                                       args=[type_literal('int')],
                                       instantiation_might_trigger_static_asserts=False),
     lambda: ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.TypeType()),
@@ -101,54 +103,80 @@ def test_unify_ir0_term_equality_variadic_type_expansion(expr1, expr2):
 
 @pytest.mark.parametrize('expr1,expr2', [
     (ir0.Literal(1), ir0.Literal(2)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_type('int', may_be_alias=False),
+     ir0.AtomicTypeLiteral.for_nonlocal_type('float', may_be_alias=False)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('std::list', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[ir0.TypeType()], is_metafunction_that_may_return_error=False, may_be_alias=False)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=True, may_be_alias=False)),
+    (ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
+                                                                                         arg_types=[],
+                                                                                         is_metafunction_that_may_return_error=False,
+                                                                                         may_be_alias=False),
+                               args=[],
+                               instantiation_might_trigger_static_asserts=False),
+     ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
+                                                                                         arg_types=[],
+                                                                                         is_metafunction_that_may_return_error=False,
+                                                                                         may_be_alias=False),
+                               args=[],
+                               instantiation_might_trigger_static_asserts=True)),
+], ids = [
+    'Literal, different value',
+    'AtomicTypeLiteral.for_nonlocal_type, different cpp_type',
+    'AtomicTypeLiteral.for_nonlocal_template, different cpp_type',
+    'AtomicTypeLiteral.for_nonlocal_template, different arg_types',
+    'AtomicTypeLiteral.for_nonlocal_template, different is_metafunction_that_may_return_error',
+    'TemplateInstantiation, different instantiation_might_trigger_static_asserts',
+])
+def test_unify_ir0_term_equality_fails_different_direct_values_in_term_syntactically_comparable_expr(expr1, expr2):
+    result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
+    assert result.kind == UnificationResultKind.IMPOSSIBLE
+
+@pytest.mark.parametrize('expr1,expr2', [
     (ir0.AtomicTypeLiteral.for_local('int', type=ir0.TypeType()),
      ir0.AtomicTypeLiteral.for_local('float', type=ir0.TypeType())),
     (ir0.AtomicTypeLiteral.for_local('int', type=ir0.TypeType()),
      ir0.AtomicTypeLiteral.for_local('int', type=ir0.VariadicType())),
-    (ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=False),
-     ir0.AtomicTypeLiteral.for_nonlocal_template('std::list', arg_types=[], is_metafunction_that_may_return_error=False)),
-    (ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=False),
-     ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[ir0.TypeType()], is_metafunction_that_may_return_error=False)),
-    (ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=False),
-     ir0.AtomicTypeLiteral.for_nonlocal_template('std::vector', arg_types=[], is_metafunction_that_may_return_error=True)),
-    (ir0.AtomicTypeLiteral.for_nonlocal_type('int'),
-     ir0.AtomicTypeLiteral.for_nonlocal_type('float')),
+    (ir0.AtomicTypeLiteral.for_nonlocal_type('X', may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_type('Y', may_be_alias=True)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_type('X', may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_type('X', may_be_alias=False)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('G', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[ir0.TypeType()], is_metafunction_that_may_return_error=False, may_be_alias=True)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=True, may_be_alias=True)),
+    (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
+     ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=False)),
     (ir0.ComparisonExpr(literal(1), literal(2), op='=='),
      ir0.ComparisonExpr(literal(1), literal(2), op='!=')),
     (ir0.Int64BinaryOpExpr(literal(1), literal(2), op='+'),
      ir0.Int64BinaryOpExpr(literal(1), literal(2), op='-')),
-    (ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
-                                                                                         arg_types=[],
-                                                                                         is_metafunction_that_may_return_error=False),
-                               args=[],
-                               instantiation_might_trigger_static_asserts=False),
-     ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
-                                                                                          arg_types=[],
-                                                                                          is_metafunction_that_may_return_error=False),
-                               args=[],
-                               instantiation_might_trigger_static_asserts=True)),
     (ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.TypeType()),
      ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='pointer_type', member_type=ir0.TypeType())),
     (ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.TypeType()),
      ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.VariadicType())),
 ], ids = [
-    'Literal, different value',
     'AtomicTypeLiteral.for_local(), different cpp_type',
     'AtomicTypeLiteral.for_local(), different type',
+    'AtomicTypeLiteral.for_nonlocal_type, different cpp_type',
+    'AtomicTypeLiteral.for_nonlocal_type, different may_be_alias',
     'AtomicTypeLiteral.for_nonlocal_template, different cpp_type',
     'AtomicTypeLiteral.for_nonlocal_template, different arg_types',
     'AtomicTypeLiteral.for_nonlocal_template, different is_metafunction_that_may_return_error',
-    'AtomicTypeLiteral.for_nonlocal_type, different cpp_type',
+    'AtomicTypeLiteral.for_nonlocal_template, different may_be_alias',
     'ComparisonExpr, different op',
     'Int64BinaryOpExpr, different op',
-    'TemplateInstantiation, different instantiation_might_trigger_static_asserts',
     'ClassMemberAccess, different member_name',
     'ClassMemberAccess, different member_type',
-
 ])
-def test_unify_ir0_term_equality_fails_different_local_values(expr1, expr2):
+def test_unify_ir0_term_equality_fails_different_direct_values_in_term_non_syntactically_comparable_expr(expr1, expr2):
     result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
-    assert result.kind == UnificationResultKind.IMPOSSIBLE
+    assert result.kind == UnificationResultKind.POSSIBLE
 
 @pytest.mark.parametrize('expr_variables,pattern_variables', [
     (set(), {'T'}),
@@ -158,30 +186,20 @@ def test_unify_ir0_same_type_variable_name_considered_different_from_pattern_var
     result = unify([local_type_literal('T')], [local_type_literal('T')], expr_variables, pattern_variables)
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
-        (local_type_literal('T'), local_type_literal('T')),
+        (local_type_literal('T'), [local_type_literal('T')]),
     ]
 
 @pytest.mark.parametrize('expr_variables,pattern_variables', [
     ({'T'}, set()),
+    (set(), set()),
 ])
 def test_unify_ir0_same_type_variable_name_considered_different_from_pattern_local(expr_variables, pattern_variables):
     result = unify([local_type_literal('T')], [local_type_literal('T')], expr_variables, pattern_variables)
     assert result.kind == UnificationResultKind.POSSIBLE
 
-@pytest.mark.parametrize('expr_variables,pattern_variables', [
-    (set(), set()),
-])
-def test_unify_ir0_same_type_name_considered_different_from_pattern_local(expr_variables, pattern_variables):
-    result = unify([local_type_literal('T')], [local_type_literal('T')], expr_variables, pattern_variables)
-    assert result.kind == UnificationResultKind.IMPOSSIBLE
-
 @pytest.mark.parametrize('expr1,expr2', [
     (ir0.PointerTypeExpr(type_literal('int')),
      ir0.PointerTypeExpr(type_literal('float'))),
-    (ir0.ReferenceTypeExpr(type_literal('int')),
-     ir0.ReferenceTypeExpr(type_literal('float'))),
-    (ir0.RvalueReferenceTypeExpr(type_literal('int')),
-     ir0.RvalueReferenceTypeExpr(type_literal('float'))),
     (ir0.ConstTypeExpr(type_literal('int')),
      ir0.ConstTypeExpr(type_literal('float'))),
     (ir0.ArrayTypeExpr(type_literal('int')),
@@ -192,6 +210,62 @@ def test_unify_ir0_same_type_name_considered_different_from_pattern_local(expr_v
      ir0.FunctionTypeExpr(type_literal('int'), [type_literal('double')])),
     (ir0.FunctionTypeExpr(type_literal('int'), []),
      ir0.FunctionTypeExpr(type_literal('int'), [type_literal('double')])),
+    (ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
+                                                                                         arg_types=[],
+                                                                                         is_metafunction_that_may_return_error=False,
+                                                                                         may_be_alias=False),
+                               args=[],
+                               instantiation_might_trigger_static_asserts=False),
+     ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::list',
+                                                                                         arg_types=[],
+                                                                                         is_metafunction_that_may_return_error=False,
+                                                                                         may_be_alias=False),
+                               args=[],
+                               instantiation_might_trigger_static_asserts=False)),
+    (ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
+                                                                                         arg_types=[ir0.TypeType()],
+                                                                                         is_metafunction_that_may_return_error=False,
+                                                                                         may_be_alias=False),
+                               args=[type_literal('int')],
+                               instantiation_might_trigger_static_asserts=False),
+     ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
+                                                                                         arg_types=[ir0.TypeType()],
+                                                                                         is_metafunction_that_may_return_error=False,
+                                                                                         may_be_alias=False),
+                               args=[type_literal('float')],
+                               instantiation_might_trigger_static_asserts=False)),
+    (ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
+                                                                                         arg_types=[],
+                                                                                         is_metafunction_that_may_return_error=False,
+                                                                                         may_be_alias=False),
+                               args=[],
+                               instantiation_might_trigger_static_asserts=False),
+     ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
+                                                                                         arg_types=[],
+                                                                                         is_metafunction_that_may_return_error=False,
+                                                                                         may_be_alias=False),
+                               args=[],
+                               instantiation_might_trigger_static_asserts=True)),
+], ids=[
+    'PointerTypeExpr',
+    'ConstTypeExpr',
+    'ArrayTypeExpr',
+    'FunctionTypeExpr, different return_type_expr',
+    'FunctionTypeExpr, different arg_exprs values',
+    'FunctionTypeExpr, different arg_exprs length',
+    'TemplateInstantiation, different template_expr',
+    'TemplateInstantiation, different args',
+    'TemplateInstantiation, different instantiation_might_trigger_static_asserts',
+])
+def test_unify_ir0_term_equality_fails_different_subexpressions_syntactically_comparable(expr1, expr2):
+    result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
+    assert result.kind == UnificationResultKind.IMPOSSIBLE
+
+@pytest.mark.parametrize('expr1,expr2', [
+    (ir0.ReferenceTypeExpr(type_literal('int')),
+     ir0.ReferenceTypeExpr(type_literal('float'))),
+    (ir0.RvalueReferenceTypeExpr(type_literal('int')),
+     ir0.RvalueReferenceTypeExpr(type_literal('float'))),
     (ir0.ComparisonExpr(literal(1), literal(2), op='=='),
      ir0.ComparisonExpr(literal(3), literal(2), op='==')),
     (ir0.ComparisonExpr(literal(1), literal(2), op='=='),
@@ -206,47 +280,11 @@ def test_unify_ir0_same_type_name_considered_different_from_pattern_local(expr_v
      ir0.UnaryMinusExpr(literal(2))),
     (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Ts', type=ir0.VariadicType())),
      ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Us', type=ir0.VariadicType()))),
-    (ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
-                                                                                         arg_types=[],
-                                                                                         is_metafunction_that_may_return_error=False),
-                               args=[],
-                               instantiation_might_trigger_static_asserts=False),
-     ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::list',
-                                                                                         arg_types=[],
-                                                                                         is_metafunction_that_may_return_error=False),
-                               args=[],
-                               instantiation_might_trigger_static_asserts=False)),
-    (ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
-                                                                                         arg_types=[ir0.TypeType()],
-                                                                                         is_metafunction_that_may_return_error=False),
-                               args=[type_literal('int')],
-                               instantiation_might_trigger_static_asserts=False),
-     ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
-                                                                                         arg_types=[ir0.TypeType()],
-                                                                                         is_metafunction_that_may_return_error=False),
-                               args=[type_literal('float')],
-                               instantiation_might_trigger_static_asserts=False)),
-    (ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
-                                                                                         arg_types=[],
-                                                                                         is_metafunction_that_may_return_error=False),
-                               args=[],
-                               instantiation_might_trigger_static_asserts=False),
-     ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::vector',
-                                                                                         arg_types=[],
-                                                                                         is_metafunction_that_may_return_error=False),
-                               args=[],
-                               instantiation_might_trigger_static_asserts=True)),
     (ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.TypeType()),
      ir0.ClassMemberAccess(class_type_expr=type_literal('OtherClass'), member_name='value_type', member_type=ir0.TypeType())),
 ], ids=[
-    'PointerTypeExpr',
     'ReferenceTypeExpr',
     'RvalueReferenceTypeExpr',
-    'ConstTypeExpr',
-    'ArrayTypeExpr',
-    'FunctionTypeExpr, different return_type_expr',
-    'FunctionTypeExpr, different arg_exprs values',
-    'FunctionTypeExpr, different arg_exprs length',
     'ComparisonExpr, different lhs',
     'ComparisonExpr, different rhs',
     'Int64BinaryOpExpr, different lhs',
@@ -254,14 +292,11 @@ def test_unify_ir0_same_type_name_considered_different_from_pattern_local(expr_v
     'NotExpr',
     'UnaryMinusExpr',
     'VariadicTypeExpansion',
-    'TemplateInstantiation, different template_expr',
-    'TemplateInstantiation, different args',
-    'TemplateInstantiation, different instantiation_might_trigger_static_asserts',
     'ClassMemberAccess',
 ])
-def test_unify_ir0_term_equality_fails_different_subexpressions(expr1, expr2):
+def test_unify_ir0_term_equality_fails_different_subexpressions_not_syntactically_comparable(expr1, expr2):
     result = unify([expr1], [expr2], expr_variables=set(), pattern_variables=set())
-    assert result.kind == UnificationResultKind.IMPOSSIBLE
+    assert result.kind == UnificationResultKind.POSSIBLE
 
 def test_unify_ir0_certain_nontrivial():
     result = unify([ir0.PointerTypeExpr(type_literal('int'))],
@@ -269,7 +304,7 @@ def test_unify_ir0_certain_nontrivial():
                    expr_variables=set(), pattern_variables={'T'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
-        (local_type_literal('T'), type_literal('int')),
+        (local_type_literal('T'), [type_literal('int')]),
     ]
 
 def test_unify_ir0_certain_nontrivial_multiple_equalities():
@@ -278,7 +313,7 @@ def test_unify_ir0_certain_nontrivial_multiple_equalities():
                    expr_variables=set(), pattern_variables={'T'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
-        (local_type_literal('T'), type_literal('int')),
+        (local_type_literal('T'), [type_literal('int')]),
     ]
 
 def test_unify_ir0_certain_nontrivial_with_local():
@@ -287,7 +322,7 @@ def test_unify_ir0_certain_nontrivial_with_local():
                    expr_variables=set(), pattern_variables={'T'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
-        (local_type_literal('T'), local_type_literal('X')),
+        (local_type_literal('T'), [local_type_literal('X')]),
     ]
 
 def test_unify_ir0_certain_nontrivial_with_local_variable():
@@ -296,7 +331,7 @@ def test_unify_ir0_certain_nontrivial_with_local_variable():
                    expr_variables={'X'}, pattern_variables={'T'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
-        (local_type_literal('T'), local_type_literal('X')),
+        (local_type_literal('T'), [local_type_literal('X')]),
     ]
 
 def test_unify_ir0_certain_nontrivial_with_variadic_type_variable():

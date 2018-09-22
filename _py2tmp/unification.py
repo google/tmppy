@@ -11,9 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from typing import List, TypeVar, Generic, Union, Dict, Set, Tuple, Iterable
+from enum import Enum
+from typing import List, TypeVar, Generic, Union, Dict, Set, Tuple, Iterable, Optional
 import networkx as nx
+from _py2tmp import utils
 
 class UnificationFailedException(Exception):
     pass
@@ -37,6 +38,11 @@ class UnificationStrategy(Generic[TermT]):
     # var.
     def is_list_var(self, var: str) -> bool: ...
 
+    # Returns a string representation of the term, used in exception messages.
+    def term_to_string(self, term: TermT) -> str: ...
+
+    def equality_requires_syntactical_equality(self, term: TermT) -> bool: ...
+
 _NonListExpr = Union[str, TermT]
 _Expr = Union[_NonListExpr, List[_NonListExpr]]
 
@@ -46,6 +52,15 @@ def _ensure_list(x: _Expr) -> List[_NonListExpr]:
     else:
         return [x]
 
+def expr_to_string(strategy: UnificationStrategy[TermT], expr: _NonListExpr):
+    if isinstance(expr, str):
+        return expr
+    else:
+        return strategy.term_to_string(expr)
+
+def exprs_to_string(strategy: UnificationStrategy[TermT], exprs: List[_NonListExpr]):
+    return '[' + ', '.join(expr_to_string(strategy, expr) for expr in exprs) + ']'
+
 def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
           strategy: UnificationStrategy[TermT]) -> Dict[str, Union[str, _Expr]]:
     var_expr_equations: Dict[str, List[_NonListExpr]] = dict()
@@ -54,6 +69,7 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
         [(_ensure_list(lhs), _ensure_list(rhs))
          for lhs, rhs in expr_expr_equations]
 
+    expanded_non_syntactically_comparable_expr = None
     while expr_expr_equations:
         lhs_list, rhs_list = expr_expr_equations.pop()
 
@@ -74,8 +90,14 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
                     expr_expr_equations.append(([lhs], var_expr_equations[rhs_list[0]]))
                     continue
 
+            if len(rhs_list) != 1 and not strategy.is_list_var(lhs) and not any(isinstance(expr, str) and strategy.is_list_var(expr)
+                                                                                for expr in rhs_list):
+                # Different number of args and no list expr to consider.
+                raise UnificationFailedException('Found expr lists of different lengths with no list exprs: %s vs %s' % (
+                    exprs_to_string(strategy, lhs_list), exprs_to_string(strategy, rhs_list)))
+
             for rhs in rhs_list:
-                _occurence_check(lhs, rhs, strategy, var_expr_equations)
+                _occurence_check(lhs, rhs, strategy, var_expr_equations, expanded_non_syntactically_comparable_expr)
             var_expr_equations[lhs] = rhs_list
             continue
 
@@ -84,12 +106,23 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
             [rhs] = rhs_list
             assert not isinstance(lhs, str)
             assert not isinstance(rhs, str)
+            if not expanded_non_syntactically_comparable_expr and not strategy.equality_requires_syntactical_equality(lhs):
+               expanded_non_syntactically_comparable_expr = lhs
+            if not expanded_non_syntactically_comparable_expr and not strategy.equality_requires_syntactical_equality(rhs):
+               expanded_non_syntactically_comparable_expr = rhs
             if not strategy.is_same_term_excluding_args(lhs, rhs):
-                raise UnificationFailedException()
+                if expanded_non_syntactically_comparable_expr:
+                    raise UnificationAmbiguousException('Found different terms (even excluding args):\n%s\n== vs ==\n%s\nAfter expanding a non-syntactically-comparable expr:\n%s' % (
+                        strategy.term_to_string(lhs), strategy.term_to_string(rhs), strategy.term_to_string(expanded_non_syntactically_comparable_expr)))
+                else:
+                    raise UnificationFailedException('Found different terms (even excluding args):\n%s\n== vs ==\n%s' % (
+                        strategy.term_to_string(lhs), strategy.term_to_string(rhs)))
             lhs_args = strategy.get_term_args(lhs)
             rhs_args = strategy.get_term_args(rhs)
             expr_expr_equations.append((lhs_args, rhs_args))
             continue
+
+        removed_something = False
 
         while (lhs_list and rhs_list
                and ((not (isinstance(lhs_list[0], str) and strategy.is_list_var(lhs_list[0]))
@@ -99,6 +132,7 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
             expr_expr_equations.append(([lhs_list[0]], [rhs_list[0]]))
             lhs_list = lhs_list[1:]
             rhs_list = rhs_list[1:]
+            removed_something = True
 
         while (lhs_list and rhs_list
                 and ((not (isinstance(lhs_list[-1], str) and strategy.is_list_var(lhs_list[-1]))
@@ -108,6 +142,7 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
             expr_expr_equations.append(([lhs_list[-1]], [rhs_list[-1]]))
             lhs_list = lhs_list[:-1]
             rhs_list = rhs_list[:-1]
+            removed_something = True
 
         if not lhs_list and not rhs_list:
             # We already matched everything.
@@ -120,14 +155,19 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
             # There are no list args but one of the two sides still has unmatched elems.
             raise UnificationFailedException()
 
+        if removed_something:
+            # We put back the trimmed list and re-start running the code at the beginning of the iteration.
+            expr_expr_equations.append((lhs_list, rhs_list))
+            continue
+
         if len(rhs_list) == 1 and isinstance(rhs_list[0], str) and strategy.is_list_var(rhs_list[0]):
             rhs_list, lhs_list = lhs_list, rhs_list
 
-        if len(lhs_list) == 1 and isinstance(lhs_list[0], str) and strategy.is_list_var(lhs_list[0]):
-            # This is an equality of the form [*l]=[...]
-            expr_expr_equations.append(([lhs_list[0]], list(rhs_list)))
-            continue
-
+        # if len(lhs_list) == 1 and isinstance(lhs_list[0], str) and strategy.is_list_var(lhs_list[0]):
+        #     # This is an equality of the form [*l]=[...]
+        #     var_expr_equations.append((lhs_list[0], list(rhs_list)))
+        #     continue
+        #
         if not rhs_list:
             rhs_list, lhs_list = lhs_list, rhs_list
 
@@ -189,32 +229,38 @@ def canonicalize(var_expr_equations: Dict[str, List[_NonListExpr]],
             # part of the cycle.
             vars_dependency_graph.add_edge(rhs_list[0], lhs)
 
-    condensed_graph = nx.condensation(vars_dependency_graph)
-    assert isinstance(condensed_graph, nx.DiGraph)
-
-    for connected_component_index in reversed(list(nx.topological_sort(condensed_graph))):
-        vars_in_connected_component = condensed_graph.node[connected_component_index]['members'].copy()
+    for vars_in_connected_component in reversed(list(utils.compute_condensation_in_topological_order(vars_dependency_graph))):
+        vars_in_connected_component = vars_in_connected_component.copy()
 
         if len(vars_in_connected_component) == 1:
             [var] = vars_in_connected_component
             if var in var_expr_equations:
                 # We can't flip the equation for this var since it's a "var=term" equation.
-                assert not isinstance(var_expr_equations[var], str)
+                assert not (len(var_expr_equations[var]) == 1 and isinstance(var_expr_equations[var][0], str))
                 if not strategy.can_var_be_on_lhs(var):
-                    raise CanonicalizationFailedException()
+                    raise CanonicalizationFailedException('Deduced equation that can\'t be flipped with LHS-forbidden var: %s = %s' % (
+                        var, exprs_to_string(strategy, var_expr_equations[var])))
             else:
                 # This var is just part of a larger term in some other equation.
                 assert not vars_dependency_graph.successors(var)
         else:
             assert len(vars_in_connected_component) > 1
             # We have a loop.
-            # If any expression of the loop is a term, unification would be impossible because we can deduce var1=expr1
-            # in which expr1 is not just var1 and var1 appears in expr1.
-            # But in this case unify() would have failed, so here we can assume that all exprs in the loop are
-            # variables, i.e. the loop is of the form var1=var2=...=varN.
+            # If any expression of the loop is a term with syntactic equality, unification would be impossible because
+            # we can deduce var1=expr1 in which expr1 is not just var1 and var1 appears in expr1.
+            # But in this case unify() would have failed.
+            # If any expression of the loop is a term with non-syntactic equality, the unification is ambiguous.
             for var in vars_in_connected_component:
                 if var in var_expr_equations:
-                    assert len(var_expr_equations[var]) == 1 and isinstance(var_expr_equations[var][0], str)
+                    if len(var_expr_equations[var]) != 1 or not isinstance(var_expr_equations[var][0], str):
+                        raise CanonicalizationFailedException()
+
+            # So here we can assume that all exprs in the loop are variables, i.e. the loop is of the form
+            # var1=var2=...=varN.
+            for var in vars_in_connected_component:
+                if var in var_expr_equations:
+                    assert len(var_expr_equations[var]) == 1
+                    assert isinstance(var_expr_equations[var][0], str), var_expr_equations[var][0].__class__
 
             # We have a choice of what var to put on the RHS.
             vars_in_rhs = [var
@@ -228,7 +274,7 @@ def canonicalize(var_expr_equations: Dict[str, List[_NonListExpr]],
                 [rhs_var] = vars_in_rhs
             else:
                 # We need at least n-1 distinct LHS vars but we don't have enough vars allowed on the LHS.
-                raise CanonicalizationFailedException()
+                raise CanonicalizationFailedException('Found var equality chain that can\'t be canonicalized due to multiple LHS-forbidden vars: %s' % ', '.join(vars_in_rhs))
 
             # Now we remove all equations defining these vars and the corresponding edges in the graph.
             for var in vars_in_connected_component:
@@ -261,19 +307,37 @@ def canonicalize(var_expr_equations: Dict[str, List[_NonListExpr]],
 def _occurence_check(var1: str,
                      expr1: _Expr,
                      strategy: UnificationStrategy[TermT],
-                     var_expr_equations: Dict[str, List[_NonListExpr]]):
-    var_expr_pairs_to_check = [(var1, expr1)]
+                     var_expr_equations: Dict[str, List[_NonListExpr]],
+                     expanded_non_syntactically_comparable_expr: Optional[_NonListExpr]):
+    if isinstance(expr1, str):
+        var_expr_pairs_to_check = [(var1, expr1, None)]
+    else:
+        if not expanded_non_syntactically_comparable_expr and not strategy.equality_requires_syntactical_equality(expr1):
+            expanded_non_syntactically_comparable_expr = expr1
+        var_expr_pairs_to_check = [(var1, expr1, expanded_non_syntactically_comparable_expr)]
     while var_expr_pairs_to_check:
-        var, expr = var_expr_pairs_to_check.pop()
+        var, expr, only_expanded_terms_with_syntactical_equality = var_expr_pairs_to_check.pop()
         if isinstance(expr, str):
             if var == expr:
-                raise UnificationFailedException()
+                if expanded_non_syntactically_comparable_expr:
+                    raise UnificationAmbiguousException("Ambiguous occurrence check for var %s while checking %s in %s with equations:\n%s\nSince the following non-syntactically-comparable expr has been expanded:\n%s" % (
+                        var,
+                        var1,
+                        strategy.term_to_string(expr1),
+                        {var: exprs_to_string(strategy, expr)
+                         for var, expr in var_expr_equations.items()},
+                        strategy.term_to_string(expanded_non_syntactically_comparable_expr)))
+                else:
+                    raise UnificationFailedException("Failed occurrence check for var %s while checking %s in %s with equations:\n%s" % (
+                        var, var1, strategy.term_to_string(expr1), {var: exprs_to_string(strategy, expr)
+                                                                    for var, expr in var_expr_equations.items()}))
             if expr in var_expr_equations:
                 for elem in var_expr_equations[expr]:
-                    var_expr_pairs_to_check.append((var, elem))
+                    var_expr_pairs_to_check.append((var, elem, only_expanded_terms_with_syntactical_equality))
         else:
+            is_term_with_syntactical_equality = strategy.equality_requires_syntactical_equality(expr)
             for arg in strategy.get_term_args(expr):
-                var_expr_pairs_to_check.append((var, arg))
+                var_expr_pairs_to_check.append((var, arg, only_expanded_terms_with_syntactical_equality and is_term_with_syntactical_equality))
 
 def _get_free_variables(expr: _Expr,
                         strategy: UnificationStrategy[TermT]):

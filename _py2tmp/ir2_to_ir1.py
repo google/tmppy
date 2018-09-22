@@ -20,13 +20,13 @@ from _py2tmp import ir1_to_ir0
 from typing import List, Iterator, Optional, Union
 
 class Writer:
-    def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment]): ...  # pragma: no cover
+    def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment, ir1.CheckIfErrorStmt]): ...  # pragma: no cover
 
 class FunWriter(Writer):
     def __init__(self):
-        self.elems = []  # type: List[ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment]]
+        self.elems = []  # type: List[ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment, ir1.CheckIfErrorStmt]]
 
-    def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment]):
+    def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment, ir1.CheckIfErrorStmt]):
         self.elems.append(elem)
 
 class StmtWriter(Writer):
@@ -458,6 +458,9 @@ def check_if_error_defn_to_ir1(toplevel_elem: ir2.CheckIfErrorDefn, writer: Writ
     writer.write(ir1.CheckIfErrorDefn(error_types_and_messages=[(custom_type_to_ir1(error_type), message)
                                                                 for error_type, message in toplevel_elem.error_types_and_messages]))
 
+def check_if_error_to_ir1(toplevel_elem: ir2.CheckIfError, writer: Writer):
+    writer.write(ir1.CheckIfErrorStmt(var_reference_to_ir1(toplevel_elem.var)))
+
 def stmts_to_ir1(stmts: List[ir2.Stmt], writer: StmtWriter):
     for index, stmt in enumerate(stmts):
         if isinstance(stmt, ir2.IfStmt):
@@ -499,6 +502,8 @@ def module_to_ir1(module: ir2.Module):
             writer.write(custom_type_to_ir1(toplevel_elem))
         elif isinstance(toplevel_elem, ir2.CheckIfErrorDefn):
             check_if_error_defn_to_ir1(toplevel_elem, writer)
+        elif isinstance(toplevel_elem, ir2.CheckIfError):
+            check_if_error_to_ir1(toplevel_elem, writer)
         else:
             raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
 

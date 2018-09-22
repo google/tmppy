@@ -179,11 +179,12 @@ class StmtWriter(Writer):
         else:
             # This statement is at top-level.
 
-            # x = <expr>
+            # x, err = <expr>
 
             x_var = self.fun_writer.new_var(expr.type)
-            self.write_stmt(ir2.Assignment(lhs=x_var,
-                                           rhs=expr))
+            error_var = self.fun_writer.new_var(ir2.ErrorOrVoidType())
+            self.write_stmt(ir2.Assignment(lhs=x_var, lhs2=error_var, rhs=expr))
+            self.write_stmt(ir2.CheckIfError(error_var))
             return x_var
 
     @contextmanager

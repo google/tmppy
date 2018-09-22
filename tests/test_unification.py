@@ -50,6 +50,12 @@ class ExampleUnificationStrategy(unification.UnificationStrategyForCanonicalizat
     def is_list_var(self, var: str):
         return var in self.list_vars
 
+    def term_to_string(self, term: Term) -> str:
+        return repr(term)
+
+    def equality_requires_syntactical_equality(self, term: Term) -> bool:
+        return True
+
 # This is not defined as __eq__ to make sure that the unification implementation doesn't rely on TermT's __eq__.
 def expr_equals(expr1: Union[str, Term], expr2: Union[str, Term]):
     if isinstance(expr1, str):

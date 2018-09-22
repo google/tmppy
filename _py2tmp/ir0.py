@@ -144,11 +144,23 @@ class TemplateSpecialization:
     def __init__(self,
                  args: List[TemplateArgDecl],
                  patterns: 'Optional[List[Expr]]',
-                 body: List[TemplateBodyElement]):
+                 body: List[TemplateBodyElement],
+                 is_metafunction: bool):
         self.args = tuple(args)
+        self.is_metafunction = is_metafunction
+        if body:
+            for arg in args:
+                assert arg.name
 
         self.patterns = tuple(patterns) if patterns is not None else None
         self.body = tuple(body)
+        assert (not body
+                or not is_metafunction
+                or any(isinstance(elem, Typedef) and elem.name == 'type'
+                       for elem in body)
+                or any(isinstance(elem, ConstantDef) and elem.name == 'value'
+                       for elem in body)), 'body was:\n%s' % '\n'.join(utils.ir_to_string(elem)
+                                                                       for elem in body)
 
 class TemplateDefn(TemplateBodyElement):
     def __init__(self,
@@ -206,13 +218,16 @@ class AtomicTypeLiteral(Expr):
                  cpp_type: str,
                  is_local: bool,
                  is_metafunction_that_may_return_error: bool,
-                 type: ExprType):
+                 type: ExprType,
+                 may_be_alias: bool):
         assert not (is_metafunction_that_may_return_error and not isinstance(type, TemplateType))
         super().__init__(type=type)
         self.cpp_type = cpp_type
         self.is_local = is_local
         self.type = type
         self.is_metafunction_that_may_return_error = is_metafunction_that_may_return_error
+        # Only relevant for non-local literals.
+        self.may_be_alias = may_be_alias
 
     def get_direct_free_vars(self):
         if self.is_local:
@@ -234,37 +249,44 @@ class AtomicTypeLiteral(Expr):
         return AtomicTypeLiteral(cpp_type=cpp_type,
                                  is_local=True,
                                  type=type,
-                                 is_metafunction_that_may_return_error=(type.kind == ExprKind.TEMPLATE))
+                                 is_metafunction_that_may_return_error=(type.kind == ExprKind.TEMPLATE),
+                                 may_be_alias=True)
 
     @staticmethod
     def for_nonlocal(cpp_type: str,
                      type: ExprType,
-                     is_metafunction_that_may_return_error: bool):
+                     is_metafunction_that_may_return_error: bool,
+                     may_be_alias: bool):
         return AtomicTypeLiteral(cpp_type=cpp_type,
                                  is_local=False,
                                  type=type,
-                                 is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
+                                 is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
+                                 may_be_alias=may_be_alias)
 
     @staticmethod
-    def for_nonlocal_type(cpp_type: str):
+    def for_nonlocal_type(cpp_type: str, may_be_alias: bool):
         return AtomicTypeLiteral.for_nonlocal(cpp_type=cpp_type,
                                               type=TypeType(),
-                                              is_metafunction_that_may_return_error=False)
+                                              is_metafunction_that_may_return_error=False,
+                                              may_be_alias=may_be_alias)
 
     @staticmethod
     def for_nonlocal_template(cpp_type: str,
                               arg_types: List[ExprType],
-                              is_metafunction_that_may_return_error: bool):
+                              is_metafunction_that_may_return_error: bool,
+                              may_be_alias: bool):
         return AtomicTypeLiteral.for_nonlocal(cpp_type=cpp_type,
                                               type=TemplateType(arg_types),
-                                              is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
+                                              is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
+                                              may_be_alias=may_be_alias)
 
     @staticmethod
     def from_nonlocal_template_defn(template_defn: TemplateDefn,
                                     is_metafunction_that_may_return_error: bool):
         return AtomicTypeLiteral.for_nonlocal_template(cpp_type=template_defn.name,
                                                        arg_types=[arg.type for arg in template_defn.args],
-                                                       is_metafunction_that_may_return_error=is_metafunction_that_may_return_error)
+                                                       is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
+                                                       may_be_alias=False)
 
 class PointerTypeExpr(Expr):
     def __init__(self, type_expr: Expr):

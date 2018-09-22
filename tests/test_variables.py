@@ -162,14 +162,14 @@ def test_variable_named_error_in_function_returning_value_ok():
 def test_caught_exception_named_type_ok():
     from tmppy import Type
     class MyError(Exception):
-        def __init__(self, type: Type):
+        def __init__(self, type1: Type):
             self.message = 'Something went wrong'
-            self.type = type
+            self.type1 = type1
     def f(x: Type):
         try:
             raise MyError(x)
         except MyError as type:
-            return type.type
+            return type.type1
     assert f(Type('int')) == Type('int')
 
 @assert_compilation_succeeds()
@@ -189,14 +189,14 @@ def test_caught_exception_named_value_ok():
 def test_caught_exception_named_error_in_function_returning_type_ok():
     from tmppy import Type
     class MyError(Exception):
-        def __init__(self, type: Type):
+        def __init__(self, type1: Type):
             self.message = 'Something went wrong'
-            self.type = type
+            self.type1 = type1
     def f(x: Type):
         try:
             raise MyError(x)
         except MyError as type:
-            return type.type
+            return type.type1
     assert f(Type('int')) == Type('int')
 
 @assert_compilation_succeeds()

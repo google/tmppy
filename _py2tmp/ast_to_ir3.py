@@ -2150,6 +2150,10 @@ def class_definition_ast_to_ir3(ast_node: ast.ClassDef, compilation_context: Com
                                    'Found multiple arguments with name "%s".' % arg.arg,
                                    notes=[(previous_arg_node, 'A previous argument with name "%s" was declared here.' % arg.arg)])
 
+        if arg.arg == 'type':
+            raise CompilationError(compilation_context, arg,
+                                   'Arguments of a custom type cannot be called "type", it\'s a reserved identifier')
+
         arg_decl_nodes_by_name[arg.arg] = arg
         arg_types.append(ir3.CustomTypeArgDecl(name=arg.arg,
                                                type = type_declaration_ast_to_ir3_expression_type(arg.annotation, compilation_context)))

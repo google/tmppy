@@ -902,6 +902,23 @@ class CheckIfErrorDefn:
                 writer.writeln('... # builtin')
         writer.writeln('')
 
+class CheckIfErrorStmt(Stmt):
+    def __init__(self, expr: VarReference):
+        self.expr = expr
+
+    def get_free_variables(self):
+        for var in self.expr.get_free_variables():
+            yield var
+
+    def write(self, writer: Writer, verbose: bool):
+        writer.write('check_if_error(')
+        writer.write(str(self.expr))
+        if verbose:
+            writer.write(')  # ')
+            writer.writeln(self.expr.describe_other_fields())
+        else:
+            writer.writeln(')')
+
 class Module:
     def __init__(self,
                  body: List[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]],

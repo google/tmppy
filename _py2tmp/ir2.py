@@ -1019,6 +1019,25 @@ class Assignment(Stmt):
             else:
                 writer.writeln('')
 
+class CheckIfError(Stmt):
+    def __init__(self,
+                 var: VarReference):
+        assert var.type == ErrorOrVoidType()
+        self.var = var
+
+    def get_free_variables(self) -> 'Iterable[VarReference]':
+        for var in self.var.get_free_variables():
+            yield var
+
+    def write(self, writer: Writer, verbose: bool):
+        writer.write('check_if_error(')
+        writer.write(str(self.var))
+        if verbose:
+            writer.write(')  # ')
+            writer.writeln(self.var.describe_other_fields())
+        else:
+            writer.writeln(')')
+
 class UnpackingAssignment(Stmt):
     def __init__(self,
                  lhs_list: List[VarReference],

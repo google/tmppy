@@ -25,6 +25,7 @@ import itertools
 import subprocess
 from functools import wraps
 import difflib
+from typing import Callable, Any
 
 import pytest
 
@@ -41,6 +42,80 @@ from _py2tmp import (
     ir0,
     utils,
 )
+
+class TestFailedException(Exception):
+    pass
+
+def bisect_with_predicate(last_known_good: int, first_known_bad: int, is_good: Callable[[int], bool]):
+    assert last_known_good < first_known_bad
+    while last_known_good + 1 < first_known_bad:
+        middle = (last_known_good + first_known_bad + 1) // 2
+        assert last_known_good < middle < first_known_bad
+        if is_good(middle):
+            last_known_good = middle
+        else:
+            first_known_bad = middle
+        assert last_known_good < first_known_bad
+    assert last_known_good + 1 == first_known_bad
+    return first_known_bad
+
+def run_test_with_optional_optimization(run: Callable[[], Any]):
+    try:
+        optimize_ir0.ConfigurationKnobs.verbose = optimize_ir0.DEFAULT_VERBOSE_SETTING
+
+        e1 = None
+        try:
+            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = 0
+            run()
+        except TestFailedException as e:
+            e1 = e
+
+        e2 = None
+        try:
+            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
+            optimize_ir0.ConfigurationKnobs.optimization_step_counter = 0
+            run()
+        except TestFailedException as e:
+            e2 = e
+
+        if e1 and e2:
+            raise e2
+
+        if not e1 and not e2:
+            return
+
+        def predicate(max_num_optimization_steps):
+            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = max_num_optimization_steps
+            try:
+                run()
+                return True
+            except TestFailedException as e:
+                return False
+
+        if e2:
+            # Fails with optimization, succeeds without.
+            # Bisect to find the issue.
+            bisect_result = bisect_with_predicate(0, optimize_ir0.ConfigurationKnobs.optimization_step_counter, predicate)
+            optimize_ir0.ConfigurationKnobs.verbose = True
+            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = bisect_result
+            try:
+                run()
+            except TestFailedException as e:
+                [message] = e.args
+                raise TestFailedException('Found test that fails after optimization.\n' + textwrap.dedent(message))
+
+            raise Exception('This should never happen, the test failed before with the same max_num_optimization_steps.')
+        else:
+            # Fails without optimization, succeeds with.
+            # Bisect to find the issue.
+            bisect_result = bisect_with_predicate(0, optimize_ir0.ConfigurationKnobs.optimization_step_counter, lambda n: not predicate(n))
+            optimize_ir0.ConfigurationKnobs.verbose = True
+            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = bisect_result
+            run()
+            raise TestFailedException('Found test that succeeds only after optimization: ' + ', '.join(e1.args))
+    except TestFailedException as e:
+        [message] = e.args
+        pytest.fail(message, pytrace=False)
 
 def pretty_print_command(command):
     return ' '.join('"' + x + '"' for x in command)
@@ -127,7 +202,7 @@ class PosixCompiler:
     def _compile(self, include_dirs, args):
         include_flags = ['-I%s' % include_dir for include_dir in include_dirs]
         args = (
-            ['-W', '-Wall', '-g0', '-Werror', '-std=c++11']
+            ['-W', '-Wall', '-g0', '-Werror', '-Wno-error=tautological-compare', '-std=c++11']
             + include_flags
             + args
         )
@@ -203,7 +278,7 @@ def expect_cpp_code_compile_error_helper(check_error_fun, tmppy_source, module_i
             source=source_file_name,
             include_dirs=[config.MPYL_INCLUDE_DIR],
             args=[])
-        pytest.fail(textwrap.dedent('''\
+        raise TestFailedException(textwrap.dedent('''\
             The test should have failed to compile, but it compiled successfully.
             
             TMPPy source:
@@ -220,8 +295,7 @@ def expect_cpp_code_compile_error_helper(check_error_fun, tmppy_source, module_i
             ''').format(tmppy_source = add_line_numbers(tmppy_source),
                         tmppy_ir2=str(module_ir2),
                         tmppy_ir1=str(module_ir1),
-                        cxx_source = add_line_numbers(cxx_source)),
-            pytrace=False)
+                        cxx_source = add_line_numbers(cxx_source)))
     except CompilationFailedException as e1:
         e = e1
 
@@ -252,8 +326,7 @@ def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, mo
         for line in normalized_error_message_lines:
             if re.search(expected_error_regex, line):
                 return
-        pytest.fail(
-            textwrap.dedent('''\
+        raise TestFailedException(textwrap.dedent('''\
                 Expected error {expected_error} but the compiler output did not contain that.
                 Compiler command line: {compiler_command}
                 Error message was:
@@ -276,8 +349,7 @@ def expect_cpp_code_generic_compile_error(expected_error_regex, tmppy_source, mo
                             tmppy_ir2 = str(module_ir2),
                             tmppy_ir1 = str(module_ir1),
                             cxx_source = add_line_numbers(cxx_source),
-                            error_message = error_message_head),
-            pytrace=False)
+                            error_message = error_message_head))
 
     expect_cpp_code_compile_error_helper(check_error, tmppy_source, module_ir2, module_ir1, cxx_source)
 
@@ -343,8 +415,7 @@ def expect_cpp_code_compile_error(
                         raise Exception('Failed to parse MSVC template type arguments')
                 break
         else:
-            pytest.fail(
-                textwrap.dedent('''\
+            raise TestFailedException(textwrap.dedent('''\
                     Expected error {expected_error} but the compiler output did not contain user-facing _py2tmp errors.
                     Compiler command line: {compiler_command}
                     Error message was:
@@ -367,8 +438,7 @@ def expect_cpp_code_compile_error(
                                 tmppy_ir2 = str(module_ir2),
                                 tmppy_ir1 = str(module_ir1),
                                 cxx_source = add_line_numbers(cxx_source),
-                                error_message = error_message_head),
-                pytrace=False)
+                                error_message = error_message_head))
 
         for line_number, line in enumerate(error_message_lines):
             match = re.search(py2tmp_error_message_extraction_regex, line)
@@ -377,8 +447,7 @@ def expect_cpp_code_compile_error(
                 actual_static_assert_error = match.groups()[0]
                 break
         else:
-            pytest.fail(
-                textwrap.dedent('''\
+            raise TestFailedException(textwrap.dedent('''\
                     Expected error {expected_error} but the compiler output did not contain static_assert errors.
                     Compiler command line: {compiler_command}
                     Error message was:
@@ -401,16 +470,14 @@ def expect_cpp_code_compile_error(
                                 tmppy_ir2 = str(module_ir2),
                                 tmppy_ir1 = str(module_ir1),
                                 cxx_source = add_line_numbers(cxx_source),
-                                error_message = error_message_head),
-                pytrace=False)
+                                error_message = error_message_head))
 
         try:
             regex_search_result = re.search(expected_py2tmp_error_regex, actual_py2tmp_error)
         except Exception as e:
             raise Exception('re.search() failed for regex \'%s\'' % expected_py2tmp_error_regex) from e
         if not regex_search_result:
-            pytest.fail(
-                textwrap.dedent('''\
+            raise TestFailedException(textwrap.dedent('''\
                     The compilation failed as expected, but with a different error type.
                     Expected _py2tmp error type:    {expected_py2tmp_error_regex}
                     Error type was:               {actual_py2tmp_error}
@@ -439,15 +506,13 @@ def expect_cpp_code_compile_error(
                                tmppy_ir2 = str(module_ir2),
                                tmppy_ir1 = str(module_ir1),
                                cxx_source = add_line_numbers(cxx_source),
-                               error_message = error_message_head)),
-                pytrace=False)
+                               error_message = error_message_head)))
         try:
             regex_search_result = re.search(expected_py2tmp_error_desc_regex, actual_static_assert_error)
         except Exception as e:
             raise Exception('re.search() failed for regex \'%s\'' % expected_py2tmp_error_desc_regex) from e
         if not regex_search_result:
-            pytest.fail(
-                textwrap.dedent('''\
+            raise TestFailedException(textwrap.dedent('''\
                     The compilation failed as expected, but with a different error message.
                     Expected _py2tmp error type:    {expected_py2tmp_error_regex}
                     Error type was:               {actual_py2tmp_error}
@@ -476,14 +541,12 @@ def expect_cpp_code_compile_error(
                                tmppy_ir2 = str(module_ir2),
                                tmppy_ir1 = str(module_ir1),
                                cxx_source = add_line_numbers(cxx_source),
-                               error_message = error_message_head)),
-                pytrace=False)
+                               error_message = error_message_head)))
 
         # 6 is just a constant that works for both g++ (<=6.0.0 at least) and clang++ (<=4.0.0 at least).
         # It might need to be changed.
         if actual_py2tmp_error_line_number > 6 or actual_static_assert_error_line_number > 6:
-            pytest.fail(
-                textwrap.dedent('''\
+            raise TestFailedException(textwrap.dedent('''\
                     The compilation failed with the expected message, but the error message contained too many lines before the relevant ones.
                     The error type was reported on line {actual_py2tmp_error_line_number} of the message (should be <=6).
                     The static assert was reported on line {actual_static_assert_error_line_number} of the message (should be <=6).
@@ -507,14 +570,12 @@ def expect_cpp_code_compile_error(
                                tmppy_ir2 = str(module_ir2),
                                tmppy_ir1 = str(module_ir1),
                                cxx_source = add_line_numbers(cxx_source),
-                               error_message = error_message_head)),
-                pytrace=False)
+                               error_message = error_message_head)))
 
         for line in error_message_lines[:max(actual_py2tmp_error_line_number, actual_static_assert_error_line_number)]:
             if re.search('tmppy::impl', line):
-                pytest.fail(
-                    'The compilation failed with the expected message, but the error message contained some metaprogramming types in the output (besides Error). Error message:\n%s' + error_message_head,
-                    pytrace=False)
+                raise TestFailedException(
+                    'The compilation failed with the expected message, but the error message contained some metaprogramming types in the output (besides Error). Error message:\n%s' + error_message_head)
 
     expect_cpp_code_compile_error_helper(check_error, tmppy_source, module_ir2, module_ir1, cxx_source)
 
@@ -547,8 +608,7 @@ def expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cxx_source):
         e = e1
 
     if e:
-        pytest.fail(
-            textwrap.dedent('''\
+        raise TestFailedException(textwrap.dedent('''\
                 The generated C++ source did not compile.
                 Compiler command line: {compiler_command}
                 Error message was:
@@ -570,8 +630,7 @@ def expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cxx_source):
                             tmppy_ir2 = str(module_ir2),
                             tmppy_ir1 = str(module_ir1),
                             cxx_source = add_line_numbers(cxx_source),
-                            error_message = _cap_to_lines(e.stderr, 40)),
-            pytrace=False)
+                            error_message = _cap_to_lines(e.stderr, 40)))
 
     try:
         run_compiled_executable(output_file_name)
@@ -579,8 +638,7 @@ def expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cxx_source):
         e = e1
 
     if e:
-        pytest.fail(
-            textwrap.dedent('''\
+        raise TestFailedException(textwrap.dedent('''\
                 The generated C++ executable did not run successfully.
                 stderr was:
                 {error_message}
@@ -592,8 +650,7 @@ def expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cxx_source):
                 {cxx_source}
                 ''').format(tmppy_source = add_line_numbers(tmppy_source),
                             cxx_source = add_line_numbers(cxx_source),
-                            error_message = _cap_to_lines(e.stderr, 40)),
-            pytrace=False)
+                            error_message = _cap_to_lines(e.stderr, 40)))
 
     # Note that we don't delete the temporary files if the test failed. This is intentional, keeping them around helps debugging the failure.
     try_remove_temporary_file(source_file_name)
@@ -637,8 +694,7 @@ def _convert_to_cpp_expecting_success(tmppy_source):
     except ast_to_ir3.CompilationError as e1:
         e = e1
     if e:
-        pytest.fail(
-            textwrap.dedent('''\
+        raise TestFailedException(textwrap.dedent('''\
                 The conversion from TMPPy to C++ failed.
                 stderr was:
                 {error_message}
@@ -646,12 +702,11 @@ def _convert_to_cpp_expecting_success(tmppy_source):
                 TMPPy source:
                 {tmppy_source}
                 ''').format(tmppy_source = add_line_numbers(tmppy_source),
-                            error_message = e.args[0]),
-            pytrace=False)
+                            error_message = e.args[0]))
 
     try:
         header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
-        header = optimize_ir0.optimize_header(header, identifier_generator, verbose=False)
+        header = optimize_ir0.optimize_header(header, identifier_generator)
         cpp_source = ir0_to_cpp.header_to_cpp(header, identifier_generator)
         cpp_source = utils.clang_format(cpp_source)
 
@@ -659,8 +714,7 @@ def _convert_to_cpp_expecting_success(tmppy_source):
     except ast_to_ir3.CompilationError as e1:
         e = e1
     if e:
-        pytest.fail(
-            textwrap.dedent('''\
+        raise TestFailedException(textwrap.dedent('''\
                 The conversion from TMPPy to C++ failed.
                 stderr was:
                 {error_message}
@@ -676,60 +730,72 @@ def _convert_to_cpp_expecting_success(tmppy_source):
                 ''').format(tmppy_source=add_line_numbers(tmppy_source),
                             tmppy_ir2=str(module_ir2),
                             tmppy_ir1=str(module_ir1),
-                            error_message=e.args[0]),
-            pytrace=False)
+                            error_message=e.args[0]))
 
 def assert_compilation_succeeds(extra_cpp_prelude=''):
     def eval(f):
         @wraps(f)
         def wrapper():
-            tmppy_source = _get_function_body(f)
-            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-            expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, extra_cpp_prelude + cpp_source)
+            def run_test():
+                tmppy_source = _get_function_body(f)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, extra_cpp_prelude + cpp_source)
+            run_test_with_optional_optimization(run_test)
         return wrapper
 
     return eval
 
-def assert_code_optimizes_to(expected_cpp_source: str):
+def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
     def eval(f):
         @wraps(f)
         def wrapper():
             tmppy_source = _get_function_body(f)
-            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
 
-            assert expected_cpp_source[0] == '\n'
-            if cpp_source != expected_cpp_source[1:]:
-                pytest.fail(
-                    textwrap.dedent('''\
-                        The generated code didn't match the expected code.
-                        
-                        TMPPy source:
-                        {tmppy_source}
-                        
-                        TMPPy IR2:
-                        {tmppy_ir2}
-                        
-                        TMPPy IR1:
-                        {tmppy_ir1}
-                        
-                        Generated C++ source:
-                        {cpp_source}
-                        
-                        Expected C++ source:
-                        {expected_cpp_source}
-                        
-                        Diff:
-                        {cpp_source_diff}
-                        ''').format(tmppy_source=add_line_numbers(tmppy_source),
-                                    tmppy_ir2=str(module_ir2),
-                                    tmppy_ir1=str(module_ir1),
-                                    cpp_source=str(cpp_source),
-                                    expected_cpp_source=str(expected_cpp_source[1:]),
-                                    cpp_source_diff=''.join(difflib.unified_diff(expected_cpp_source[1:].splitlines(True),
-                                                                                 cpp_source.splitlines(True),
-                                                                                 fromfile='expected.h',
-                                                                                 tofile='actual.h'))),
-                    pytrace=False)
+            def run_test():
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, extra_cpp_prelude + cpp_source)
+            run_test_with_optional_optimization(run_test)
+
+            try:
+                optimize_ir0.ConfigurationKnobs.verbose = optimize_ir0.DEFAULT_VERBOSE_SETTING
+                optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+
+                assert expected_cpp_source[0] == '\n'
+                if cpp_source != expected_cpp_source[1:]:
+                    raise TestFailedException(textwrap.dedent('''\
+                            The generated code didn't match the expected code.
+                            
+                            TMPPy source:
+                            {tmppy_source}
+                            
+                            TMPPy IR2:
+                            {tmppy_ir2}
+                            
+                            TMPPy IR1:
+                            {tmppy_ir1}
+                            
+                            Generated C++ source:
+                            {cpp_source}
+                            
+                            Expected C++ source:
+                            {expected_cpp_source}
+                            
+                            Diff:
+                            {cpp_source_diff}
+                            ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                                        tmppy_ir2=str(module_ir2),
+                                        tmppy_ir1=str(module_ir1),
+                                        cpp_source=str(cpp_source),
+                                        expected_cpp_source=str(expected_cpp_source[1:]),
+                                        cpp_source_diff=''.join(difflib.unified_diff(expected_cpp_source[1:].splitlines(True),
+                                                                                     cpp_source.splitlines(True),
+                                                                                     fromfile='expected.h',
+                                                                                     tofile='actual.h'))))
+            except TestFailedException as e:
+                [message] = e.args
+                pytest.fail(message, pytrace=False)
+
         return wrapper
     return eval
 
@@ -737,16 +803,17 @@ def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_e
     def eval(f):
         @wraps(f)
         def wrapper():
-            tmppy_source = _get_function_body(f)
-            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-            expect_cpp_code_compile_error(
-                expected_py2tmp_error_regex,
-                expected_py2tmp_error_desc_regex,
-                tmppy_source,
-                module_ir2,
-                module_ir1,
-                cpp_source)
-
+            def run_test():
+                tmppy_source = _get_function_body(f)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                expect_cpp_code_compile_error(
+                    expected_py2tmp_error_regex,
+                    expected_py2tmp_error_desc_regex,
+                    tmppy_source,
+                    module_ir2,
+                    module_ir1,
+                    cpp_source)
+            run_test_with_optional_optimization(run_test)
         return wrapper
     return eval
 
@@ -755,14 +822,16 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str):
     def eval(f):
         @wraps(f)
         def wrapper():
-            tmppy_source = _get_function_body(f)
-            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-            expect_cpp_code_generic_compile_error(
-                expected_error_regex,
-                tmppy_source,
-                module_ir2,
-                module_ir1,
-                cpp_source)
+            def run_test():
+                tmppy_source = _get_function_body(f)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                expect_cpp_code_generic_compile_error(
+                    expected_error_regex,
+                    tmppy_source,
+                    module_ir2,
+                    module_ir1,
+                    cpp_source)
+            run_test_with_optional_optimization(run_test)
         return wrapper
     return eval
 
@@ -771,14 +840,16 @@ def assert_compilation_fails_with_static_assert_error(expected_error_regex: str)
     def eval(f):
         @wraps(f)
         def wrapper():
-            tmppy_source = _get_function_body(f)
-            module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-            expect_cpp_code_generic_compile_error(
-                r'(error: static assertion failed: |error: static_assert failed .)' + expected_error_regex,
-                tmppy_source,
-                module_ir2,
-                module_ir1,
-                cpp_source)
+            def run_test():
+                tmppy_source = _get_function_body(f)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                expect_cpp_code_generic_compile_error(
+                    r'(error: static assertion failed: |error: static_assert failed .)' + expected_error_regex,
+                    tmppy_source,
+                    module_ir2,
+                    module_ir1,
+                    cpp_source)
+            run_test_with_optional_optimization(run_test)
         return wrapper
     return eval
 
@@ -793,136 +864,125 @@ def _get_line_from_diagnostic(diagnostic):
 def assert_conversion_fails(f):
     @wraps(f)
     def wrapper():
-        tmppy_source = _get_function_body(f)
-        actual_source_lines = []
-        expected_error_regex = None
-        expected_error_line = None
-        expected_note_by_line = dict()
-        for line_index, line in enumerate(tmppy_source.splitlines()):
-            error_regex_marker = ' # error: '
-            note_regex_marker = ' # note: '
-            if error_regex_marker in line:
-                if expected_error_regex:
-                    pytest.fail('Multiple expected errors in the same test are not supported', pytrace=False)
-                [line, expected_error_regex] = line.split(error_regex_marker)
-                expected_error_line = line_index + 1
-            elif note_regex_marker in line:
-                [line, expected_note_regex] = line.split(note_regex_marker)
-                expected_note_by_line[line_index + 1] = expected_note_regex
-            actual_source_lines.append(line)
+        def run_test():
+            tmppy_source = _get_function_body(f)
+            actual_source_lines = []
+            expected_error_regex = None
+            expected_error_line = None
+            expected_note_by_line = dict()
+            for line_index, line in enumerate(tmppy_source.splitlines()):
+                error_regex_marker = ' # error: '
+                note_regex_marker = ' # note: '
+                if error_regex_marker in line:
+                    if expected_error_regex:
+                        raise TestFailedException('Multiple expected errors in the same test are not supported')
+                    [line, expected_error_regex] = line.split(error_regex_marker)
+                    expected_error_line = line_index + 1
+                elif note_regex_marker in line:
+                    [line, expected_note_regex] = line.split(note_regex_marker)
+                    expected_note_by_line[line_index + 1] = expected_note_regex
+                actual_source_lines.append(line)
 
-        if not expected_error_regex:
-            pytest.fail(
-                textwrap.dedent('''\
-                    assert_conversion_fails was used, but no expected error regex was found.
-                    
-                    TMPPy source:
-                    {tmppy_source}
-                    ''').format(tmppy_source = add_line_numbers(tmppy_source)),
-                pytrace=False)
-
-        try:
-            module_ir2, module_ir1 = _convert_tmppy_source_to_ir('\n'.join(actual_source_lines), create_identifier_generator())
-            e = None
-        except ast_to_ir3.CompilationError as e1:
-            e = e1
-
-        if not e:
-            pytest.fail(
-                textwrap.dedent('''\
-                    Expected an exception, but the _py2tmp conversion completed successfully.
-                    TMPPy source:
-                    {tmppy_source}
-
-                    TMPPy IR2:
-                    {tmppy_ir2}
-
-                    TMPPy IR1:
-                    {tmppy_ir1}
-                    ''').format(tmppy_source=add_line_numbers(tmppy_source),
-                                tmppy_ir2=str(module_ir2),
-                                tmppy_ir1=str(module_ir1)),
-                pytrace=False)
-
-        # py2tmp diagnostics take up 3 lines each, e.g.:
-        # <unknown>:2:11: error: Empty lists are not currently supported.
-        #   return []
-        #          ^
-        py2tmp_diagnostics = _split_list(e.args[0].splitlines(), num_elems_in_chunk=3)
-        error_diagnostic = py2tmp_diagnostics[0]
-
-        expected_error_regex = '<unknown>:[0-9]*:[0-9]*: error: ' + expected_error_regex
-        if not re.match(expected_error_regex, error_diagnostic[0]):
-            pytest.fail(
-                textwrap.dedent('''\
-                    An exception was thrown, but it didn\'t match the expected error regex.
-                    Expected error regex: {expected_error_regex}
-                    Actual error:
-                    {actual_error}
-                    
-                    TMPPy source:
-                    {tmppy_source}
-                    ''').format(expected_error_regex = expected_error_regex,
-                                actual_error = '\n'.join(error_diagnostic),
-                                tmppy_source = add_line_numbers(tmppy_source)),
-                pytrace=False)
-
-        matches = re.match('<unknown>:([0-9]*):', error_diagnostic[0])
-        actual_error_line = int(matches.group(1))
-        if expected_error_line != actual_error_line:
-            pytest.fail(
-                textwrap.dedent('''\
-                    An exception matching the expected regex was thrown, but the error mentioned the wrong line: {actual_error_line} was reported instead of {expected_error_line}
-                    Expected error regex: {expected_error_regex}
-                    Actual error:
-                    {actual_error}
-                    
-                    TMPPy source:
-                    {tmppy_source}
-                    ''').format(actual_error_line=actual_error_line,
-                                expected_error_line=expected_error_line,
-                                expected_error_regex = expected_error_regex,
-                                actual_error = '\n'.join(error_diagnostic),
-                                tmppy_source = add_line_numbers(tmppy_source)),
-                pytrace=False)
-
-        actual_note_by_line = {_get_line_from_diagnostic(note[0]): note
-                               for note in py2tmp_diagnostics[1:]}
-        for expected_note_line, expected_note_regex in expected_note_by_line.items():
-            actual_note = actual_note_by_line.get(expected_note_line)
-            if not actual_note:
-                raise Exception('Expected the note %s on line %s but no note was emitted mentioning this line. Emitted notes: %s' % (
-                    expected_note_regex, expected_note_line, json.dumps(actual_note_by_line, indent=4)))
-            expected_note_regex = '<unknown>:[0-9]*:[0-9]*: note: ' + expected_note_regex
-            if not re.match(expected_note_regex, actual_note[0]):
-                pytest.fail(
-                    textwrap.dedent('''\
-                        A note diagnostic was emitted, but it didn\'t match the expected note regex.
-                        Expected note regex: {expected_note_regex}
-                        Actual note:
-                        {actual_note}
+            if not expected_error_regex:
+                raise TestFailedException(textwrap.dedent('''\
+                        assert_conversion_fails was used, but no expected error regex was found.
                         
                         TMPPy source:
                         {tmppy_source}
-                        ''').format(expected_note_regex = expected_note_regex,
-                                    actual_note = '\n'.join(actual_note),
-                                    tmppy_source = add_line_numbers(tmppy_source)),
-                    pytrace=False)
+                        ''').format(tmppy_source = add_line_numbers(tmppy_source)))
 
-        for actual_note_line, actual_note in actual_note_by_line.items():
-            expected_note = expected_note_by_line.get(actual_note_line)
-            if not expected_note:
-                pytest.fail(
-                    textwrap.dedent('''\
-                        Unexpected note:
-                        {actual_note}
+            try:
+                module_ir2, module_ir1 = _convert_tmppy_source_to_ir('\n'.join(actual_source_lines), create_identifier_generator())
+                e = None
+            except ast_to_ir3.CompilationError as e1:
+                e = e1
+
+            if not e:
+                raise TestFailedException(textwrap.dedent('''\
+                        Expected an exception, but the _py2tmp conversion completed successfully.
+                        TMPPy source:
+                        {tmppy_source}
+    
+                        TMPPy IR2:
+                        {tmppy_ir2}
+    
+                        TMPPy IR1:
+                        {tmppy_ir1}
+                        ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                                    tmppy_ir2=str(module_ir2),
+                                    tmppy_ir1=str(module_ir1)))
+
+            # py2tmp diagnostics take up 3 lines each, e.g.:
+            # <unknown>:2:11: error: Empty lists are not currently supported.
+            #   return []
+            #          ^
+            py2tmp_diagnostics = _split_list(e.args[0].splitlines(), num_elems_in_chunk=3)
+            error_diagnostic = py2tmp_diagnostics[0]
+
+            expected_error_regex = '<unknown>:[0-9]*:[0-9]*: error: ' + expected_error_regex
+            if not re.match(expected_error_regex, error_diagnostic[0]):
+                raise TestFailedException(textwrap.dedent('''\
+                        An exception was thrown, but it didn\'t match the expected error regex.
+                        Expected error regex: {expected_error_regex}
+                        Actual error:
+                        {actual_error}
                         
                         TMPPy source:
                         {tmppy_source}
-                        ''').format(actual_note = '\n'.join(actual_note),
-                                    tmppy_source = add_line_numbers(tmppy_source),
-                                    pytrace=False))
+                        ''').format(expected_error_regex = expected_error_regex,
+                                    actual_error = '\n'.join(error_diagnostic),
+                                    tmppy_source = add_line_numbers(tmppy_source)))
 
+            matches = re.match('<unknown>:([0-9]*):', error_diagnostic[0])
+            actual_error_line = int(matches.group(1))
+            if expected_error_line != actual_error_line:
+                raise TestFailedException(textwrap.dedent('''\
+                        An exception matching the expected regex was thrown, but the error mentioned the wrong line: {actual_error_line} was reported instead of {expected_error_line}
+                        Expected error regex: {expected_error_regex}
+                        Actual error:
+                        {actual_error}
+                        
+                        TMPPy source:
+                        {tmppy_source}
+                        ''').format(actual_error_line=actual_error_line,
+                                    expected_error_line=expected_error_line,
+                                    expected_error_regex = expected_error_regex,
+                                    actual_error = '\n'.join(error_diagnostic),
+                                    tmppy_source = add_line_numbers(tmppy_source)))
+
+            actual_note_by_line = {_get_line_from_diagnostic(note[0]): note
+                                   for note in py2tmp_diagnostics[1:]}
+            for expected_note_line, expected_note_regex in expected_note_by_line.items():
+                actual_note = actual_note_by_line.get(expected_note_line)
+                if not actual_note:
+                    raise Exception('Expected the note %s on line %s but no note was emitted mentioning this line. Emitted notes: %s' % (
+                        expected_note_regex, expected_note_line, json.dumps(actual_note_by_line, indent=4)))
+                expected_note_regex = '<unknown>:[0-9]*:[0-9]*: note: ' + expected_note_regex
+                if not re.match(expected_note_regex, actual_note[0]):
+                    raise TestFailedException(textwrap.dedent('''\
+                            A note diagnostic was emitted, but it didn\'t match the expected note regex.
+                            Expected note regex: {expected_note_regex}
+                            Actual note:
+                            {actual_note}
+                            
+                            TMPPy source:
+                            {tmppy_source}
+                            ''').format(expected_note_regex = expected_note_regex,
+                                        actual_note = '\n'.join(actual_note),
+                                        tmppy_source = add_line_numbers(tmppy_source)))
+
+            for actual_note_line, actual_note in actual_note_by_line.items():
+                expected_note = expected_note_by_line.get(actual_note_line)
+                if not expected_note:
+                    raise TestFailedException(textwrap.dedent('''\
+                            Unexpected note:
+                            {actual_note}
+                            
+                            TMPPy source:
+                            {tmppy_source}
+                            ''').format(actual_note = '\n'.join(actual_note),
+                                        tmppy_source = add_line_numbers(tmppy_source)))
+        run_test_with_optional_optimization(run_test)
 
     return wrapper
 
@@ -930,60 +990,58 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
     def eval(f):
         @wraps(f)
         def wrapper():
-            tmppy_source = _get_function_body(f)
-            try:
-                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
-                e = None
-            except ir0.CodegenError as e1:
-                e = e1
+            def run_test():
+                tmppy_source = _get_function_body(f)
+                try:
+                    module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                    e = None
+                except ir0.CodegenError as e1:
+                    e = e1
 
-            if not e:
-                pytest.fail(
-                    textwrap.dedent('''\
-                        Expected a codegen error, but the _py2tmp conversion completed successfully.
-                        TMPPy source:
-                        {tmppy_source}
-                        
-                        TMPPy IR2:
-                        {tmppy_ir2}
-                        
-                        TMPPy IR1:
-                        {tmppy_ir2}
-                        
-                        C++ source:
-                        {cpp_source}
-                        ''').format(tmppy_source=add_line_numbers(tmppy_source),
-                                    tmppy_ir2=str(module_ir2),
-                                    tmppy_ir1=str(module_ir1),
-                                    cpp_source=add_line_numbers(cpp_source)),
-                pytrace=False)
+                if not e:
+                    raise TestFailedException(textwrap.dedent('''\
+                            Expected a codegen error, but the _py2tmp conversion completed successfully.
+                            TMPPy source:
+                            {tmppy_source}
+                            
+                            TMPPy IR2:
+                            {tmppy_ir2}
+                            
+                            TMPPy IR1:
+                            {tmppy_ir2}
+                            
+                            C++ source:
+                            {cpp_source}
+                            ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                                        tmppy_ir2=str(module_ir2),
+                                        tmppy_ir1=str(module_ir1),
+                                        cpp_source=add_line_numbers(cpp_source)))
 
-            if not re.match(expected_error_regex, e.args[0]):
-                pytest.fail(
-                    textwrap.dedent('''\
-                        A codegen error was emitted as expected, but it didn\'t match the expected note regex.
-                        Expected error regex: {expected_error_regex}
-                        Actual error:
-                        {actual_error}
-                        
-                        TMPPy source:
-                        {tmppy_source}
-
-                        TMPPy IR2:
-                        {tmppy_ir2}
-                        
-                        TMPPy IR1:
-                        {tmppy_ir1}
-                        
-                        C++ source:
-                        {cpp_source}
-                        ''').format(expected_error_regex = expected_error_regex,
-                                    actual_error = e.args[0],
-                                    tmppy_source = add_line_numbers(tmppy_source),
-                                    tmppy_ir2=str(module_ir2),
-                                    tmppy_ir1=str(module_ir1),
-                                    cpp_source=add_line_numbers(cpp_source)),
-                    pytrace=False)
+                if not re.match(expected_error_regex, e.args[0]):
+                    raise TestFailedException(textwrap.dedent('''\
+                            A codegen error was emitted as expected, but it didn\'t match the expected note regex.
+                            Expected error regex: {expected_error_regex}
+                            Actual error:
+                            {actual_error}
+                            
+                            TMPPy source:
+                            {tmppy_source}
+    
+                            TMPPy IR2:
+                            {tmppy_ir2}
+                            
+                            TMPPy IR1:
+                            {tmppy_ir1}
+                            
+                            C++ source:
+                            {cpp_source}
+                            ''').format(expected_error_regex = expected_error_regex,
+                                        actual_error = e.args[0],
+                                        tmppy_source = add_line_numbers(tmppy_source),
+                                        tmppy_ir2=str(module_ir2),
+                                        tmppy_ir1=str(module_ir1),
+                                        cpp_source=add_line_numbers(cpp_source)))
+            run_test_with_optional_optimization(run_test)
         return wrapper
     return eval
 

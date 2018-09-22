@@ -16,6 +16,7 @@ import re
 import subprocess
 from enum import Enum
 
+import networkx as nx
 import typed_ast.ast3 as ast
 
 class ValueType:
@@ -92,16 +93,9 @@ def clang_format(cxx_source: str, code_style='LLVM') -> str:
     else:
         return stdout
 
-def replace_identifiers(cpp_type, replacements):
-    last_index = 0
-    result_parts = []
-    for match in re.finditer(r'[a-zA-Z_][a-zA-Z_0-9]*', cpp_type):
-        result_parts.append(cpp_type[last_index:match.start()])
-        identifier = match.group(0)
-        if identifier in replacements:
-            result_parts.append(replacements[identifier])
-        else:
-            result_parts.append(identifier)
-        last_index = match.end()
-    result_parts.append(cpp_type[last_index:])
-    return ''.join(result_parts)
+def compute_condensation_in_topological_order(dependency_graph: nx.DiGraph, sort_by = lambda x: x):
+    condensed_graph = nx.condensation(dependency_graph)
+    assert isinstance(condensed_graph, nx.DiGraph)
+
+    for connected_component_index in nx.topological_sort(condensed_graph, sorted(condensed_graph.nodes_iter(), key=sort_by)):
+        yield list(sorted(condensed_graph.node[connected_component_index]['members'], key=sort_by))

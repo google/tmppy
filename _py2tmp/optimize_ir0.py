@@ -15,10 +15,37 @@ import difflib
 from collections import defaultdict
 
 import itertools
-
-from _py2tmp import ir0, utils, transform_ir0, ir0_to_cpp
+from _py2tmp import ir0, utils, transform_ir0, ir0_to_cpp, unify_ir0
 import networkx as nx
 from typing import List, Tuple, Union, Dict, Set, Iterator, Callable
+
+DEFAULT_VERBOSE_SETTING = False
+
+class ConfigurationKnobs:
+    # If this is >=0, the number of optimization steps is capped to this value.
+    max_num_optimization_steps = -1
+    optimization_step_counter = 0
+    verbose = DEFAULT_VERBOSE_SETTING
+
+GLOBAL_INLINEABLE_TEMPLATES_BY_NAME = {
+    'std::is_same': ir0.TemplateDefn(name='std::is_same',
+                                     description='',
+                                     result_element_names=['value'],
+                                     args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType()),
+                                           ir0.TemplateArgDecl(name='U', type=ir0.TypeType())],
+                                     main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType()),
+                                                                                      ir0.TemplateArgDecl(name='U', type=ir0.TypeType())],
+                                                                                patterns=None,
+                                                                                body=[ir0.ConstantDef(name='value',
+                                                                                                      expr=ir0.Literal(False))],
+                                                                                is_metafunction=True),
+                                     specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType())],
+                                                                                 patterns=[ir0.AtomicTypeLiteral.for_local(cpp_type='T', type=ir0.TypeType()),
+                                                                                           ir0.AtomicTypeLiteral.for_local(cpp_type='T', type=ir0.TypeType())],
+                                                                                 body=[ir0.ConstantDef(name='value',
+                                                                                                       expr=ir0.Literal(True))],
+                                                                                 is_metafunction=True)]),
+}
 
 def template_defn_to_cpp(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
   writer = ir0_to_cpp.ToplevelWriter(identifier_generator)
@@ -53,36 +80,48 @@ def compare_optimized_cpp_to_original(original_cpp: str, optimized_cpp: str, opt
 
 def apply_optimization(template_defn: ir0.TemplateDefn,
                        identifier_generator: Iterator[str],
-                       optimization: Callable[[], ir0.TemplateDefn],
+                       optimization: Callable[[], Tuple[ir0.TemplateDefn, bool]],
                        optimization_name: str,
-                       verbose: bool,
                        other_context: Callable[[], str] = lambda: ''):
-    new_template_defn = optimization()
+    if ConfigurationKnobs.max_num_optimization_steps == 0:
+        return template_defn, False
+    ConfigurationKnobs.optimization_step_counter += 1
+    if ConfigurationKnobs.max_num_optimization_steps > 0:
+        ConfigurationKnobs.max_num_optimization_steps -= 1
 
-    if verbose:
+    new_template_defn, needs_another_loop = optimization()
+
+    if ConfigurationKnobs.verbose:
         original_cpp = template_defn_to_cpp(template_defn, identifier_generator)
         optimized_cpp = template_defn_to_cpp(new_template_defn, identifier_generator)
         compare_optimized_cpp_to_original(original_cpp, optimized_cpp, optimization_name=optimization_name, other_context=other_context())
 
-    return new_template_defn
+    return new_template_defn, needs_another_loop
 
 def apply_toplevel_elems_optimization(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
                                       identifier_generator: Iterator[str],
-                                      optimization: Callable[[], List[ir0.TemplateBodyElement]],
+                                      optimization: Callable[[], Tuple[List[ir0.TemplateBodyElement], bool]],
                                       optimization_name: str,
-                                      verbose: bool,
                                       other_context: Callable[[], str] = lambda: ''):
-  new_toplevel_elems = optimization()
+    if ConfigurationKnobs.max_num_optimization_steps == 0:
+        return toplevel_elems, False
+    ConfigurationKnobs.optimization_step_counter += 1
+    if ConfigurationKnobs.max_num_optimization_steps > 0:
+        ConfigurationKnobs.max_num_optimization_steps -= 1
 
-  if verbose:
-    original_cpp = template_body_elems_to_cpp(toplevel_elems, identifier_generator)
-    optimized_cpp = template_body_elems_to_cpp(new_toplevel_elems, identifier_generator)
-    compare_optimized_cpp_to_original(original_cpp, optimized_cpp, optimization_name=optimization_name, other_context=other_context())
+    new_toplevel_elems, needs_another_loop = optimization()
 
-  return new_toplevel_elems
+    if ConfigurationKnobs.verbose:
+        original_cpp = template_body_elems_to_cpp(toplevel_elems, identifier_generator)
+        optimized_cpp = template_body_elems_to_cpp(new_toplevel_elems, identifier_generator)
+        compare_optimized_cpp_to_original(original_cpp, optimized_cpp, optimization_name=optimization_name, other_context=other_context())
 
+    return new_toplevel_elems, needs_another_loop
 
 class ExprSimplifyingTransformation(transform_ir0.Transformation):
+    def __init__(self):
+        super().__init__()
+
     def transform_expr(self, expr: ir0.Expr, writer: transform_ir0.Writer, split_nontrivial_exprs=True) -> ir0.Expr:
         if split_nontrivial_exprs and not isinstance(expr, ir0.AtomicTypeLiteral):
             expr = super().transform_expr(expr, writer)
@@ -111,7 +150,7 @@ def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generato
   ExprSimplifyingTransformation().transform_template_defn(template_defn, writer)
   [new_template_defn] = writer.template_defns
 
-  return new_template_defn
+  return new_template_defn, False
 
 def normalize_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
                              identifier_generator: Iterator[str]):
@@ -121,9 +160,10 @@ def normalize_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.Co
   '''
   writer = transform_ir0.ToplevelWriter(identifier_generator, allow_template_defns=False)
   for toplevel_elem in toplevel_elems:
-    ExprSimplifyingTransformation().transform_toplevel_elem(toplevel_elem, writer)
+    transformation = ExprSimplifyingTransformation()
+    transformation.transform_toplevel_elem(toplevel_elem, writer)
 
-  return writer.toplevel_elems
+  return writer.toplevel_elems, False
 
 def create_var_to_var_assignment(lhs: str, rhs: str, type: ir0.ExprType):
   if type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
@@ -139,6 +179,9 @@ def create_var_to_var_assignment(lhs: str, rhs: str, type: ir0.ExprType):
     raise NotImplementedError('Unexpected kind: %s' % str(type.kind))
 
 class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
+    def __init__(self):
+        super().__init__()
+
     def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
       writer.write(ir0.TemplateDefn(args=template_defn.args,
                                     main_definition=self._transform_template_specialization(template_defn.main_definition, template_defn.result_element_names, writer) if template_defn.main_definition is not None else None,
@@ -158,14 +201,16 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
                                         body=self._transform_template_body_elems(specialization.body,
                                                                                  result_element_names,
                                                                                  specialization.args,
-                                                                                 toplevel_writer))
+                                                                                 toplevel_writer,
+                                                                                 specialization.is_metafunction),
+                                        is_metafunction=specialization.is_metafunction)
 
     def _transform_template_body_elems(self,
                                        elems: List[ir0.TemplateBodyElement],
                                        result_element_names: Tuple[str],
                                        template_specialization_args: Tuple[ir0.TemplateArgDecl],
-                                       toplevel_writer: transform_ir0.ToplevelWriter):
-
+                                       toplevel_writer: transform_ir0.ToplevelWriter,
+                                       is_metafunction: bool):
         name_by_expr = dict()  # type: Dict[ir0.Expr, str]
         replacements = dict()  # type: Dict[str, str]
         type_by_name = dict()  # type: Dict[str, ir0.ExprType]
@@ -174,7 +219,7 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
         # x1 = arg1
         for arg in template_specialization_args:
           name_by_expr[ir0.AtomicTypeLiteral.for_local(cpp_type=arg.name,
-                                                 type=arg.type)] = arg.name
+                                                       type=arg.type)] = arg.name
           type_by_name[arg.name] = arg.type
 
         result_elems = []
@@ -205,6 +250,20 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
               additional_result_elems.append(create_var_to_var_assignment(lhs=result_elem_name,
                                                                           rhs=replacements2[replacement],
                                                                           type=type_by_name[replacement]))
+            elif replacement in result_element_names:
+              # We've eliminated the assignment to the result var against another result var, so we need to emit an
+              # extra "assignment" assigning a result element to another.
+
+              if replacement in type_by_name:
+                  type = type_by_name[replacement]
+              elif result_elem_name in type_by_name:
+                  type = type_by_name[result_elem_name]
+              else:
+                  raise NotImplementedError('Unable to determine type. This should never happen.')
+
+              additional_result_elems.append(create_var_to_var_assignment(lhs=result_elem_name,
+                                                                          rhs=replacement,
+                                                                          type=type))
             elif replacement in arg_names:
               # We've eliminated the assignment to the result var against the definition of an argument.
               # So we need to add it back.
@@ -217,7 +276,18 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
         result_elems = transform_ir0.NameReplacementTransformation(replacements2).transform_template_body_elems(result_elems,
                                                                                                                 toplevel_writer)
 
-        return result_elems + additional_result_elems
+        result_elems = result_elems + additional_result_elems
+
+        if is_metafunction and result_elems:
+            assert (any(isinstance(elem, ir0.Typedef) and elem.name == 'type'
+                        for elem in result_elems)
+                    or any(isinstance(elem, ir0.ConstantDef) and elem.name == 'value'
+                           for elem in result_elems)), 'type_by_name == %s\nreplacements2 == %s\nbody was:\n%s' % (
+                type_by_name,
+                replacements2,
+                '\n'.join(utils.ir_to_string(elem)
+                          for elem in result_elems))
+        return result_elems
 
     def _transform_toplevel_elems(self,
                                   elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
@@ -246,72 +316,196 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
 def perform_common_subexpression_normalization(template_defn: ir0.TemplateDefn,
                                                identifier_generator: Iterator[str]):
   writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
-  CommonSubexpressionEliminationTransformation().transform_template_defn(template_defn, writer)
+  transformation = CommonSubexpressionEliminationTransformation()
+  transformation.transform_template_defn(template_defn, writer)
   [template_defn] = writer.template_defns
-  return template_defn
+  return template_defn, False
 
 def perform_common_subexpression_normalization_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
                                                                  identifier_generator: Iterator[str]):
-  return CommonSubexpressionEliminationTransformation()._transform_toplevel_elems(toplevel_elems, identifier_generator)
+  transformation = CommonSubexpressionEliminationTransformation()
+  return transformation._transform_toplevel_elems(toplevel_elems, identifier_generator), False
+
+class VariadicVarReplacementNotPossibleException(Exception):
+    pass
 
 class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
-    def __init__(self, var: str, replacement_expr: ir0.Expr):
-        self.var = var
-        self.replacement_expr = replacement_expr
+    def __init__(self, replacement_expr_by_var: Dict[str, Union[ir0.Expr, List[ir0.Expr]]], variadic_vars_with_expansion_in_progress: Set[str] = set()):
+        super().__init__()
+        self.replacement_expr_by_var = replacement_expr_by_var
+        self.variadic_vars_with_expansion_in_progress = variadic_vars_with_expansion_in_progress
+
+    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: transform_ir0.Writer):
+        variadic_vars_to_expand = {var.cpp_type
+                                   for var in expr.get_free_vars()
+                                   if var.type == ir0.VariadicType() and var.cpp_type not in self.variadic_vars_with_expansion_in_progress}
+        previous_variadic_vars_with_expansion_in_progress = self.variadic_vars_with_expansion_in_progress
+        self.variadic_vars_with_expansion_in_progress = previous_variadic_vars_with_expansion_in_progress.union(variadic_vars_to_expand)
+
+        values_by_variadic_var_to_expand = {var: self.replacement_expr_by_var[var]
+                                            for var in variadic_vars_to_expand
+                                            if var in self.replacement_expr_by_var}
+
+        transformed_exprs = []
+        if values_by_variadic_var_to_expand:
+            self._check_variadic_var_replacement(values_by_variadic_var_to_expand)
+
+            num_values_to_expand = len(next(iter(values_by_variadic_var_to_expand)))
+            assert all(len(values) == num_values_to_expand
+                       for values in values_by_variadic_var_to_expand.values())
+            for i in range(0, num_values_to_expand):
+                child_replacement_expr_by_var = self.replacement_expr_by_var.copy()
+                for var, values in values_by_variadic_var_to_expand.items():
+                    child_replacement_expr_by_var[var] = values[i]
+                child_transformation = ReplaceVarWithExprTransformation(child_replacement_expr_by_var)
+                transformed_expr = child_transformation.transform_expr(expr.expr, writer)
+                for expr in (transformed_expr if isinstance(transformed_expr, list) else [transformed_expr]):
+                    transformed_exprs.append(expr)
+        else:
+            transformed_expr = self.transform_expr(expr.expr, writer)
+            for expr in (transformed_expr if isinstance(transformed_expr, list) else [transformed_expr]):
+                transformed_exprs.append(expr)
+
+        self.variadic_vars_with_expansion_in_progress = previous_variadic_vars_with_expansion_in_progress
+
+        results = []
+        for expr in transformed_exprs:
+            for var in expr.get_free_vars():
+                if var.type == ir0.VariadicType() and not var.cpp_type in self.variadic_vars_with_expansion_in_progress:
+                    results.append(ir0.VariadicTypeExpansion(expr))
+                    break
+            else:
+                results.append(expr)
+
+        return results
 
     def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: transform_ir0.Writer):
-        if type_literal.cpp_type == self.var:
-            return self.replacement_expr
+        if type_literal.cpp_type in self.replacement_expr_by_var:
+            result = self.replacement_expr_by_var[type_literal.cpp_type]
+            if isinstance(result, list):
+                [result] = result
+            return result
+        return type_literal
 
-        if self.var not in type_literal.get_referenced_identifiers():
-            return type_literal
+    def transform_exprs(self, exprs: List[ir0.Expr], parent_element_type, writer):
+        if parent_element_type in (ir0.TemplateInstantiation, ir0.FunctionTypeExpr):
+            results = []
+            for expr in exprs:
+                expr_or_expr_list = self.transform_expr(expr, writer)
+                for expr in (expr_or_expr_list if isinstance(expr_or_expr_list, list) else [expr_or_expr_list]):
+                    results.append(expr)
+            return results
+        else:
+            return super().transform_exprs(exprs, parent_element_type, writer)
 
-        if isinstance(self.replacement_expr, ir0.AtomicTypeLiteral):
-            referenced_locals = []
-            for referenced_local in type_literal.referenced_locals:
-                if referenced_local.cpp_type != self.var:
-                    referenced_locals.append(referenced_local)
-            for referenced_local in self.replacement_expr.referenced_locals:
-                referenced_locals.append(referenced_local)
-            return ir0.AtomicTypeLiteral(cpp_type=utils.replace_identifiers(type_literal.cpp_type, {self.var: self.replacement_expr.cpp_type}),
-                                   is_local=type_literal.is_local and self.replacement_expr.is_local,
-                                   is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error or self.replacement_expr.is_metafunction_that_may_return_error,
-                                   referenced_locals=referenced_locals,
-                                   type=type_literal.type)
+    def _compute_variadic_pattern(self, values: Union[ir0.Expr, List[ir0.Expr]], strict: bool):
+        if not isinstance(values, list):
+            values = [values]
+        for value in values:
+            if isinstance(value, ir0.VariadicTypeExpansion) and isinstance(value.expr, ir0.AtomicTypeLiteral):
+                if strict:
+                    yield value.expr.cpp_type
+                else:
+                    # We just check that there's a corresponding variadic type expansion, but not necessarily for the
+                    # same var.
+                    yield 1
+            else:
+                yield None
 
-        # TODO: implement this.
-        raise NotImplementedError('The replacement of "%s" with "%s" in "%s" is not implemented yet.' % (self.var, expr_to_cpp(self.replacement_expr), type_literal.cpp_type))
+    def _check_variadic_var_replacement(self,
+                                        values_by_variadic_var_to_expand: Dict[str, Union[ir0.Expr, List[ir0.Expr]]]):
+        num_values_to_expand_in_first_replacement = len(next(iter(values_by_variadic_var_to_expand)))
+        if not all(len(values) == num_values_to_expand_in_first_replacement
+                   for values in values_by_variadic_var_to_expand.values()):
+            # We can't perform the replacement syntactically, even if it might make sense semantically.
+            # E.g. we can't replace Ts={Xs...}, Us={Ys..., float} in "std::pair<Ts, Us>...".
+            raise VariadicVarReplacementNotPossibleException()
+
+        values_lists = [list(values) for values in values_by_variadic_var_to_expand.values()]
+        while values_lists[0]:
+            # If no front items are variadic expansions, we can disregard those and check the rest.
+            for values in values_lists:
+                value = values[0]
+                if isinstance(value, ir0.VariadicTypeExpansion) and isinstance(value, ir0.AtomicTypeLiteral):
+                    break
+            else:
+                values_lists = [values[1:] for values in values_lists]
+                continue
+
+            # And same for the last ones.
+            for values in values_lists:
+                value = values[-1]
+                if isinstance(value, ir0.VariadicTypeExpansion) and isinstance(value, ir0.AtomicTypeLiteral):
+                    break
+            else:
+                values_lists = [values[:-1] for values in values_lists]
+                continue
+
+            # If all value lists start with the same variadic type expansion, we can disregard that.
+            if isinstance(values_lists[0][0], ir0.VariadicTypeExpansion) and isinstance(values_lists[0][0].expr, ir0.AtomicTypeLiteral):
+                var = values_lists[0][0].expr.cpp_type
+                for values in values_lists:
+                    value = values[0]
+                    if not (isinstance(value, ir0.VariadicTypeExpansion) and isinstance(value.expr, ir0.AtomicTypeLiteral) and value.expr.cpp_type == var):
+                        break
+                else:
+                    values_lists = [values[1:] for values in values_lists]
+                    continue
+
+            # And same at the end.
+            if isinstance(values_lists[0][-1], ir0.VariadicTypeExpansion) and isinstance(values_lists[0][-1].expr, ir0.AtomicTypeLiteral):
+                var = values_lists[0][-1].expr.cpp_type
+                for values in values_lists:
+                    value = values[-1]
+                    if not (isinstance(value, ir0.VariadicTypeExpansion) and isinstance(value.expr, ir0.AtomicTypeLiteral) and value.expr.cpp_type == var):
+                        break
+                else:
+                    values_lists = [values[:-1] for values in values_lists]
+                    continue
+
+            # We have excluded all begin/end values that we can.
+            break
+
+        for values in values_lists:
+            num_expansions = sum(1
+                                 for value in values
+                                 if isinstance(value, ir0.VariadicTypeExpansion))
+            if num_expansions > 1:
+                # We can perform the replacement syntactically, but it doesn't make sense semantically.
+                # E.g. when replacing Ts={int, Xs...}, Us={Ys..., float} in "std::pair<Ts, Us>..." we can't output
+                # "std::pair<int, Ys>..., std::pair<Xs, float>...", it would be wrong.
+                raise VariadicVarReplacementNotPossibleException()
 
 def replace_var_with_expr(elem: ir0.TemplateBodyElement, var: str, expr: ir0.Expr) -> ir0.TemplateBodyElement:
     toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[], allow_template_defns=False, allow_toplevel_elems=False)
     writer = transform_ir0.TemplateBodyWriter(toplevel_writer)
-    ReplaceVarWithExprTransformation(var, expr).transform_template_body_elem(elem, writer)
+    ReplaceVarWithExprTransformation({var: expr}).transform_template_body_elem(elem, writer)
     [elem] = writer.elems
     return elem
 
 class CanTriggerStaticAsserts(transform_ir0.Transformation):
   def __init__(self):
-    self.can_trigger_static_asserts = False
+      super().__init__(generates_transformed_ir=False)
+      self.can_trigger_static_asserts = False
 
   def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
-    self.can_trigger_static_asserts = True
-    return static_assert
+      self.can_trigger_static_asserts = True
 
   def transform_template_instantiation(self,
                                        template_instantiation: ir0.TemplateInstantiation,
                                        writer: transform_ir0.Writer):
-    self.can_trigger_static_asserts |= template_instantiation.instantiation_might_trigger_static_asserts
-    return template_instantiation
+      self.can_trigger_static_asserts |= template_instantiation.instantiation_might_trigger_static_asserts
 
   def transform_template_specialization(self,
                                         specialization: ir0.TemplateSpecialization,
                                         writer: transform_ir0.Writer):
-    # We don't recurse in inner templates, we assume that evaluating the template definition itself doesn't trigger
-    # static asserts (even though the template might trigger assertions when instantiated).
-    return specialization
+      # We don't recurse in inner templates, we assume that evaluating the template definition itself doesn't trigger
+      # static asserts (even though the template might trigger assertions when instantiated).
+      return
 
 class ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(transform_ir0.Transformation):
     def __init__(self, template_instantiation_can_trigger_static_asserts: Dict[str, bool]):
+        super().__init__()
         self.template_instantiation_can_trigger_static_asserts = template_instantiation_can_trigger_static_asserts
 
     def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: transform_ir0.Writer):
@@ -319,7 +513,7 @@ class ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(transform_ir0.Transf
             instantiation_might_trigger_static_asserts = self.template_instantiation_can_trigger_static_asserts.get(template_instantiation.template_expr.cpp_type,
                                                                                                                     template_instantiation.instantiation_might_trigger_static_asserts)
             return ir0.TemplateInstantiation(template_expr=self.transform_expr(template_instantiation.template_expr, writer),
-                                             args=[self.transform_expr(arg, writer) for arg in template_instantiation.args],
+                                             args=self.transform_exprs(template_instantiation.args, ir0.TemplateInstantiation, writer),
                                              instantiation_might_trigger_static_asserts=instantiation_might_trigger_static_asserts)
 
         return super().transform_template_instantiation(template_instantiation, writer)
@@ -329,11 +523,11 @@ def apply_template_instantiation_can_trigger_static_asserts_info(header: ir0.Hea
 
 class TemplateDefnContainsStaticAssertStmt(transform_ir0.Transformation):
     def __init__(self):
+        super().__init__(generates_transformed_ir=False)
         self.found_static_assert_stmt = False
 
     def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
         self.found_static_assert_stmt = True
-        return static_assert
 
 def template_defn_contains_static_assert_stmt(template_defn: ir0.TemplateDefn):
     transformation = TemplateDefnContainsStaticAssertStmt()
@@ -406,7 +600,8 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
       return ir0.TemplateSpecialization(args=specialization.args,
                                         patterns=specialization.patterns,
                                         body=self._transform_template_body_elems(specialization.body,
-                                                                                 result_element_names))
+                                                                                 result_element_names),
+                                        is_metafunction=specialization.is_metafunction)
 
     def _transform_template_body_elems(self,
                                        stmts: Tuple[ir0.TemplateBodyElement],
@@ -581,118 +776,142 @@ def perform_constant_folding(template_defn: ir0.TemplateDefn,
   transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
   transformation.transform_template_defn(template_defn, writer)
   [template_defn] = writer.template_defns
-  return template_defn
+  return template_defn, False
 
 def perform_constant_folding_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
                                                identifier_generator: Iterator[str],
                                                inline_template_instantiations_with_multiple_references: bool):
   transformation = ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
   toplevel_elems = transformation._transform_template_body_elems(toplevel_elems, result_element_names=tuple())
-  return toplevel_elems
+  return toplevel_elems, False
 
 def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn,
                                                  identifier_generator: Iterator[str],
-                                                 inline_template_instantiations_with_multiple_references: bool,
-                                                 verbose: bool):
-    template_defn = apply_optimization(template_defn,
-                                       identifier_generator,
-                                       optimization=lambda: normalize_template_defn(template_defn, identifier_generator),
-                                       optimization_name='normalize_template_defn()',
-                                       verbose=verbose)
+                                                 inline_template_instantiations_with_multiple_references: bool):
+    template_defn, needs_another_loop1 = apply_optimization(template_defn,
+                                                            identifier_generator,
+                                                            optimization=lambda: normalize_template_defn(template_defn, identifier_generator),
+                                                            optimization_name='normalize_template_defn()')
 
-    template_defn = apply_optimization(template_defn,
-                                       identifier_generator,
-                                       optimization=lambda: perform_common_subexpression_normalization(template_defn, identifier_generator),
-                                       optimization_name='perform_common_subexpression_normalization()',
-                                       verbose=verbose)
+    template_defn, needs_another_loop2 = apply_optimization(template_defn,
+                                                            identifier_generator,
+                                                            optimization=lambda: perform_common_subexpression_normalization(template_defn, identifier_generator),
+                                                            optimization_name='perform_common_subexpression_normalization()')
 
-    template_defn = apply_optimization(template_defn,
-                                       identifier_generator,
-                                       optimization=lambda: perform_constant_folding(template_defn,
-                                                                                     identifier_generator,
-                                                                                     inline_template_instantiations_with_multiple_references),
-                                       optimization_name='perform_constant_folding()',
-                                       verbose=verbose)
+    template_defn, needs_another_loop3 = apply_optimization(template_defn,
+                                                            identifier_generator,
+                                                            optimization=lambda: perform_constant_folding(template_defn,
+                                                                                                          identifier_generator,
+                                                                                                          inline_template_instantiations_with_multiple_references),
+                                                            optimization_name='perform_constant_folding()')
 
-    return template_defn
+    return template_defn, any((needs_another_loop1, needs_another_loop2, needs_another_loop3))
 
 def perform_local_optimizations_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
                                                   identifier_generator: Iterator[str],
-                                                  inline_template_instantiations_with_multiple_references: bool,
-                                                  verbose: bool):
-  toplevel_elems = apply_toplevel_elems_optimization(toplevel_elems,
-                                                     identifier_generator,
-                                                     optimization=lambda: normalize_toplevel_elems(toplevel_elems, identifier_generator),
-                                                     optimization_name='normalize_toplevel_elems()',
-                                                     verbose=verbose)
+                                                  inline_template_instantiations_with_multiple_references: bool):
+  toplevel_elems, needs_another_loop1 = apply_toplevel_elems_optimization(toplevel_elems,
+                                                                          identifier_generator,
+                                                                          optimization=lambda: normalize_toplevel_elems(toplevel_elems, identifier_generator),
+                                                                          optimization_name='normalize_toplevel_elems()')
 
-  toplevel_elems = apply_toplevel_elems_optimization(toplevel_elems,
-                                                     identifier_generator,
-                                                     optimization=lambda: perform_common_subexpression_normalization_on_toplevel_elems(toplevel_elems, identifier_generator),
-                                                     optimization_name='perform_common_subexpression_normalization_on_toplevel_elems()',
-                                                     verbose=verbose)
+  toplevel_elems, needs_another_loop2 = apply_toplevel_elems_optimization(toplevel_elems,
+                                                                          identifier_generator,
+                                                                          optimization=lambda: perform_common_subexpression_normalization_on_toplevel_elems(toplevel_elems, identifier_generator),
+                                                                          optimization_name='perform_common_subexpression_normalization_on_toplevel_elems()')
 
-  toplevel_elems = apply_toplevel_elems_optimization(toplevel_elems,
-                                                     identifier_generator,
-                                                     optimization=lambda: perform_constant_folding_on_toplevel_elems(toplevel_elems,
-                                                                                                                     identifier_generator,
-                                                                                                                     inline_template_instantiations_with_multiple_references),
-                                                     optimization_name='perform_constant_folding_on_toplevel_elems()',
-                                                     verbose=verbose)
+  toplevel_elems, needs_another_loop3 = apply_toplevel_elems_optimization(toplevel_elems,
+                                                                          identifier_generator,
+                                                                          optimization=lambda: perform_constant_folding_on_toplevel_elems(toplevel_elems,
+                                                                                                                                          identifier_generator,
+                                                                                                                                          inline_template_instantiations_with_multiple_references),
+                                                                          optimization_name='perform_constant_folding_on_toplevel_elems()')
 
-  return toplevel_elems
+  return toplevel_elems, any((needs_another_loop1, needs_another_loop2, needs_another_loop3))
 
 class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
     def __init__(self, inlineable_templates_by_name: Dict[str, ir0.TemplateDefn]):
         super().__init__()
         self.inlineable_templates_by_name = inlineable_templates_by_name
+        self.needs_another_loop = False
 
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
         assert isinstance(writer, transform_ir0.TemplateBodyWriter)
+        class_member_access = super().transform_class_member_access(class_member_access, writer)
         if (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
                 and isinstance(class_member_access.expr.template_expr, ir0.AtomicTypeLiteral)
                 and class_member_access.expr.template_expr.cpp_type in self.inlineable_templates_by_name):
             template_instantiation = class_member_access.expr
             template_defn_to_inline = self.inlineable_templates_by_name[template_instantiation.template_expr.cpp_type]
-            assert not template_defn_to_inline.specializations
-            assert not template_defn_to_inline.main_definition.patterns
-
-            new_var_name_by_old_var_name = dict()  # type: Dict[str, str]
-            for arg_decl, arg_expr in zip(template_defn_to_inline.main_definition.args, template_instantiation.args):
-                if arg_decl.name:
-                    var = writer.new_constant_or_typedef(arg_expr)
-                    new_var_name_by_old_var_name[arg_decl.name] = var.cpp_type
-
-            for elem in template_defn_to_inline.main_definition.body:
-                if isinstance(elem, ir0.TemplateDefn):
-                    new_var_name_by_old_var_name[elem.name] = writer.new_id()
-                elif isinstance(elem, ir0.ConstantDef):
-                    new_var_name_by_old_var_name[elem.name] = writer.new_id()
-                elif isinstance(elem, ir0.Typedef):
-                    new_var_name_by_old_var_name[elem.name] = writer.new_id()
-                elif isinstance(elem, ir0.StaticAssert):
-                    pass
-                else:
-                    raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
-
-            transformation = transform_ir0.NameReplacementTransformation(new_var_name_by_old_var_name)
-            for elem in template_defn_to_inline.main_definition.body:
-                transformation.transform_template_body_elem(elem, writer)
-
-            return ir0.AtomicTypeLiteral.for_local(cpp_type=new_var_name_by_old_var_name[class_member_access.member_name],
-                                             type=class_member_access.type)
+        elif (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
+                and isinstance(class_member_access.expr.template_expr, ir0.AtomicTypeLiteral)
+                and class_member_access.expr.template_expr.cpp_type in GLOBAL_INLINEABLE_TEMPLATES_BY_NAME):
+            template_instantiation = class_member_access.expr
+            template_defn_to_inline = GLOBAL_INLINEABLE_TEMPLATES_BY_NAME[template_instantiation.template_expr.cpp_type]
         else:
-            return super().transform_class_member_access(class_member_access, writer)
+            return class_member_access
+
+        toplevel_writer = writer.get_toplevel_writer()
+        unification = unify_ir0.unify_template_instantiation_with_definition(template_instantiation,
+                                                                             template_defn_to_inline,
+                                                                             toplevel_writer.identifier_generator,
+                                                                             verbose=ConfigurationKnobs.verbose)
+        if not unification:
+            return class_member_access
+
+        specialization, value_by_pattern_variable = unification
+        assert len(value_by_pattern_variable) == len(specialization.args)
+
+        value_by_pattern_variable = {(var.cpp_type if isinstance(var, ir0.AtomicTypeLiteral) else var.expr.cpp_type): expr
+                                     for var, expr in value_by_pattern_variable}
+
+        tmp_writer = transform_ir0.ToplevelWriter(toplevel_writer.identifier_generator,
+                                                  allow_toplevel_elems=False,
+                                                  allow_template_defns=toplevel_writer.allow_template_defns)
+        transformation = ReplaceVarWithExprTransformation(value_by_pattern_variable)
+        try:
+            body = transformation.transform_template_body_elems(specialization.body, tmp_writer)
+        except VariadicVarReplacementNotPossibleException:
+            # We thought we could perform the inlining but we actually can't.
+            print('VariadicVarReplacementNotPossibleException raised for template %s, we can\'t inline that.' % template_instantiation.template_expr.cpp_type)
+            return class_member_access
+
+        new_var_name_by_old_var_name = dict()
+        for elem in body:
+            if isinstance(elem, ir0.TemplateDefn):
+                new_var_name_by_old_var_name[elem.name] = writer.new_id()
+            elif isinstance(elem, ir0.ConstantDef):
+                new_var_name_by_old_var_name[elem.name] = writer.new_id()
+            elif isinstance(elem, ir0.Typedef):
+                new_var_name_by_old_var_name[elem.name] = writer.new_id()
+            elif isinstance(elem, ir0.StaticAssert):
+                pass
+            else:
+                raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
+
+        transformation = transform_ir0.NameReplacementTransformation(new_var_name_by_old_var_name)
+        for elem in body:
+            transformation.transform_template_body_elem(elem, writer)
+
+        self.needs_another_loop = True
+        if ConfigurationKnobs.verbose:
+            print('Inlining template defn: %s' % template_defn_to_inline.name)
+
+        assert class_member_access.member_name in new_var_name_by_old_var_name, 'member_name="%s" not found. Names defined in body of template %s: %s; Toplevel elems: %s' % (
+            class_member_access.member_name,
+            template_defn_to_inline.name,
+            ', '.join(new_var_name_by_old_var_name.keys()),
+            ', '.join(ir0_to_cpp.toplevel_elem_to_cpp_simple(elem) for elem in body))
+        return ir0.AtomicTypeLiteral.for_local(cpp_type=new_var_name_by_old_var_name[class_member_access.member_name],
+                                               type=class_member_access.type)
 
 def perform_template_inlining(template_defn: ir0.TemplateDefn,
                               inlineable_refs: Set[str],
                               template_defn_by_name: Dict[str, ir0.TemplateDefn],
-                              identifier_generator: Iterator[str],
-                              verbose: bool):
-  template_defn = perform_local_optimizations_on_template_defn(template_defn,
-                                                               identifier_generator,
-                                                               inline_template_instantiations_with_multiple_references=True,
-                                                               verbose=verbose)
+                              identifier_generator: Iterator[str]):
+  template_defn, needs_another_loop1 = perform_local_optimizations_on_template_defn(template_defn,
+                                                                                    identifier_generator,
+                                                                                    inline_template_instantiations_with_multiple_references=True)
 
   def perform_optimization():
     transformation = TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
@@ -701,27 +920,24 @@ def perform_template_inlining(template_defn: ir0.TemplateDefn,
     writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
     transformation.transform_template_defn(template_defn, writer)
     [new_template_defn] = writer.template_defns
-    return new_template_defn
+    return new_template_defn, transformation.needs_another_loop
 
-  template_defn = apply_optimization(template_defn,
-                                     identifier_generator,
-                                     optimization=perform_optimization,
-                                     optimization_name='TemplateInstantiationInliningTransformation',
-                                     other_context=lambda: 'Inlined template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
-                                                                                              for template_name in inlineable_refs) + '\n',
-                                     verbose=verbose)
+  template_defn, needs_another_loop2 = apply_optimization(template_defn,
+                                                          identifier_generator,
+                                                          optimization=perform_optimization,
+                                                          optimization_name='TemplateInstantiationInliningTransformation',
+                                                          other_context=lambda: 'Potentially inlineable template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
+                                                                                                                                  for template_name in inlineable_refs) + '\n')
 
-  return template_defn
+  return template_defn, needs_another_loop1 or needs_another_loop2
 
 def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
                                                 inlineable_refs: Set[str],
                                                 template_defn_by_name: Dict[str, ir0.TemplateDefn],
-                                                identifier_generator: Iterator[str],
-                                                verbose: bool):
-  toplevel_elems = perform_local_optimizations_on_toplevel_elems(toplevel_elems,
-                                                                 identifier_generator,
-                                                                 inline_template_instantiations_with_multiple_references=True,
-                                                                 verbose=verbose)
+                                                identifier_generator: Iterator[str]):
+  toplevel_elems, needs_another_loop1 = perform_local_optimizations_on_toplevel_elems(toplevel_elems,
+                                                                                      identifier_generator,
+                                                                                      inline_template_instantiations_with_multiple_references=True)
 
   def perform_optimization():
     transformation = TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
@@ -730,15 +946,17 @@ def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir0.S
     writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False, allow_template_defns=False)
     elems = transformation.transform_template_body_elems(toplevel_elems, writer)
 
-    return elems
+    return elems, transformation.needs_another_loop
 
-  return apply_toplevel_elems_optimization(toplevel_elems,
-                                           identifier_generator,
-                                           optimization=perform_optimization,
-                                           optimization_name='TemplateInstantiationInliningTransformation',
-                                           other_context=lambda: 'Inlined template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
-                                                                                                    for template_name in inlineable_refs) + '\n',
-                                           verbose=verbose)
+  toplevel_elems, needs_another_loop2 = apply_toplevel_elems_optimization(toplevel_elems,
+                                                                          identifier_generator,
+                                                                          optimization=perform_optimization,
+                                                                          optimization_name='TemplateInstantiationInliningTransformation',
+                                                                          other_context=lambda: 'Potentially inlineable template(s):\n' + ''.join(
+                                                                              template_defn_to_cpp(template_defn_by_name[template_name],
+                                                                                                   identifier_generator)
+                                                                              for template_name in inlineable_refs) + '\n')
+  return toplevel_elems, needs_another_loop1 or needs_another_loop2
 
 def compute_template_dependency_graph(header: ir0.Header, template_defn_by_name: Dict[str, ir0.TemplateDefn]):
     template_dependency_graph = nx.DiGraph()
@@ -750,14 +968,7 @@ def compute_template_dependency_graph(header: ir0.Header, template_defn_by_name:
                 template_dependency_graph.add_edge(template_defn.name, identifier)
     return template_dependency_graph
 
-def compute_condensation_in_topological_order(template_dependency_graph: nx.DiGraph) -> Iterator[List[str]]:
-    condensed_graph = nx.condensation(template_dependency_graph)
-    assert isinstance(condensed_graph, nx.DiGraph)
-
-    for connected_component_index in nx.topological_sort(condensed_graph):
-        yield condensed_graph.node[connected_component_index]['members']
-
-def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool):
+def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str]):
     new_template_defns = {elem.name: elem
                           for elem in header.template_defns}
 
@@ -766,56 +977,79 @@ def optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterato
     template_dependency_graph_transitive_closure = nx.transitive_closure(template_dependency_graph)
     assert isinstance(template_dependency_graph_transitive_closure, nx.DiGraph)
 
-    for connected_component in reversed(list(compute_condensation_in_topological_order(template_dependency_graph))):
-        for template_name in sorted(connected_component, key=lambda node: new_template_defns[node].name):
-            template_defn = new_template_defns[template_name]
+    for connected_component in reversed(list(utils.compute_condensation_in_topological_order(template_dependency_graph))):
+        needs_another_loop = True
+        max_num_remaining_loops = len(connected_component) + 1
+        while needs_another_loop and max_num_remaining_loops:
+            needs_another_loop = False
+            max_num_remaining_loops -= 1
+            for template_name in sorted(connected_component, key=lambda node: new_template_defns[node].name):
+                template_defn = new_template_defns[template_name]
+    
+                inlineable_refs = {other_node
+                                   for other_node in template_dependency_graph.successors(template_name)
+                                   if not template_dependency_graph_transitive_closure.has_edge(other_node, template_name)}
+                if inlineable_refs:
+                    template_defn, needs_another_loop1 = perform_template_inlining(template_defn,
+                                                                                   inlineable_refs,
+                                                                                   new_template_defns,
+                                                                                   identifier_generator)
+                    if needs_another_loop1:
+                        needs_another_loop = True
 
-            inlineable_refs = {other_node
-                               for other_node in template_dependency_graph.successors(template_name)
-                               if not template_dependency_graph_transitive_closure.has_edge(other_node, template_name)
-                               and not new_template_defns[other_node].specializations}
-            if inlineable_refs:
-                template_defn = perform_template_inlining(template_defn,
-                                                          inlineable_refs,
-                                                          new_template_defns,
-                                                          identifier_generator,
-                                                          verbose=verbose)
+                template_defn, needs_another_loop1 = perform_local_optimizations_on_template_defn(template_defn,
+                                                                                                  identifier_generator,
+                                                                                                  inline_template_instantiations_with_multiple_references=False)
+                if needs_another_loop1:
+                    needs_another_loop = True
+                
+                new_template_defns[template_name] = template_defn
 
-            template_defn = perform_local_optimizations_on_template_defn(template_defn,
-                                                                         identifier_generator,
-                                                                         inline_template_instantiations_with_multiple_references=False,
-                                                                         verbose=verbose)
-            new_template_defns[template_name] = template_defn
 
     new_toplevel_content = header.toplevel_content
-    inlineable_refs = {template_name
-                       for template_name in new_template_defns.keys()
-                       if not new_template_defns[template_name].specializations
-                       # We won't inline templates that contain inner templates, because that would lead to
-                       # TemplateDefn toplevel_content elements that may depend on non-TemplateDefn toplevel_content
-                       # elements, so we would be unable to perform the usual optimizations that assume that no
-                       # TemplateDefn elements don't depend on toplevel_content elements.
-                       and not any(isinstance(elem, ir0.TemplateDefn)
-                                   for elem in new_template_defns[template_name].main_definition.body)}
-    if inlineable_refs:
-      elems = perform_template_inlining_on_toplevel_elems(new_toplevel_content,
-                                                          inlineable_refs,
-                                                          new_template_defns,
-                                                          identifier_generator,
-                                                          verbose=verbose)
-      additional_toplevel_template_defns = [elem
-                                            for elem in elems
-                                            if isinstance(elem, ir0.TemplateDefn)]
-      new_toplevel_content = [elem
-                              for elem in elems
-                              if not isinstance(elem, ir0.TemplateDefn)]
-    else:
-      additional_toplevel_template_defns = []
 
-    new_toplevel_content = perform_local_optimizations_on_toplevel_elems(new_toplevel_content,
-                                                                         identifier_generator,
-                                                                         inline_template_instantiations_with_multiple_references=False,
-                                                                         verbose=verbose)
+
+    inlineable_refs = set()
+    for template_name in new_template_defns.keys():
+        template_defn = new_template_defns[template_name]
+        # We won't inline templates that contain inner templates, because that would lead to
+        #  TemplateDefn toplevel_content elements that may depend on non-TemplateDefn toplevel_content
+        #  elements, so we would be unable to perform the usual optimizations that assume that no
+        #  TemplateDefn elements don't depend on toplevel_content elements.
+        if all(not isinstance(elem, ir0.TemplateDefn)
+               for specialization in itertools.chain((template_defn.main_definition,) if template_defn.main_definition else tuple(),
+                                                     template_defn.specializations if template_defn.specializations else tuple())
+               for elem in specialization.body):
+            inlineable_refs.add(template_name)
+
+    needs_another_loop = True
+    max_num_remaining_loops = len(new_toplevel_content) + 1
+    while needs_another_loop and max_num_remaining_loops:
+        needs_another_loop = False
+        max_num_remaining_loops -= 1
+    
+        if inlineable_refs:
+          elems, needs_another_loop1 = perform_template_inlining_on_toplevel_elems(new_toplevel_content,
+                                                                                   inlineable_refs,
+                                                                                   new_template_defns,
+                                                                                   identifier_generator)
+          if needs_another_loop1:
+              needs_another_loop = True
+              
+          additional_toplevel_template_defns = [elem
+                                                for elem in elems
+                                                if isinstance(elem, ir0.TemplateDefn)]
+          new_toplevel_content = [elem
+                                  for elem in elems
+                                  if not isinstance(elem, ir0.TemplateDefn)]
+        else:
+          additional_toplevel_template_defns = []
+    
+        new_toplevel_content, needs_another_loop1 = perform_local_optimizations_on_toplevel_elems(new_toplevel_content,
+                                                                                                  identifier_generator,
+                                                                                                  inline_template_instantiations_with_multiple_references=False)
+        if needs_another_loop1:
+            needs_another_loop = True
 
     return ir0.Header(template_defns=[new_template_defns[template_defn.name]
                                       for template_defn in header.template_defns] + additional_toplevel_template_defns,
@@ -852,8 +1086,8 @@ def optimize_header_second_pass(header: ir0.Header):
                     toplevel_content=header.toplevel_content,
                     public_names=header.public_names)
 
-def optimize_header(header: ir0.Header, identifier_generator: Iterator[str], verbose: bool = False):
+def optimize_header(header: ir0.Header, identifier_generator: Iterator[str]):
     header = recalculate_template_instantiation_can_trigger_static_asserts_info(header)
-    header = optimize_header_first_pass(header, identifier_generator, verbose)
+    header = optimize_header_first_pass(header, identifier_generator)
     header = optimize_header_second_pass(header)
     return header

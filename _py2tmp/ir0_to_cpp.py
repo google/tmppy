@@ -11,9 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import itertools
 from typing import List, Iterator, Tuple, Union, Callable
-from _py2tmp import ir0, optimize_ir0
+
+import networkx as nx
+from _py2tmp import ir0, optimize_ir0, transform_ir0, utils
 
 class Writer:
     def new_id(self) -> str: ...  # pragma: no cover
@@ -112,6 +114,11 @@ def expr_to_cpp(expr: ir0.Expr,
         writer = ExprWriter(writer)
         type_expr_to_cpp(expr, enclosing_function_defn_args, writer)
         return ''.join(writer.strings)
+
+def expr_to_cpp_simple(expr: ir0.Expr):
+    writer = ToplevelWriter(iter([]))
+    expr_str = expr_to_cpp(expr, enclosing_function_defn_args=[], writer=writer)
+    return ''.join(writer.strings) + expr_str
 
 def static_assert_to_cpp(assert_stmt: ir0.StaticAssert,
                          enclosing_function_defn_args: List[ir0.TemplateArgDecl],
@@ -463,7 +470,7 @@ def class_member_access_to_cpp(expr: ir0.ClassMemberAccess,
     member_name = expr.member_name
     if isinstance(expr.type, (ir0.BoolType, ir0.Int64Type)):
         cpp_str_template = '{cpp_fun}::{member_name}'
-    elif isinstance(expr.type, (ir0.TypeType, ir0.TemplateType)):
+    elif isinstance(expr.type, (ir0.TypeType, ir0.TemplateType, ir0.VariadicType)):
         if omit_typename or (isinstance(expr.type, ir0.TemplateType) and not parent_expr_is_template_instantiation):
             maybe_typename = ''
         else:
@@ -511,6 +518,89 @@ def toplevel_elem_to_cpp(elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Type
     else:
         raise NotImplementedError('Unexpected toplevel element: %s' % str(elem.__class__))
 
+def toplevel_elem_to_cpp_simple(elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
+    writer = ToplevelWriter(iter([]))
+    toplevel_elem_to_cpp(elem, writer)
+    return ''.join(writer.strings)
+
+class ComputeTemplateDefnsThatMustComeBeforeTransformation(transform_ir0.Transformation):
+    def __init__(self):
+        super().__init__(generates_transformed_ir=False)
+        self.results = set()
+        self.constant_var_names = set()
+        self.is_current_expr_constant = True
+        self.encountered_template_refs_must_come_before_transformation = False
+
+    def transform_template_body_elem(self, elem: ir0.TemplateBodyElement, writer: transform_ir0.Writer):
+        self.is_current_expr_constant = True
+        super().transform_template_body_elem(elem, writer)
+
+    def transform_typedef(self, typedef: ir0.Typedef, writer: transform_ir0.Writer):
+        super().transform_typedef(typedef, writer)
+        if self.is_current_expr_constant:
+            self.constant_var_names.add(typedef.name)
+
+    def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: Writer):
+        super().transform_constant_def(constant_def, writer)
+        if self.is_current_expr_constant:
+            self.constant_var_names.add(constant_def.name)
+
+    def transform_exprs(self, exprs: List[ir0.Expr], parent_element_type, writer: transform_ir0.Writer):
+        initial_is_current_expr_constant = self.is_current_expr_constant
+        final_is_current_expr_constant = self.is_current_expr_constant
+        for expr in exprs:
+            self.is_current_expr_constant = initial_is_current_expr_constant
+            self.transform_expr(expr, writer)
+            final_is_current_expr_constant &= self.is_current_expr_constant
+
+        self.is_current_expr_constant = final_is_current_expr_constant
+
+    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: transform_ir0.Writer):
+        if type_literal.is_local:
+            if type_literal.cpp_type not in self.constant_var_names:
+                self.is_current_expr_constant = False
+        else:
+            if isinstance(type_literal.type, ir0.TemplateType) and self.encountered_template_refs_must_come_before_transformation:
+                self.results.add(type_literal.cpp_type)
+
+    def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: transform_ir0.Writer):
+        initial_is_current_expr_constant = self.is_current_expr_constant
+        initial_encountered_template_refs_must_come_before_transformation = self.encountered_template_refs_must_come_before_transformation
+
+        self.transform_exprs(template_instantiation.args, ir0.TemplateInstantiation, writer)
+        final_is_current_expr_constant = self.is_current_expr_constant
+        if final_is_current_expr_constant:
+            self.encountered_template_refs_must_come_before_transformation = True
+
+        self.is_current_expr_constant = initial_is_current_expr_constant
+        self.transform_expr(template_instantiation.template_expr, writer)
+        final_is_current_expr_constant &= self.is_current_expr_constant
+
+        self.is_current_expr_constant = final_is_current_expr_constant
+        self.encountered_template_refs_must_come_before_transformation = initial_encountered_template_refs_must_come_before_transformation
+
+    def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
+        initial_encountered_template_refs_must_come_before_transformation = self.encountered_template_refs_must_come_before_transformation
+        self.encountered_template_refs_must_come_before_transformation = False
+        self.transform_expr(class_member_access.expr, writer)
+        self.encountered_template_refs_must_come_before_transformation = initial_encountered_template_refs_must_come_before_transformation
+
+def compute_template_defns_that_must_come_before_specialization(specialization: ir0.TemplateSpecialization):
+    transformation = ComputeTemplateDefnsThatMustComeBeforeTransformation()
+    transformation.transform_template_body_elems(
+        specialization.body,
+        transform_ir0.ToplevelWriter(
+            identifier_generator=iter([]), allow_toplevel_elems=False, allow_template_defns=False))
+    return transformation.results
+
+def compute_template_defns_that_must_come_before(template_defn: ir0.TemplateDefn):
+    specializations = list(template_defn.specializations)
+    if template_defn.main_definition:
+        specializations.append(template_defn.main_definition)
+    return {template_name
+            for specialization in specializations
+            for template_name in compute_template_defns_that_must_come_before_specialization(specialization)}
+
 def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
     writer = ToplevelWriter(identifier_generator)
     writer.write_toplevel_elem('''\
@@ -518,36 +608,77 @@ def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
         #include <type_traits>
         ''')
 
-    template_defn_by_template_name = {elem.name: elem
-                                      for elem in header.template_defns}
+    if header.template_defns:
+        template_defn_by_template_name = {elem.name: elem
+                                          for elem in header.template_defns}
 
-    template_dependency_graph = optimize_ir0.compute_template_dependency_graph(header, template_defn_by_template_name)
-    template_dependency_graph_condensed = optimize_ir0.compute_condensation_in_topological_order(template_dependency_graph)
+        template_dependency_graph = optimize_ir0.compute_template_dependency_graph(header, template_defn_by_template_name)
+        template_dependency_graph_condensed = utils.compute_condensation_in_topological_order(template_dependency_graph)
 
-    for connected_component in reversed(list(template_dependency_graph_condensed)):
-        connected_component = sorted([template_defn_by_template_name[template_name]
-                                      for template_name in connected_component],
-                                     key=lambda template_defn: template_defn.name)
+        for connected_component_names in reversed(list(template_dependency_graph_condensed)):
+            connected_component = sorted([template_defn_by_template_name[template_name]
+                                          for template_name in connected_component_names],
+                                         key=lambda template_defn: template_defn.name)
 
-        if len(connected_component) > 1:
-            # There's a dependency loop with >1 templates, we first need to emit all forward decls.
+            if len(connected_component) > 1:
+                # There's a dependency loop with >1 templates, we first need to emit all forward decls.
+                for template_defn in connected_component:
+                    template_defn_to_cpp_forward_decl(template_defn,
+                                                      enclosing_function_defn_args=[],
+                                                      writer=writer)
+            else:
+                [template_defn] = connected_component
+                if not template_defn.main_definition:
+                    # There's no loop here, but this template has only specializations and no main definition, so we need the
+                    # forward declaration anyway.
+                    template_defn_to_cpp_forward_decl(template_defn,
+                                                      enclosing_function_defn_args=[],
+                                                      writer=writer)
+
+            template_defns_that_must_be_last = set()
             for template_defn in connected_component:
-                template_defn_to_cpp_forward_decl(template_defn,
-                                                  enclosing_function_defn_args=[],
-                                                  writer=writer)
-        else:
-            [template_defn] = connected_component
-            if not template_defn.main_definition:
-                # There's no loop here, but this template has only specializations and no main definition, so we need the
-                # forward declaration anyway.
-                template_defn_to_cpp_forward_decl(template_defn,
-                                                  enclosing_function_defn_args=[],
-                                                  writer=writer)
+                template_order_dependencies = compute_template_defns_that_must_come_before(template_defn)
+                if any(template_name in connected_component_names
+                       for template_name in template_order_dependencies):
+                    # This doesn't only need to be before the ones it immediately references, it really needs to be last
+                    # since these templates instantiate each other in a cycle.
+                    template_defns_that_must_be_last.add(template_defn.name)
 
-        for template_defn in connected_component:
-            template_defn_to_cpp(template_defn,
-                                 enclosing_function_defn_args=[],
-                                 writer=writer)
+            assert len(template_defns_that_must_be_last) <= 1, 'Found multiple template defns that must appear before each other: ' + ', '.join(template_defns_that_must_be_last)
+
+            for template_defn in connected_component:
+                if template_defn.name not in template_defns_that_must_be_last:
+                    template_defn_to_cpp(template_defn,
+                                         enclosing_function_defn_args=[],
+                                         writer=writer)
+
+            for template_defn in connected_component:
+                if template_defn.name in template_defns_that_must_be_last:
+                    specializations = list(template_defn.specializations or tuple())
+                    if template_defn.main_definition:
+                        specializations.append(template_defn.main_definition)
+
+                    last_specialization = None
+                    for specialization in specializations:
+                        if any(template_name in connected_component_names
+                               for template_name in compute_template_defns_that_must_come_before_specialization(specialization)):
+                            assert last_specialization is None, 'Found multiple specializations of ' + template_defn.name + ' that must appear before each other: ' + ', '.join(template_defns_that_must_be_last)
+                            last_specialization = specialization
+                        else:
+                            if template_defn.description:
+                                writer.write_toplevel_elem('// %s\n' % template_defn.description)
+                            template_specialization_to_cpp(specialization,
+                                                           cxx_name=template_defn.name,
+                                                           enclosing_function_defn_args=[],
+                                                           writer=writer)
+
+                    if last_specialization:
+                        if template_defn.description:
+                            writer.write_toplevel_elem('// %s\n' % template_defn.description)
+                        template_specialization_to_cpp(last_specialization,
+                                                       cxx_name=template_defn.name,
+                                                       enclosing_function_defn_args=[],
+                                                       writer=writer)
 
     for elem in header.toplevel_content:
         toplevel_elem_to_cpp(elem, writer)
