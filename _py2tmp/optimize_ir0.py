@@ -884,6 +884,14 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
             if isinstance(rhs, ir0.Literal) and rhs.value == 1:
                 return lhs
 
+        if op == '%':
+            # 16 % 3 => 1
+            if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
+                return ir0.Literal(lhs.value % rhs.value)
+            # x % 1 => 0
+            if isinstance(rhs, ir0.Literal) and rhs.value == 1:
+                return ir0.Literal(0)
+
         return ir0.Int64BinaryOpExpr(lhs, rhs, op)
 
     def transform_comparison_expr(self, comparison: ir0.ComparisonExpr, writer: transform_ir0.Writer) -> ir0.Expr:
