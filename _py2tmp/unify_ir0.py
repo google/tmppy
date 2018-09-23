@@ -13,7 +13,7 @@
 # limitations under the License.
 import itertools
 from enum import Enum
-from typing import List, Tuple, Set, Optional, Iterable, Union, Dict
+from typing import List, Tuple, Set, Optional, Iterable, Union, MutableMapping, Mapping, Dict
 
 from bidict import bidict
 
@@ -22,8 +22,8 @@ import traceback
 
 def _unpack_if_variable(expr: ir0.Expr,
                         var_names: Set[str],
-                        is_variadic: Dict[str, bool],
-                        literal_expr_by_unique_name: Dict[str, ir0.AtomicTypeLiteral]):
+                        is_variadic: MutableMapping[str, bool],
+                        literal_expr_by_unique_name: MutableMapping[str, ir0.AtomicTypeLiteral]):
     variadic = False
     if isinstance(expr, ir0.VariadicTypeExpansion) and isinstance(expr.expr, ir0.AtomicTypeLiteral) and expr.expr.cpp_type in var_names:
         expr = expr.expr
@@ -45,8 +45,8 @@ def _unpack_if_variable(expr: ir0.Expr,
         return expr
 
 def _pack_if_variable(var_or_expr: Union[str, ir0.Expr, List[Union[str, ir0.Expr]]],
-                      is_variadic: Dict[str, bool],
-                      literal_expr_by_unique_name: Dict[str, ir0.AtomicTypeLiteral]) -> Union[ir0.Expr, List[ir0.Expr]]:
+                      is_variadic: Mapping[str, bool],
+                      literal_expr_by_unique_name: Mapping[str, ir0.AtomicTypeLiteral]) -> Union[ir0.Expr, List[ir0.Expr]]:
     assert not isinstance(var_or_expr, list)
     if isinstance(var_or_expr, str):
         if is_variadic[var_or_expr]:
@@ -60,8 +60,8 @@ class _ExprUnificationStrategy(unification.UnificationStrategyForCanonicalizatio
     def __init__(self,
                  var_names: Set[str],
                  pattern_var_names: Set[str],
-                 is_variadic: Dict[str, bool],
-                 literal_expr_by_unique_name: Dict[str, ir0.AtomicTypeLiteral]):
+                 is_variadic: MutableMapping[str, bool],
+                 literal_expr_by_unique_name: MutableMapping[str, ir0.AtomicTypeLiteral]):
         self.var_names = var_names
         self.pattern_var_names = pattern_var_names
         self.is_variadic = is_variadic
@@ -115,7 +115,7 @@ class _ExprUnificationStrategy(unification.UnificationStrategyForCanonicalizatio
             ir0.RvalueReferenceTypeExpr: lambda t: False,
         }[term.__class__](term)
 
-def _replace_var_names_in_expr(expr: Union[ir0.Expr, List[ir0.Expr]], new_name_by_old_name: Dict[str, str]):
+def _replace_var_names_in_expr(expr: Union[ir0.Expr, List[ir0.Expr]], new_name_by_old_name: Mapping[str, str]):
     if isinstance(expr, list):
         return [_replace_var_names_in_expr(elem, new_name_by_old_name)
                 for elem in expr]
@@ -141,7 +141,7 @@ class UnificationResult:
         self.value_by_pattern_variable = pattern_var_expr_equations
 
 def unify_template_instantiation_with_definition(template_instantiation: ir0.TemplateInstantiation,
-                                                 local_var_definitions: Dict[str, ir0.Expr],
+                                                 local_var_definitions: Mapping[str, ir0.Expr],
                                                  template_defn: ir0.TemplateDefn,
                                                  identifier_generator: Iterable[str],
                                                  verbose: bool) -> Optional[Tuple[ir0.TemplateSpecialization,
@@ -172,7 +172,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
 
 
     if not certain_matches and template_defn.main_definition and template_defn.main_definition.body:
-        patterns = [ir0.AtomicTypeLiteral.for_local(var.name, var.expr_type)
+        patterns = [ir0.AtomicTypeLiteral.for_local(var.name, var.expr_type, is_variadic=var.is_variadic)
                     for var in template_defn.main_definition.args]
         result = unify(template_instantiation.args,
                        local_var_definitions,
@@ -227,7 +227,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
     return None
 
 def unify(exprs: List[ir0.Expr],
-          local_var_definitions: Dict[str, ir0.Expr],
+          local_var_definitions: Mapping[str, ir0.Expr],
           patterns: List[ir0.Expr],
           expr_variables: Set[str],
           pattern_variables: Set[str],
@@ -359,7 +359,7 @@ def unify(exprs: List[ir0.Expr],
                     assert rhs_var.cpp_type not in unique_var_name_by_pattern_type_literal_name.inv
 
     # We reverse the var renaming done above
-    result_var_expr_equations = []
+    result_var_expr_equations: List[Tuple[ir0.AtomicTypeLiteral, List[ir0.Expr]]] = []
     for var, exprs in var_expr_equations:
         if isinstance(var, ir0.VariadicTypeExpansion):
             result_var_expr_equations.append((_replace_var_names_in_expr(var, unique_var_name_by_pattern_type_literal_name.inv),

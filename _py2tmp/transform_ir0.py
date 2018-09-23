@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Tuple, Set, Optional, Iterable, Union, Dict
-from _py2tmp import ir0, utils
+from typing import List, Iterable, Union, Dict, Mapping
+
+from _py2tmp import ir0
+
 
 class Writer:
     def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]): ...  # pragma: no cover
@@ -29,10 +31,9 @@ class Writer:
         elif expr.expr_type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
             self.write(ir0.Typedef(name=id, expr=expr))
         else:
-            # TODO: consider handling VARIADIC_TYPE too.
             raise NotImplementedError('Unexpected kind: ' + str(expr.expr_type.kind))
 
-        return ir0.AtomicTypeLiteral.for_local(cpp_type=id, expr_type=expr.expr_type)
+        return ir0.AtomicTypeLiteral.for_local(cpp_type=id, expr_type=expr.expr_type, is_variadic=False)
 
     def get_toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
 
@@ -199,7 +200,7 @@ class Transformation:
         else:
             raise NotImplementedError('Unexpected expr: ' + expr.__class__.__name__)
 
-    def transform_exprs(self, exprs: List[ir0.Expr], parent_element_type, writer: Writer) -> List[ir0.Expr]:
+    def transform_exprs(self, exprs: List[ir0.Expr], original_parent_element: ir0.Expr, writer: Writer) -> List[ir0.Expr]:
         exprs = [self.transform_expr(expr, writer) for expr in exprs]
         if self.generates_transformed_ir:
             return exprs
@@ -229,7 +230,8 @@ class Transformation:
                                          is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
                                          expr_type=type_literal.expr_type,
                                          is_local=type_literal.is_local,
-                                         may_be_alias=type_literal.may_be_alias)
+                                         may_be_alias=type_literal.may_be_alias,
+                                         is_variadic=type_literal.is_variadic)
 
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: Writer) -> ir0.Expr:
         class_type_expr = self.transform_expr(class_member_access.expr, writer)
@@ -249,19 +251,19 @@ class Transformation:
             return ir0.UnaryMinusExpr(expr)
 
     def transform_comparison_expr(self, comparison: ir0.ComparisonExpr, writer: Writer) -> ir0.Expr:
-        exprs = self.transform_exprs([comparison.lhs, comparison.rhs], ir0.ComparisonExpr, writer)
+        exprs = self.transform_exprs([comparison.lhs, comparison.rhs], comparison, writer)
         if self.generates_transformed_ir:
             lhs, rhs = exprs
             return ir0.ComparisonExpr(lhs=lhs, rhs=rhs, op=comparison.op)
 
     def transform_int64_binary_op_expr(self, binary_op: ir0.Int64BinaryOpExpr, writer: Writer) -> ir0.Expr:
-        exprs = self.transform_exprs([binary_op.lhs, binary_op.rhs], ir0.Int64BinaryOpExpr, writer)
+        exprs = self.transform_exprs([binary_op.lhs, binary_op.rhs], binary_op, writer)
         if self.generates_transformed_ir:
             lhs, rhs = exprs
             return ir0.Int64BinaryOpExpr(lhs=lhs, rhs=rhs, op=binary_op.op)
 
     def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: Writer) -> ir0.Expr:
-        result = self.transform_exprs([template_instantiation.template_expr, *template_instantiation.args], ir0.TemplateInstantiation, writer)
+        result = self.transform_exprs([template_instantiation.template_expr, *template_instantiation.args], template_instantiation, writer)
         if self.generates_transformed_ir:
             [template_expr, *args] = result
             return ir0.TemplateInstantiation(template_expr=template_expr,
@@ -294,7 +296,7 @@ class Transformation:
             return ir0.ArrayTypeExpr(expr)
 
     def transform_function_type_expr(self, expr: ir0.FunctionTypeExpr, writer: Writer):
-        result = self.transform_exprs([expr.return_type_expr, *expr.arg_exprs], ir0.FunctionTypeExpr, writer)
+        result = self.transform_exprs([expr.return_type_expr, *expr.arg_exprs], expr, writer)
         if self.generates_transformed_ir:
             [return_type_expr, *arg_exprs] = result
             return ir0.FunctionTypeExpr(return_type_expr=return_type_expr, arg_exprs=arg_exprs)
@@ -305,7 +307,7 @@ class Transformation:
             return ir0.VariadicTypeExpansion(expr)
 
 class NameReplacementTransformation(Transformation):
-    def __init__(self, replacements: Dict[str, str]):
+    def __init__(self, replacements: Mapping[str, str]):
         super().__init__()
         self.replacements = replacements
 
@@ -314,7 +316,8 @@ class NameReplacementTransformation(Transformation):
                                      is_local=type_literal.is_local,
                                      is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
                                      expr_type=type_literal.expr_type,
-                                     may_be_alias=type_literal.may_be_alias)
+                                     may_be_alias=type_literal.may_be_alias,
+                                     is_variadic=type_literal.is_variadic)
 
     def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: Writer):
         writer.write(ir0.ConstantDef(name=self._transform_name(constant_def.name),
@@ -336,7 +339,8 @@ class NameReplacementTransformation(Transformation):
 
     def transform_template_arg_decl(self, arg_decl: ir0.TemplateArgDecl):
         return ir0.TemplateArgDecl(expr_type=arg_decl.expr_type,
-                                   name=self._transform_name(arg_decl.name))
+                                   name=self._transform_name(arg_decl.name),
+                                   is_variadic=arg_decl.is_variadic)
 
     def _transform_name(self, name: str):
         if name in self.replacements:

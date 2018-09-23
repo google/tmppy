@@ -27,7 +27,7 @@ def literal(cpp_type: str):
 
 def template(cpp_type: str, num_args: int):
     return ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type,
-                                                       arg_types=[ir0.TypeType()] * num_args,
+                                                       args=[ir0.TemplateArgDecl(ir0.TypeType(), name='', is_variadic=False)] * num_args,
                                                        is_metafunction_that_may_return_error=False,
                                                        may_be_alias=False)
 
@@ -63,7 +63,7 @@ def type_member_access(class_expr: ir0.Expr, member_name: str):
 def template_member_access(class_expr: ir0.Expr, member_name: str, num_args: int):
     return ir0.ClassMemberAccess(class_type_expr=class_expr,
                                  member_name=member_name,
-                                 member_type=ir0.TemplateType(argtypes=[ir0.TypeType()] * num_args))
+                                 member_type=ir0.TemplateType(args=[ir0.TemplateArgDecl(ir0.TypeType(), name='', is_variadic=False)] * num_args))
 
 def int_member_access(class_expr: ir0.Expr, member_name: str):
     return ir0.ClassMemberAccess(class_type_expr=class_expr,

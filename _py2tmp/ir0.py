@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import List, Set, Optional, Iterable, Union, Dict, Hashable, Tuple
+from typing import Sequence, Set, Optional, Iterable, Union
 from enum import Enum
 import re
 from _py2tmp import utils
@@ -22,7 +22,6 @@ class ExprKind(Enum):
     INT64 = 2
     TYPE = 3
     TEMPLATE = 4
-    VARIADIC_TYPE = 5
 
 class TemplateBodyElementOrExpr:
     def get_referenced_identifiers(self) -> Iterable[str]:
@@ -62,13 +61,10 @@ class TypeType(ExprType):
         super().__init__(kind=ExprKind.TYPE)
 
 class TemplateType(ExprType):
-    def __init__(self, argtypes: List[ExprType]):
+    def __init__(self, args: Sequence['TemplateArgDecl']):
         super().__init__(kind=ExprKind.TEMPLATE)
-        self.argtypes = tuple(argtypes)
-
-class VariadicType(ExprType):
-    def __init__(self):
-        super().__init__(kind=ExprKind.VARIADIC_TYPE)
+        self.args = tuple(TemplateArgDecl(arg.expr_type, name='', is_variadic=arg.is_variadic)
+                          for arg in args)
 
 class Expr(utils.ValueType, TemplateBodyElementOrExpr):
     def __init__(self, expr_type: ExprType):
@@ -92,7 +88,7 @@ class Expr(utils.ValueType, TemplateBodyElementOrExpr):
 
     def is_same_expr_excluding_subexpressions(self, other: 'Expr') -> bool: ...
 
-    def copy_with_subexpressions(self, new_subexpressions: List['Expr']): ...
+    def copy_with_subexpressions(self, new_subexpressions: Sequence['Expr']): ...
 
 class TemplateBodyElement(TemplateBodyElementOrExpr):
     pass
@@ -133,18 +129,19 @@ class Typedef(TemplateBodyElement):
     def get_direct_subexpressions(self):
         yield self.expr
 
-class TemplateArgDecl:
-    def __init__(self, expr_type: ExprType, name: str = ''):
+class TemplateArgDecl(utils.ValueType):
+    def __init__(self, expr_type: ExprType, name: str, is_variadic: bool):
         self.expr_type = expr_type
         self.name = name
+        self.is_variadic = is_variadic
 
 _non_identifier_char_pattern = re.compile('[^a-zA-Z0-9_]+')
 
 class TemplateSpecialization:
     def __init__(self,
-                 args: List[TemplateArgDecl],
-                 patterns: 'Optional[List[Expr]]',
-                 body: List[TemplateBodyElement],
+                 args: Sequence[TemplateArgDecl],
+                 patterns: 'Optional[Sequence[Expr]]',
+                 body: Sequence[TemplateBodyElement],
                  is_metafunction: bool):
         self.args = tuple(args)
         self.is_metafunction = is_metafunction
@@ -164,12 +161,12 @@ class TemplateSpecialization:
 
 class TemplateDefn(TemplateBodyElement):
     def __init__(self,
-                 args: List[TemplateArgDecl],
+                 args: Sequence[TemplateArgDecl],
                  main_definition: Optional[TemplateSpecialization],
-                 specializations: List[TemplateSpecialization],
+                 specializations: Sequence[TemplateSpecialization],
                  name: str,
                  description: str,
-                 result_element_names: List[str]):
+                 result_element_names: Sequence[str]):
         assert main_definition or specializations
         assert not main_definition or main_definition.patterns is None
         assert '\n' not in description
@@ -215,7 +212,7 @@ class Literal(Expr):
     def get_direct_subexpressions(self):
         return []
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         assert not new_subexpressions
         return self
 
@@ -225,8 +222,11 @@ class AtomicTypeLiteral(Expr):
                  is_local: bool,
                  is_metafunction_that_may_return_error: bool,
                  expr_type: ExprType,
-                 may_be_alias: bool):
+                 may_be_alias: bool,
+                 is_variadic: bool):
         assert not (is_metafunction_that_may_return_error and not isinstance(expr_type, TemplateType))
+        if is_variadic:
+            assert expr_type.kind in (ExprKind.BOOL, ExprKind.INT64, ExprKind.TYPE)
         super().__init__(expr_type=expr_type)
         self.cpp_type = cpp_type
         self.is_local = is_local
@@ -234,6 +234,7 @@ class AtomicTypeLiteral(Expr):
         self.is_metafunction_that_may_return_error = is_metafunction_that_may_return_error
         # Only relevant for non-local literals.
         self.may_be_alias = may_be_alias
+        self.is_variadic = is_variadic
 
     def get_direct_free_vars(self):
         if self.is_local:
@@ -247,18 +248,20 @@ class AtomicTypeLiteral(Expr):
     def get_direct_subexpressions(self):
         return []
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         assert not new_subexpressions
         return self
 
     @staticmethod
     def for_local(cpp_type: str,
-                  expr_type: ExprType):
+                  expr_type: ExprType,
+                  is_variadic: bool):
         return AtomicTypeLiteral(cpp_type=cpp_type,
                                  is_local=True,
                                  expr_type=expr_type,
                                  is_metafunction_that_may_return_error=(expr_type.kind == ExprKind.TEMPLATE),
-                                 may_be_alias=True)
+                                 may_be_alias=True,
+                                 is_variadic=is_variadic)
 
     @staticmethod
     def for_nonlocal(cpp_type: str,
@@ -269,7 +272,8 @@ class AtomicTypeLiteral(Expr):
                                  is_local=False,
                                  expr_type=expr_type,
                                  is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
-                                 may_be_alias=may_be_alias)
+                                 may_be_alias=may_be_alias,
+                                 is_variadic=False)
 
     @staticmethod
     def for_nonlocal_type(cpp_type: str, may_be_alias: bool):
@@ -280,11 +284,11 @@ class AtomicTypeLiteral(Expr):
 
     @staticmethod
     def for_nonlocal_template(cpp_type: str,
-                              arg_types: List[ExprType],
+                              args: Sequence[TemplateArgDecl],
                               is_metafunction_that_may_return_error: bool,
                               may_be_alias: bool):
         return AtomicTypeLiteral.for_nonlocal(cpp_type=cpp_type,
-                                              expr_type=TemplateType(arg_types),
+                                              expr_type=TemplateType(args),
                                               is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
                                               may_be_alias=may_be_alias)
 
@@ -292,7 +296,7 @@ class AtomicTypeLiteral(Expr):
     def from_nonlocal_template_defn(template_defn: TemplateDefn,
                                     is_metafunction_that_may_return_error: bool):
         return AtomicTypeLiteral.for_nonlocal_template(cpp_type=template_defn.name,
-                                                       arg_types=[arg.expr_type for arg in template_defn.args],
+                                                       args=template_defn.args,
                                                        is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
                                                        may_be_alias=False)
 
@@ -308,7 +312,7 @@ class PointerTypeExpr(Expr):
     def get_direct_subexpressions(self):
         yield self.type_expr
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return PointerTypeExpr(new_type_expr)
 
@@ -324,7 +328,7 @@ class ReferenceTypeExpr(Expr):
     def get_direct_subexpressions(self):
         yield self.type_expr
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return ReferenceTypeExpr(new_type_expr)
 
@@ -340,7 +344,7 @@ class RvalueReferenceTypeExpr(Expr):
     def get_direct_subexpressions(self):
         yield self.type_expr
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return RvalueReferenceTypeExpr(new_type_expr)
 
@@ -356,7 +360,7 @@ class ConstTypeExpr(Expr):
     def get_direct_subexpressions(self):
         yield self.type_expr
     
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return ConstTypeExpr(new_type_expr)
 
@@ -372,12 +376,12 @@ class ArrayTypeExpr(Expr):
     def get_direct_subexpressions(self):
         yield self.type_expr
     
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return ArrayTypeExpr(new_type_expr)
 
 class FunctionTypeExpr(Expr):
-    def __init__(self, return_type_expr: Expr, arg_exprs: List[Expr]):
+    def __init__(self, return_type_expr: Expr, arg_exprs: Sequence[Expr]):
         assert return_type_expr.expr_type == TypeType(), return_type_expr.expr_type.__class__.__name__
 
         super().__init__(expr_type=TypeType())
@@ -392,7 +396,7 @@ class FunctionTypeExpr(Expr):
         for expr in self.arg_exprs:
             yield expr
 
-    def copy_with_subexpressions(self, new_subexpressions: List['Expr']):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence['Expr']):
         [new_return_type_expr, *new_arg_exprs] = new_subexpressions
         return FunctionTypeExpr(new_return_type_expr, new_arg_exprs)
 
@@ -429,7 +433,7 @@ class ComparisonExpr(BinaryExpr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ComparisonExpr) and self.op == other.op
 
-    def copy_with_subexpressions(self, new_subexpressions: List['Expr']):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence['Expr']):
         [lhs, rhs] = new_subexpressions
         return ComparisonExpr(lhs, rhs, self.op)
 
@@ -444,26 +448,26 @@ class Int64BinaryOpExpr(BinaryExpr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, Int64BinaryOpExpr) and self.op == other.op
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [lhs, rhs] = new_subexpressions
         return Int64BinaryOpExpr(lhs, rhs, self.op)
 
 class TemplateInstantiation(Expr):
     def __init__(self,
                  template_expr: Expr,
-                 args: List[Expr],
+                 args: Sequence[Expr],
                  instantiation_might_trigger_static_asserts: bool):
         assert isinstance(template_expr.expr_type, TemplateType), str(template_expr.expr_type)
 
-        if any(expr_type.kind == ExprKind.VARIADIC_TYPE
-               for types in (template_expr.expr_type.argtypes, (arg.expr_type for arg in args))
-               for expr_type in types):
+        if any(arg.is_variadic
+               for arg in template_expr.expr_type.args):
             # In this case it's fine if the two lists "don't match up"
             pass
         else:
-            assert len(template_expr.expr_type.argtypes) == len(args), 'template_expr.expr_type.argtypes: %s, args: %s' % (template_expr.expr_type.argtypes, args)
-            for arg_type, arg_expr in zip(template_expr.expr_type.argtypes, args):
-                assert arg_expr.expr_type == arg_type, '%s vs %s' % (str(arg_expr.expr_type), str(arg_type))
+            assert len(template_expr.expr_type.args) == len(args), 'template_expr: %s, template_expr.type.argtypes:\n%s, args:\n%s' % (
+                str(template_expr), template_expr.expr_type.args, args)
+            for arg_decl, arg_expr in zip(template_expr.expr_type.args, args):
+                assert arg_decl.expr_type == arg_expr.expr_type, '\n%s vs:\n%s' % (str(arg_decl.expr_type), str(arg_expr.expr_type))
 
         super().__init__(expr_type=TypeType())
         self.template_expr = template_expr
@@ -478,7 +482,7 @@ class TemplateInstantiation(Expr):
         for expr in self.args:
             yield expr
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [template_expr, *args] = new_subexpressions
         return TemplateInstantiation(template_expr, args, self.instantiation_might_trigger_static_asserts)
 
@@ -490,7 +494,7 @@ class ClassMemberAccess(UnaryExpr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ClassMemberAccess) and self.member_name == other.member_name
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [expr] = new_subexpressions
         return ClassMemberAccess(class_type_expr=expr, member_name=self.member_name, member_type=self.expr_type)
 
@@ -501,7 +505,7 @@ class NotExpr(UnaryExpr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, NotExpr)
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [expr] = new_subexpressions
         return NotExpr(expr)
 
@@ -512,26 +516,27 @@ class UnaryMinusExpr(UnaryExpr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, UnaryMinusExpr)
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [expr] = new_subexpressions
         return UnaryMinusExpr(expr)
 
 class VariadicTypeExpansion(UnaryExpr):
     def __init__(self, expr: Expr):
-        assert expr.expr_type == VariadicType()
+        assert any(var.is_variadic
+                   for var in expr.get_free_vars())
         super().__init__(expr, result_type=TypeType())
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, VariadicTypeExpansion)
 
-    def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [expr] = new_subexpressions
         return VariadicTypeExpansion(expr)
 
 class Header:
     def __init__(self,
-                 template_defns: List[TemplateDefn],
-                 toplevel_content: List[Union[StaticAssert, ConstantDef, Typedef]],
+                 template_defns: Sequence[TemplateDefn],
+                 toplevel_content: Sequence[Union[StaticAssert, ConstantDef, Typedef]],
                  public_names: Set[str]):
         self.template_defns = template_defns
         self.toplevel_content = tuple(toplevel_content)

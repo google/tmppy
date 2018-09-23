@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Optional, Union, Dict, Tuple, Set
+from typing import Iterable, Optional, Union, Tuple, Set, Sequence
 from contextlib import contextmanager
 
 import itertools
@@ -69,7 +69,7 @@ class ErrorOrVoidType(ExprType):
         return 'ErrorOrVoid'
 
 class FunctionType(ExprType):
-    def __init__(self, argtypes: List[ExprType], returns: ExprType):
+    def __init__(self, argtypes: Sequence[ExprType], returns: ExprType):
         self.argtypes = tuple(argtypes)
         self.returns = returns
 
@@ -85,7 +85,7 @@ class ParameterPackType(ExprType):
         self.element_type = element_type
 
     def __str__(self):
-        return 'List[%s]' % (
+        return 'Sequence[%s]' % (
             str(self.element_type))
 
 class CustomTypeArgDecl(utils.ValueType):
@@ -97,9 +97,11 @@ class CustomTypeArgDecl(utils.ValueType):
         return '%s: %s' % (self.name, str(self.expr_type))
 
 class CustomType(ExprType):
-    def __init__(self, name: str, arg_types: List[CustomTypeArgDecl]):
+    def __init__(self, name: str, arg_types: Sequence[CustomTypeArgDecl]):
         self.name = name
         self.arg_types = tuple(arg_types)
+        for arg in arg_types:
+            assert not isinstance(arg, ParameterPackType)
 
     def __str__(self):
         return self.name
@@ -155,9 +157,9 @@ class VarReference(Expr):
 
 class MatchCase:
     def __init__(self,
-                 type_patterns: List[Expr],
-                 matched_var_names: List[str],
-                 matched_variadic_var_names: List[str],
+                 type_patterns: Sequence[Expr],
+                 matched_var_names: Sequence[str],
+                 matched_variadic_var_names: Sequence[str],
                  expr: 'FunctionCall'):
         self.type_patterns = tuple(type_patterns)
         self.matched_var_names = tuple(matched_var_names)
@@ -184,7 +186,7 @@ class MatchCase:
                 writer.writeln(',')
 
 class MatchExpr(Expr):
-    def __init__(self, matched_vars: List[VarReference], match_cases: List[MatchCase]):
+    def __init__(self, matched_vars: Sequence[VarReference], match_cases: Sequence[MatchCase]):
         assert matched_vars
         assert match_cases
         for match_case in match_cases:
@@ -254,81 +256,81 @@ class PointerTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+        self.expr_type_expr = type_expr
 
     def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
+        for var in self.expr_type_expr.get_free_variables():
             yield var
 
     def __str__(self):
-        return 'Type.pointer(%s)' % str(self.type_expr)
+        return 'Type.pointer(%s)' % str(self.expr_type_expr)
 
     def describe_other_fields(self):
-        return self.type_expr.describe_other_fields()
+        return self.expr_type_expr.describe_other_fields()
 
 class ReferenceTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+        self.expr_type_expr = type_expr
 
     def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
+        for var in self.expr_type_expr.get_free_variables():
             yield var
 
     def __str__(self):
-        return 'Type.reference(%s)' % str(self.type_expr)
+        return 'Type.reference(%s)' % str(self.expr_type_expr)
 
     def describe_other_fields(self):
-        return self.type_expr.describe_other_fields()
+        return self.expr_type_expr.describe_other_fields()
 
 class RvalueReferenceTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+        self.expr_type_expr = type_expr
 
     def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
+        for var in self.expr_type_expr.get_free_variables():
             yield var
 
     def __str__(self):
-        return 'Type.rvalue_reference(%s)' % str(self.type_expr)
+        return 'Type.rvalue_reference(%s)' % str(self.expr_type_expr)
 
     def describe_other_fields(self):
-        return self.type_expr.describe_other_fields()
+        return self.expr_type_expr.describe_other_fields()
 
 class ConstTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+        self.expr_type_expr = type_expr
 
     def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
+        for var in self.expr_type_expr.get_free_variables():
             yield var
 
     def __str__(self):
-        return 'Type.const(%s)' % str(self.type_expr)
+        return 'Type.const(%s)' % str(self.expr_type_expr)
 
     def describe_other_fields(self):
-        return self.type_expr.describe_other_fields()
+        return self.expr_type_expr.describe_other_fields()
 
 class ArrayTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+        self.expr_type_expr = type_expr
 
     def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
+        for var in self.expr_type_expr.get_free_variables():
             yield var
 
     def __str__(self):
-        return 'Type.array(%s)' % str(self.type_expr)
+        return 'Type.array(%s)' % str(self.expr_type_expr)
 
     def describe_other_fields(self):
-        return self.type_expr.describe_other_fields()
+        return self.expr_type_expr.describe_other_fields()
 
 class FunctionTypeExpr(Expr):
     def __init__(self, return_type_expr: Expr, arg_list_expr: Expr):
@@ -355,7 +357,7 @@ class FunctionTypeExpr(Expr):
 class TemplateInstantiation(Expr):
     def __init__(self,
                  template_name: str,
-                 arg_exprs: List[Expr],
+                 arg_exprs: Sequence[Expr],
                  instantiation_might_trigger_static_asserts: bool):
         super().__init__(expr_type=TypeType())
         self.template_name = template_name
@@ -448,7 +450,7 @@ class TemplateMemberAccess(Expr):
         return self.class_type_expr.describe_other_fields()
 
 class FunctionCall(Expr):
-    def __init__(self, fun: VarReference, args: List[VarReference]):
+    def __init__(self, fun: VarReference, args: Sequence[VarReference]):
         assert isinstance(fun.expr_type, FunctionType)
         assert len(fun.expr_type.argtypes) == len(args)
         assert args
@@ -777,7 +779,7 @@ class Assignment(Stmt):
 
 class UnpackingAssignment(Stmt):
     def __init__(self,
-                 lhs_list: List[VarReference],
+                 lhs_list: Sequence[VarReference],
                  rhs: VarReference,
                  error_message: str):
         assert isinstance(rhs.expr_type, TypeType)
@@ -829,7 +831,7 @@ class ReturnStmt(Stmt):
             writer.writeln('')
 
 class IfStmt(Stmt):
-    def __init__(self, cond: VarReference, if_stmts: List[Stmt], else_stmts: List[Stmt]):
+    def __init__(self, cond: VarReference, if_stmts: Sequence[Stmt], else_stmts: Sequence[Stmt]):
         assert cond.expr_type == BoolType()
         self.cond = cond
         self.if_stmts = tuple(if_stmts)
@@ -863,8 +865,8 @@ class FunctionDefn:
     def __init__(self,
                  name: str,
                  description: str,
-                 args: List[FunctionArgDecl],
-                 body: List[Stmt],
+                 args: Sequence[FunctionArgDecl],
+                 body: Sequence[Stmt],
                  return_type: ExprType):
         assert body
         self.name = name
@@ -887,7 +889,7 @@ class FunctionDefn:
         writer.writeln('')
 
 class CheckIfErrorDefn:
-    def __init__(self, error_types_and_messages: List[Tuple[CustomType, str]]):
+    def __init__(self, error_types_and_messages: Sequence[Tuple[CustomType, str]]):
         self.error_types_and_messages = tuple(error_types_and_messages)
 
     def write(self, writer: Writer, verbose: bool):
@@ -920,7 +922,7 @@ class CheckIfErrorStmt(Stmt):
 
 class Module:
     def __init__(self,
-                 body: List[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]],
+                 body: Sequence[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]],
                  public_names: Set[str]):
         self.body = tuple(body)
         self.public_names = public_names
@@ -931,7 +933,7 @@ class Module:
             elem.write(writer, verbose=False)
         return ''.join(writer.strings)
 
-def get_free_variables_in_stmts(stmts: List[Stmt]):
+def get_free_variables_in_stmts(stmts: Sequence[Stmt]):
     local_var_names = set()
     for stmt in stmts:
         for var in stmt.get_free_variables():
@@ -942,7 +944,7 @@ def get_free_variables_in_stmts(stmts: List[Stmt]):
             if stmt.lhs2:
                 local_var_names.add(stmt.lhs2.name)
 
-def get_unique_free_variables_in_stmts(stmts: List[Stmt]) -> List[VarReference]:
+def get_unique_free_variables_in_stmts(stmts: Sequence[Stmt]) -> Sequence[VarReference]:
     var_by_name = dict()
     for var in get_free_variables_in_stmts(stmts):
         if var.name not in var_by_name:
