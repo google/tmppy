@@ -52,7 +52,7 @@ class ApplyFunctionCanThrowInfo(transform_ir3.Transformation):
         is_function_that_may_throw = var.is_function_that_may_throw
         if is_function_that_may_throw and var.is_global_function and not self.function_can_throw[var.name]:
           is_function_that_may_throw = False
-        return ir3.VarReference(type=var.type,
+        return ir3.VarReference(expr_type=var.expr_type,
                                 name=var.name,
                                 is_global_function=var.is_global_function,
                                 is_function_that_may_throw=is_function_that_may_throw)

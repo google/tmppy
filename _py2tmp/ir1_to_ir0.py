@@ -143,7 +143,7 @@ class TemplateBodyWriter(Writer):
                                    error_expr: Optional[ir0.Expr]):
         assert self.parent_return_type
         if error_expr:
-            assert isinstance(error_expr.type, ir0.TypeType)
+            assert isinstance(error_expr.expr_type, ir0.TypeType)
 
         if self.result_body_elements_written:
             # If there are multiple "return statements" in a single specialization only the first one counts.
@@ -173,26 +173,26 @@ class TemplateBodyWriter(Writer):
     def get_is_instance_template_name_for_error(self, error_name: str):
         return self.writer.get_is_instance_template_name_for_error(error_name)
 
-def type_to_ir0(type: ir1.ExprType):
-    if isinstance(type, ir1.BoolType):
+def type_to_ir0(expr_type: ir1.ExprType):
+    if isinstance(expr_type, ir1.BoolType):
         return ir0.BoolType()
-    elif isinstance(type, ir1.IntType):
+    elif isinstance(expr_type, ir1.IntType):
         return ir0.Int64Type()
-    elif isinstance(type, ir1.TypeType):
+    elif isinstance(expr_type, ir1.TypeType):
         return ir0.TypeType()
-    elif isinstance(type, ir1.CustomType):
+    elif isinstance(expr_type, ir1.CustomType):
         return ir0.TypeType()
-    elif isinstance(type, ir1.ErrorOrVoidType):
+    elif isinstance(expr_type, ir1.ErrorOrVoidType):
         return ir0.TypeType()
-    elif isinstance(type, ir1.FunctionType):
-        return function_type_to_ir0(type)
-    elif isinstance(type, ir1.BottomType):
+    elif isinstance(expr_type, ir1.FunctionType):
+        return function_type_to_ir0(expr_type)
+    elif isinstance(expr_type, ir1.BottomType):
         return ir0.TypeType()
-    elif isinstance(type, ir1.ParameterPackType):
-        assert type.element_type == ir1.TypeType()
+    elif isinstance(expr_type, ir1.ParameterPackType):
+        assert expr_type.element_type == ir1.TypeType()
         return ir0.VariadicType()
     else:
-        raise NotImplementedError('Unexpected type: %s' % str(type.__class__))
+        raise NotImplementedError('Unexpected type: %s' % str(expr_type.__class__))
 
 def function_type_to_ir0(fun_type: ir1.FunctionType):
     return ir0.TemplateType(argtypes=[type_to_ir0(arg)
@@ -262,12 +262,12 @@ def expr_to_ir0(expr: ir1.Expr, writer: Writer) -> Tuple[Optional[ir0.Expr], Opt
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
 def function_arg_decl_to_ir0(decl: ir1.FunctionArgDecl):
-    return ir0.TemplateArgDecl(type=type_to_ir0(decl.type),
+    return ir0.TemplateArgDecl(expr_type=type_to_ir0(decl.expr_type),
                                name=decl.name)
 
 def var_reference_to_ir0(var: ir1.VarReference):
     if var.is_global_function:
-        ir0_type = type_to_ir0(var.type)
+        ir0_type = type_to_ir0(var.expr_type)
         assert isinstance(ir0_type, ir0.TemplateType)
         return ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=var.name,
                                                            arg_types=ir0_type.argtypes,
@@ -275,13 +275,13 @@ def var_reference_to_ir0(var: ir1.VarReference):
                                                            may_be_alias=False)
     else:
         return ir0.AtomicTypeLiteral.for_local(cpp_type=var.name,
-                                               type=type_to_ir0(var.type))
+                                               expr_type=type_to_ir0(var.expr_type))
 
 def _create_metafunction_call(template_expr: ir0.Expr,
                               args: List[ir0.Expr],
                               member_type: ir0.ExprType,
                               writer: Writer):
-    assert isinstance(template_expr.type, ir0.TemplateType)
+    assert isinstance(template_expr.expr_type, ir0.TemplateType)
     if isinstance(member_type, (ir0.BoolType, ir0.Int64Type)):
         member_name = 'value'
     else:
@@ -352,20 +352,20 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
 
     if forwarded_args or all(match_case.matched_var_names
                              for match_case in match_expr.match_cases):
-        forwarded_args_decls = [ir0.TemplateArgDecl(type=type_to_ir0(var_ref.type), name=var_ref.name)
+        forwarded_args_decls = [ir0.TemplateArgDecl(expr_type=type_to_ir0(var_ref.expr_type), name=var_ref.name)
                                 for var_ref in forwarded_args]
         forwarded_args_exprs = [ir0.AtomicTypeLiteral.for_local(cpp_type=var_ref.name,
-                                                                type=type_to_ir0(var_ref.type))
+                                                                expr_type=type_to_ir0(var_ref.expr_type))
                                 for var_ref in forwarded_args]
         forwarded_args_patterns = forwarded_args_exprs
     else:
         # We must add a dummy parameter so that the specialization isn't a full specialization.
         dummy_param_name = writer.new_id()
-        forwarded_args_decls = [ir0.TemplateArgDecl(type=ir0.TypeType(),
+        forwarded_args_decls = [ir0.TemplateArgDecl(expr_type=ir0.TypeType(),
                                                     name=dummy_param_name)]
         forwarded_args_exprs = [GlobalLiterals.VOID]
         forwarded_args_patterns = [ir0.AtomicTypeLiteral.for_local(cpp_type=dummy_param_name,
-                                                                   type=ir0.TypeType())]
+                                                                   expr_type=ir0.TypeType())]
 
     matched_vars = []
     for var in match_expr.matched_vars:
@@ -380,10 +380,10 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
 
         specialization_arg_decls = (
                 forwarded_args_decls
-                + [ir0.TemplateArgDecl(type=ir0.TypeType(), name=arg_name)
+                + [ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name=arg_name)
                    for arg_name in match_case.matched_var_names]
                 # So we rename the template params here.
-                + [ir0.TemplateArgDecl(type=ir0.VariadicType(), name=variadic_var_name_by_list_var_name[arg_name])
+                + [ir0.TemplateArgDecl(expr_type=ir0.VariadicType(), name=variadic_var_name_by_list_var_name[arg_name])
                    for arg_name in match_case.matched_variadic_var_names])
 
         # And we rename the pattern expressions here to match.
@@ -410,13 +410,13 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
 
         match_case_writer = TemplateBodyWriter(writer,
                                                parent_arbitrary_arg=writer.parent_arbitrary_arg,
-                                               parent_return_type=type_to_ir0(match_case.expr.type))
+                                               parent_return_type=type_to_ir0(match_case.expr.expr_type))
         for list_var_name, variadic_var_name in variadic_var_name_by_list_var_name.items():
             match_case_writer.write(ir0.Typedef(name=list_var_name,
                                                 expr=ir0.TemplateInstantiation(template_expr=GlobalLiterals.LIST,
                                                                                instantiation_might_trigger_static_asserts=False,
                                                                                args=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type=variadic_var_name,
-                                                                                                                                               type=ir0.VariadicType()))])))
+                                                                                                                                               expr_type=ir0.VariadicType()))])))
 
         expr_ir0, error_expr = expr_to_ir0(match_case.expr, match_case_writer)
         match_case_writer.write_result_body_elements(result_expr=expr_ir0,
@@ -435,7 +435,7 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
     if main_definition:
         args_decls = main_definition.args
     else:
-        args_decls = forwarded_args_decls + [ir0.TemplateArgDecl(type=ir0.TypeType(), name='')
+        args_decls = forwarded_args_decls + [ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name='')
                                              for _ in match_expr.matched_vars]
 
     args_exprs = forwarded_args_exprs + matched_vars
@@ -453,7 +453,7 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
 
     return _create_metafunction_call(template_expr=helper_function_reference,
                                      args=args_exprs,
-                                     member_type=type_to_ir0(match_expr.type),
+                                     member_type=type_to_ir0(match_expr.expr_type),
                                      writer=writer)
 
 def bool_literal_to_ir0(literal: ir1.BoolLiteral):
@@ -463,8 +463,8 @@ def int_literal_to_ir0(literal: ir1.IntLiteral):
     return ir0.Literal(value=literal.value), None
 
 def atomic_type_literal_to_ir0(literal: ir1.AtomicTypeLiteral):
-    type = type_to_ir0(literal.type)
-    kind = type.kind
+    expr_type = type_to_ir0(literal.expr_type)
+    kind = expr_type.kind
 
     may_be_alias = True
     for field_value in GlobalLiterals.__dict__.values():
@@ -472,7 +472,7 @@ def atomic_type_literal_to_ir0(literal: ir1.AtomicTypeLiteral):
             may_be_alias = False
 
     expr = ir0.AtomicTypeLiteral.for_nonlocal(cpp_type=literal.cpp_type,
-                                              type=type,
+                                              expr_type=expr_type,
                                               is_metafunction_that_may_return_error=(kind == ir0.ExprKind.TEMPLATE),
                                               may_be_alias=may_be_alias)
     return expr, None
@@ -532,16 +532,16 @@ def function_type_expr_to_ir0(expr: ir1.FunctionTypeExpr, writer: Writer):
     x_var_name = writer.new_id()
     args_var_name = writer.new_id()
 
-    function_type_expr = ir0.FunctionTypeExpr(return_type_expr=ir0.AtomicTypeLiteral.for_local(x_var_name, type=ir0.TypeType()),
+    function_type_expr = ir0.FunctionTypeExpr(return_type_expr=ir0.AtomicTypeLiteral.for_local(x_var_name, expr_type=ir0.TypeType()),
                                               arg_exprs=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(args_var_name,
                                                                                                                    ir0.VariadicType()))])
     helper_specialization = ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(ir0.TypeType(), name=x_var_name),
                                                              ir0.TemplateArgDecl(ir0.VariadicType(), name=args_var_name)],
                                                        patterns=[ir0.AtomicTypeLiteral.for_local(cpp_type=x_var_name,
-                                                                                                 type=ir0.TypeType()),
+                                                                                                 expr_type=ir0.TypeType()),
                                                                  ir0.TemplateInstantiation(template_expr=GlobalLiterals.LIST,
                                                                                            args=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type=args_var_name,
-                                                                                                                                                           type=ir0.VariadicType()))],
+                                                                                                                                                           expr_type=ir0.VariadicType()))],
                                                                                            instantiation_might_trigger_static_asserts=False)],
                                                        body=[ir0.Typedef(name='type',
                                                                          expr=function_type_expr)],
@@ -573,16 +573,16 @@ def function_call_to_ir0(call_expr: ir1.FunctionCall, writer: Writer):
     args = [var_reference_to_ir0(arg)
             for arg in call_expr.args]
 
-    assert isinstance(call_expr.fun.type, ir1.FunctionType)
+    assert isinstance(call_expr.fun.expr_type, ir1.FunctionType)
     return _create_metafunction_call(template_expr=fun,
                                      args=args,
-                                     member_type=type_to_ir0(call_expr.fun.type.returns),
+                                     member_type=type_to_ir0(call_expr.fun.expr_type.returns),
                                      writer=writer)
 
 def equality_comparison_to_ir0(comparison_expr: ir1.EqualityComparison, writer: Writer):
     lhs = var_reference_to_ir0(comparison_expr.lhs)
     rhs = var_reference_to_ir0(comparison_expr.rhs)
-    if isinstance(lhs.type, ir0.TypeType):
+    if isinstance(lhs.expr_type, ir0.TypeType):
         comparison_expr, comparison_error_expr = _create_metafunction_call(template_expr=GlobalLiterals.STD_IS_SAME,
                                                                            args=[lhs, rhs],
                                                                            member_type=ir0.BoolType(),
@@ -594,10 +594,10 @@ def equality_comparison_to_ir0(comparison_expr: ir1.EqualityComparison, writer: 
 
 def attribute_access_expr_to_ir0(attribute_access_expr: ir1.AttributeAccessExpr):
     class_expr = var_reference_to_ir0(attribute_access_expr.var)
-    assert isinstance(class_expr.type, ir0.TypeType)
+    assert isinstance(class_expr.expr_type, ir0.TypeType)
     expr = ir0.ClassMemberAccess(class_type_expr=class_expr,
                                  member_name=attribute_access_expr.attribute_name,
-                                 member_type=type_to_ir0(attribute_access_expr.type))
+                                 member_type=type_to_ir0(attribute_access_expr.expr_type))
     return expr, None
 
 def not_expr_to_ir0(not_expr: ir1.NotExpr):
@@ -634,8 +634,8 @@ def is_instance_expr_to_ir0(expr: ir1.IsInstanceExpr, writer: Writer):
                                      writer=writer)
 
 def safe_unchecked_cast_expr_to_ir0(expr: ir1.SafeUncheckedCast):
-    assert type_to_ir0(expr.var.type).kind == type_to_ir0(expr.type).kind
-    return var_reference_to_ir0(ir1.VarReference(type=expr.type,
+    assert type_to_ir0(expr.var.expr_type).kind == type_to_ir0(expr.expr_type).kind
+    return var_reference_to_ir0(ir1.VarReference(expr_type=expr.expr_type,
                                                  name=expr.var.name,
                                                  is_global_function=expr.var.is_global_function,
                                                  is_function_that_may_throw=expr.var.is_function_that_may_throw))
@@ -646,10 +646,10 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
                                                                                        error=None)])
                      if var.name != expr.loop_var.name]
 
-    x_type = type_to_ir0(expr.loop_var.type)
-    result_elem_type = type_to_ir0(expr.result_elem_expr.type)
+    x_type = type_to_ir0(expr.loop_var.expr_type)
+    result_elem_type = type_to_ir0(expr.result_elem_expr.expr_type)
 
-    template_arg_decl = ir0.TemplateArgDecl(type=x_type,
+    template_arg_decl = ir0.TemplateArgDecl(expr_type=x_type,
                                             name=expr.loop_var.name)
     helper_template_body_writer = TemplateBodyWriter(writer,
                                                      parent_arbitrary_arg=template_arg_decl,
@@ -682,7 +682,7 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
 
     transform_list_template_literal = ir0.AtomicTypeLiteral.for_nonlocal_template(
         cpp_type=transform_metafunction_name,
-        arg_types=[type_to_ir0(expr.list_var.type), ir0.TemplateType(argtypes=[x_type])],
+        arg_types=[type_to_ir0(expr.list_var.expr_type), ir0.TemplateType(argtypes=[x_type])],
         is_metafunction_that_may_return_error=expr.result_elem_expr.fun.is_function_that_may_throw,
         may_be_alias=False)
 
@@ -705,7 +705,7 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
                                          args=[var_reference_to_ir0(expr.list_var),
                                                ir0.AtomicTypeLiteral.from_nonlocal_template_defn(helper_template_defn,
                                                                                                  is_metafunction_that_may_return_error=expr.result_elem_expr.fun.is_function_that_may_throw)],
-                                         member_type=type_to_ir0(expr.type),
+                                         member_type=type_to_ir0(expr.expr_type),
                                          writer=writer)
     else:
         # z = [f(y, x, z)
@@ -723,7 +723,7 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
         #
         # using Z = typename TransformTypeList<L, HelperWrapper<Y, Z>::Helper>::type;
 
-        captured_vars_as_template_args = [ir0.TemplateArgDecl(type=type_to_ir0(var.type),
+        captured_vars_as_template_args = [ir0.TemplateArgDecl(expr_type=type_to_ir0(var.expr_type),
                                                               name=var.name)
                                           for var in captured_vars]
         helper_wrapper_template_defn = ir0.TemplateDefn(name=writer.new_id(),
@@ -747,7 +747,7 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
         return _create_metafunction_call(template_expr=transform_list_template_literal,
                                          args=[var_reference_to_ir0(expr.list_var),
                                                helper_template_expr],
-                                         member_type=type_to_ir0(expr.type),
+                                         member_type=type_to_ir0(expr.expr_type),
                                          writer=writer)
 
 def class_member_access_expr_to_ir0(expr: ir1.ClassMemberAccess, writer: Writer):
@@ -778,7 +778,7 @@ def template_member_access_expr_to_ir0(expr: ir1.TemplateMemberAccess, writer: W
     args_var_name = writer.new_id()
 
     template_instantiation_expr = ir0.TemplateInstantiation(ir0.ClassMemberAccess(class_type_expr=ir0.AtomicTypeLiteral.for_local(cpp_type=x_var_name,
-                                                                                                                                  type=ir0.TypeType()),
+                                                                                                                                  expr_type=ir0.TypeType()),
                                                                                   member_name=expr.member_name,
                                                                                   member_type=ir0.TemplateType(argtypes=[ir0.VariadicType()])),
                                                             args=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(args_var_name,
@@ -788,10 +788,10 @@ def template_member_access_expr_to_ir0(expr: ir1.TemplateMemberAccess, writer: W
     helper_specialization = ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(ir0.TypeType(), name=x_var_name),
                                                              ir0.TemplateArgDecl(ir0.VariadicType(), name=args_var_name)],
                                                        patterns=[ir0.AtomicTypeLiteral.for_local(cpp_type=x_var_name,
-                                                                                                 type=ir0.TypeType()),
+                                                                                                 expr_type=ir0.TypeType()),
                                                                  ir0.TemplateInstantiation(template_expr=GlobalLiterals.LIST,
                                                                                            args=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type=args_var_name,
-                                                                                                                                                           type=ir0.VariadicType()))],
+                                                                                                                                                           expr_type=ir0.VariadicType()))],
                                                                                            instantiation_might_trigger_static_asserts=False)],
                                                        body=[ir0.Typedef(name='type',
                                                                          expr=template_instantiation_expr)],
@@ -828,7 +828,7 @@ def template_instantiation_expr_to_ir0(expr: ir1.TemplateInstantiation, writer: 
         arg_types = [ir0.VariadicType()]
         may_be_alias = False
     else:
-        arg_types = [type_to_ir0(arg.type) for arg in expr.arg_exprs]
+        arg_types = [type_to_ir0(arg.expr_type) for arg in expr.arg_exprs]
         may_be_alias = True
 
     return ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=expr.template_name,
@@ -872,7 +872,7 @@ def template_instantiation_with_list_expr_to_ir0(expr: ir1.TemplateInstantiation
     helper_specialization = ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(ir0.VariadicType(), name=args_var_name)],
                                                        patterns=[ir0.TemplateInstantiation(template_expr=GlobalLiterals.LIST,
                                                                                            args=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type=args_var_name,
-                                                                                                                                                           type=ir0.VariadicType()))],
+                                                                                                                                                           expr_type=ir0.VariadicType()))],
                                                                                            instantiation_might_trigger_static_asserts=False)],
                                                        body=[ir0.Typedef(name='type',
                                                                          expr=template_instantiation_expr)],
@@ -904,18 +904,18 @@ def add_to_set_expr_to_ir0(expr: ir1.AddToSetExpr):
     set_expr = var_reference_to_ir0(expr.set_expr)
     elem_expr = var_reference_to_ir0(expr.elem_expr)
 
-    if isinstance(elem_expr.type, ir0.BoolType):
+    if isinstance(elem_expr.expr_type, ir0.BoolType):
         template_name = 'AddToBoolSet'
-    elif isinstance(elem_expr.type, ir0.Int64Type):
+    elif isinstance(elem_expr.expr_type, ir0.Int64Type):
         template_name = 'AddToInt64Set'
-    elif isinstance(elem_expr.type, ir0.TypeType):
+    elif isinstance(elem_expr.expr_type, ir0.TypeType):
         template_name = 'AddToTypeSet'
     else:
         raise NotImplementedError('Unexpected type kind: %s' % elem_expr.kind)
 
     add_to_set_instantiation = ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=template_name,
                                                                                                                    is_metafunction_that_may_return_error=False,
-                                                                                                                   arg_types=[ir0.TypeType(), type_to_ir0(expr.elem_expr.type)],
+                                                                                                                   arg_types=[ir0.TypeType(), type_to_ir0(expr.elem_expr.expr_type)],
                                                                                                                    may_be_alias=False),
                                                          args=[set_expr, elem_expr],
                                                          instantiation_might_trigger_static_asserts=False)
@@ -933,7 +933,7 @@ def set_equality_comparison_expr_to_ir0(expr: ir1.SetEqualityComparison):
 
     lhs = var_reference_to_ir0(expr.lhs)
     rhs = var_reference_to_ir0(expr.rhs)
-    assert lhs.type == rhs.type
+    assert lhs.expr_type == rhs.expr_type
 
     elem_type = type_to_ir0(expr.elem_type)
     if isinstance(elem_type, ir0.BoolType):
@@ -946,7 +946,7 @@ def set_equality_comparison_expr_to_ir0(expr: ir1.SetEqualityComparison):
         raise NotImplementedError('Unexpected type: %s' % str(elem_type))
 
     set_equals_instantiation = ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=template_name,
-                                                                                                                   arg_types=[type_to_ir0(expr.lhs.type), type_to_ir0(expr.rhs.type)],
+                                                                                                                   arg_types=[type_to_ir0(expr.lhs.expr_type), type_to_ir0(expr.rhs.expr_type)],
                                                                                                                    is_metafunction_that_may_return_error=False,
                                                                                                                    may_be_alias=False),
                                                          args=[lhs, rhs],
@@ -990,7 +990,7 @@ def assignment_to_ir0(assignment: ir1.Assignment, writer: Writer):
     lhs = var_reference_to_ir0(assignment.lhs)
     rhs, rhs_error = expr_to_ir0(assignment.rhs, writer)
 
-    type_ir0 = type_to_ir0(assignment.lhs.type)
+    type_ir0 = type_to_ir0(assignment.lhs.expr_type)
     if type_ir0.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
         writer.write(ir0.ConstantDef(name=lhs.cpp_type, expr=rhs))
     else:
@@ -998,7 +998,7 @@ def assignment_to_ir0(assignment: ir1.Assignment, writer: Writer):
 
     if assignment.lhs2:
         lhs2 = var_reference_to_ir0(assignment.lhs2)
-        assert isinstance(rhs_error.type, ir0.TypeType)
+        assert isinstance(rhs_error.expr_type, ir0.TypeType)
         writer.write(ir0.Typedef(name=lhs2.cpp_type, expr=rhs_error))
 
 def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter):
@@ -1031,9 +1031,9 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
     arg_decls = []
     for arg in custom_type.arg_types:
         forwarded_arg_name = writer.new_id()
-        arg_type = type_to_ir0(arg.type)
+        arg_type = type_to_ir0(arg.expr_type)
         arg_types.append(arg_type)
-        arg_decls.append(ir0.TemplateArgDecl(type=arg_type,
+        arg_decls.append(ir0.TemplateArgDecl(expr_type=arg_type,
                                              name=forwarded_arg_name))
 
     holder_template_writer = TemplateBodyWriter(writer,
@@ -1041,14 +1041,14 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
                                                 parent_return_type=None)
     holder_template_instantiation_args = []
     for arg, arg_decl in zip(custom_type.arg_types, arg_decls):
-        lhs_var = ir1.VarReference(type=arg.type,
+        lhs_var = ir1.VarReference(expr_type=arg.expr_type,
                                    name=arg.name,
                                    is_global_function=False,
-                                   is_function_that_may_throw=isinstance(arg.type, ir1.FunctionType))
-        rhs_var = ir1.VarReference(type=arg.type,
+                                   is_function_that_may_throw=isinstance(arg.expr_type, ir1.FunctionType))
+        rhs_var = ir1.VarReference(expr_type=arg.expr_type,
                                    name=arg_decl.name,
                                    is_global_function=False,
-                                   is_function_that_may_throw=isinstance(arg.type, ir1.FunctionType))
+                                   is_function_that_may_throw=isinstance(arg.expr_type, ir1.FunctionType))
         assignment_to_ir0(ir1.Assignment(lhs=lhs_var, rhs=rhs_var),
                           holder_template_writer)
         holder_template_instantiation_args.append(var_reference_to_ir0(rhs_var))
@@ -1086,7 +1086,7 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
 
     writer.set_holder_template_name_for_error(custom_type.name, holder_template_id)
 
-    args = [ir0.TemplateArgDecl(type=ir0.TypeType(), name=writer.new_id())]
+    args = [ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name=writer.new_id())]
     is_instance_template = ir0.TemplateDefn(name=writer.new_id(),
                                             description='isinstance() (meta)function for the custom type %s' % custom_type.name,
                                             args=args,
@@ -1095,14 +1095,14 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
                                                                                        body=[ir0.ConstantDef(name='value',
                                                                                                              expr=ir0.Literal(value=False))],
                                                                                        is_metafunction=True),
-                                            specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(type=type_to_ir0(arg.type), name=arg.name)
+                                            specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(expr_type=type_to_ir0(arg.expr_type), name=arg.name)
                                                                                               for arg in custom_type.arg_types],
                                                                                         patterns=[ir0.TemplateInstantiation(ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=holder_template_id,
                                                                                                                                                                         is_metafunction_that_may_return_error=False,
                                                                                                                                                                         arg_types=arg_types,
                                                                                                                                                                         may_be_alias=False),
                                                                                                                             args=[ir0.AtomicTypeLiteral.for_local(cpp_type=arg.name,
-                                                                                                                                                                  type=type_to_ir0(arg.type))
+                                                                                                                                                                  expr_type=type_to_ir0(arg.expr_type))
                                                                                                                                   for arg in custom_type.arg_types],
                                                                                                                             instantiation_might_trigger_static_asserts=False)],
                                                                                         body=[ir0.ConstantDef(name='value',
@@ -1155,13 +1155,13 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
 
         forwarded_vars = _get_free_vars_in_elements(then_writer.elems)
 
-        forwarded_vars_args = [ir0.TemplateArgDecl(type=var.type, name=var.cpp_type)
+        forwarded_vars_args = [ir0.TemplateArgDecl(expr_type=var.expr_type, name=var.cpp_type)
                                for var in forwarded_vars]
         forwarded_vars_patterns = forwarded_vars
         forwarded_vars_exprs = [ir0.AtomicTypeLiteral.for_local(cpp_type=var.cpp_type,
-                                                                type=var.type)
+                                                                expr_type=var.expr_type)
                                 for var in forwarded_vars]
-        forwarded_vars_types = [var.type
+        forwarded_vars_types = [var.expr_type
                                 for var in forwarded_vars]
         if not forwarded_vars:
             # We need to add a dummy template parameter, otherwise the "then" template will have no parameters and the C++
@@ -1169,10 +1169,10 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
             # assertions in that code).
             forwarded_vars_args.append(then_writer.parent_arbitrary_arg)
             arbitrary_arg_ref = ir0.AtomicTypeLiteral.for_local(cpp_type=then_writer.parent_arbitrary_arg.name,
-                                                                type=then_writer.parent_arbitrary_arg.type)
+                                                                expr_type=then_writer.parent_arbitrary_arg.expr_type)
             forwarded_vars_patterns.append(arbitrary_arg_ref)
             forwarded_vars_exprs.append(arbitrary_arg_ref)
-            forwarded_vars_types.append(then_writer.parent_arbitrary_arg.type)
+            forwarded_vars_types.append(then_writer.parent_arbitrary_arg.expr_type)
 
         then_template_defn = ir0.TemplateDefn(name=writer.new_id(),
                                               description='(meta)function wrapping the code after an if-else statement',
@@ -1209,12 +1209,12 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
 
     forwarded_vars = _get_free_vars_in_elements(if_branch_writer.elems + else_branch_writer.elems)
 
-    forwarded_vars_args = [ir0.TemplateArgDecl(type=var.type, name=var.cpp_type)
+    forwarded_vars_args = [ir0.TemplateArgDecl(expr_type=var.expr_type, name=var.cpp_type)
                            for var in forwarded_vars]
     forwarded_vars_exprs = [ir0.AtomicTypeLiteral.for_local(cpp_type=var.cpp_type,
-                                                            type=var.type)
+                                                            expr_type=var.expr_type)
                             for var in forwarded_vars]
-    forwarded_vars_types = [var.type
+    forwarded_vars_types = [var.expr_type
                             for var in forwarded_vars]
     if not forwarded_vars:
         # We need to add a dummy template parameter, otherwise the true/false specializations will be full specializations
@@ -1222,8 +1222,8 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
         # any assertions in that code).
         forwarded_vars_args.append(writer.parent_arbitrary_arg)
         forwarded_vars_exprs.append(ir0.AtomicTypeLiteral.for_local(cpp_type=writer.parent_arbitrary_arg.name,
-                                                                    type=writer.parent_arbitrary_arg.type))
-        forwarded_vars_types.append(writer.parent_arbitrary_arg.type)
+                                                                    expr_type=writer.parent_arbitrary_arg.expr_type))
+        forwarded_vars_types.append(writer.parent_arbitrary_arg.expr_type)
 
     if_branch_specialization = _create_metafunction_specialization(args=forwarded_vars_args,
                                                                    patterns=forwarded_vars_exprs + [ir0.Literal(True)],
@@ -1235,7 +1235,7 @@ def if_stmt_to_ir0(if_stmt: ir1.IfStmt,
     fun_defn = ir0.TemplateDefn(main_definition=None,
                                 name=writer.new_id(),
                                 description='(meta)function generated for an if-else statement',
-                                args=forwarded_vars_args + [ir0.TemplateArgDecl(type=ir0.BoolType())],
+                                args=forwarded_vars_args + [ir0.TemplateArgDecl(expr_type=ir0.BoolType())],
                                 specializations=[if_branch_specialization, else_branch_specialization],
                                 result_element_names=['value', 'type', 'error'])
     writer.write(fun_defn)
@@ -1258,7 +1258,7 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
     lhs_var_names = {var.cpp_type for var in lhs_vars}
     rhs_var = var_reference_to_ir0(assignment.rhs)
 
-    elem_kind = lhs_vars[0].type.kind
+    elem_kind = lhs_vars[0].expr_type.kind
     if elem_kind == ir0.ExprKind.BOOL:
         list_literal = GlobalLiterals.bool_list_with_arity(len(lhs_vars))
     elif elem_kind == ir0.ExprKind.INT64:
@@ -1282,10 +1282,10 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
     assert all(var.cpp_type != rhs_var.cpp_type
                for var in forwarded_vars)
 
-    forwarded_vars_args = [ir0.TemplateArgDecl(type=var.type, name=var.cpp_type)
+    forwarded_vars_args = [ir0.TemplateArgDecl(expr_type=var.expr_type, name=var.cpp_type)
                            for var in forwarded_vars]
     forwarded_vars_exprs = [ir0.AtomicTypeLiteral.for_local(cpp_type=var.cpp_type,
-                                                            type=var.type)
+                                                            expr_type=var.expr_type)
                             for var in forwarded_vars]
 
 
@@ -1294,7 +1294,7 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
     #   static_assert(AlwaysFalseFromType<L>::value, "<message>");
     #   using type = void; // Or a definition of `value`
     # };
-    rhs_var_arg_decl = ir0.TemplateArgDecl(type=ir0.TypeType(), name=rhs_var.cpp_type)
+    rhs_var_arg_decl = ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name=rhs_var.cpp_type)
     always_false_instantiation = ir0.TemplateInstantiation(template_expr=GlobalLiterals.ALWAYS_FALSE_FOR_TYPE,
                                                            args=[rhs_var],
                                                            instantiation_might_trigger_static_asserts=False)
@@ -1316,7 +1316,7 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
     #   using L = Int64List<n0, n1, n2>;
     #   ...
     # };
-    lhs_vars_arg_decls = [ir0.TemplateArgDecl(type=var.type, name=var.cpp_type)
+    lhs_vars_arg_decls = [ir0.TemplateArgDecl(expr_type=var.expr_type, name=var.cpp_type)
                           for var in lhs_vars]
     list_pattern = ir0.TemplateInstantiation(list_literal,
                                              args=lhs_vars,
@@ -1372,7 +1372,7 @@ def _select_arbitrary_parent_arg(args: List[ir0.TemplateArgDecl]) -> ir0.Templat
     assert args
     # Prefer a non-template arg (if any), as that will lead to simpler/smaller generated code.
     for arg in args:
-        if arg.type.kind != ir0.ExprKind.TEMPLATE:
+        if arg.expr_type.kind != ir0.ExprKind.TEMPLATE:
             return arg
     return args[0]
 
@@ -1383,7 +1383,7 @@ def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter
         if args:
             parent_arbitrary_arg = _select_arbitrary_parent_arg(args)
         else:
-            parent_arbitrary_arg = ir0.TemplateArgDecl(type=ir0.TypeType(),
+            parent_arbitrary_arg = ir0.TemplateArgDecl(expr_type=ir0.TypeType(),
                                                        name=writer.new_id())
             args = [parent_arbitrary_arg]
 
@@ -1420,7 +1420,7 @@ def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer
     # struct CheckIfError {
     #   using type = void;
     # };
-    main_definition = ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(type=ir0.TypeType(), name=writer.new_id())],
+    main_definition = ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name=writer.new_id())],
                                                  patterns=None,
                                                  body=[ir0.Typedef(name='type',
                                                                    expr=ir0.AtomicTypeLiteral.for_nonlocal_type('void', may_be_alias=False))],
@@ -1431,15 +1431,15 @@ def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer
     #                 "<MyError's message>");
     #   using type = void;
     # };
-    specializations = [ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(type=type_to_ir0(arg_decl.type),
+    specializations = [ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(expr_type=type_to_ir0(arg_decl.expr_type),
                                                                             name=arg_decl.name)
                                                         for arg_decl in custom_error_type.arg_types],
                                                   patterns=[ir0.TemplateInstantiation(ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=writer.get_holder_template_name_for_error(custom_error_type.name),
-                                                                                                                                  arg_types=[type_to_ir0(arg_type.type)
+                                                                                                                                  arg_types=[type_to_ir0(arg_type.expr_type)
                                                                                                                                              for arg_type in custom_error_type.arg_types],
                                                                                                                                   is_metafunction_that_may_return_error=False,
                                                                                                                                   may_be_alias=False),
-                                                                                      args=[ir0.AtomicTypeLiteral.for_local(arg.name, type=type_to_ir0(arg.type))
+                                                                                      args=[ir0.AtomicTypeLiteral.for_local(arg.name, expr_type=type_to_ir0(arg.expr_type))
                                                                                             for arg in custom_error_type.arg_types],
                                                                                       instantiation_might_trigger_static_asserts=False)],
                                                   body=[ir0.StaticAssert(expr=ir0.Literal(value=False),

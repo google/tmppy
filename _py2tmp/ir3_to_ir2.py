@@ -37,11 +37,11 @@ class FunWriter(Writer):
     def obfuscate_identifier(self, identifier: str):
         return self.obfuscated_identifiers_by_identifier[identifier]
 
-    def new_var(self, type: ir2.ExprType, is_global_function: bool = False):
-        return ir2.VarReference(type=type,
+    def new_var(self, expr_type: ir2.ExprType, is_global_function: bool = False):
+        return ir2.VarReference(expr_type=expr_type,
                                 name=self.new_id(),
                                 is_global_function=is_global_function,
-                                is_function_that_may_throw=isinstance(type, ir2.FunctionType))
+                                is_function_that_may_throw=isinstance(expr_type, ir2.FunctionType))
 
     def write_function(self, fun_defn: ir2.FunctionDefn):
         self.function_defns.append(fun_defn)
@@ -53,8 +53,8 @@ class FunWriter(Writer):
         #   b2 = not b
         #   return b2
 
-        x_var = self.new_var(type=ir2.ErrorOrVoidType())
-        arg_decls = [ir2.FunctionArgDecl(type=x_var.type, name=x_var.name)]
+        x_var = self.new_var(expr_type=ir2.ErrorOrVoidType())
+        arg_decls = [ir2.FunctionArgDecl(expr_type=x_var.expr_type, name=x_var.name)]
 
         stmt_writer = StmtWriter(self,
                                  current_fun_return_type=ir2.BoolType(),
@@ -89,7 +89,7 @@ class StmtWriter(Writer):
                  current_fun_return_type: Optional[ir2.ExprType],
                  try_except_contexts: List[TryExceptContext]):
         for context in try_except_contexts:
-            assert context.except_fun_call_expr.type == current_fun_return_type
+            assert context.except_fun_call_expr.expr_type == current_fun_return_type
         self.fun_writer = fun_writer
         self.current_fun_name = current_fun_name
         self.current_fun_args = current_fun_args
@@ -109,11 +109,11 @@ class StmtWriter(Writer):
     def obfuscate_identifier(self, identifier: str):
         return self.fun_writer.obfuscate_identifier(identifier)
 
-    def new_var(self, type: ir2.ExprType):
-        return self.fun_writer.new_var(type)
+    def new_var(self, expr_type: ir2.ExprType):
+        return self.fun_writer.new_var(expr_type)
 
     def new_var_for_expr(self, expr: ir2.Expr):
-        var = self.fun_writer.new_var(expr.type)
+        var = self.fun_writer.new_var(expr.expr_type)
         self.write_stmt(ir2.Assignment(lhs=var, rhs=expr))
         return var
 
@@ -135,7 +135,7 @@ class StmtWriter(Writer):
             #     return resN, errN
             #   return None, err
 
-            x_var = self.fun_writer.new_var(expr.type)
+            x_var = self.fun_writer.new_var(expr.expr_type)
             error_var = self.fun_writer.new_var(ir2.ErrorOrVoidType())
             self.write_stmt(ir2.Assignment(lhs=x_var, lhs2=error_var, rhs=expr))
             b_var = self.new_var_for_expr(ir2.FunctionCall(fun=self.fun_writer.is_error_fun_ref,
@@ -152,14 +152,14 @@ class StmtWriter(Writer):
                                               self.current_fun_args,
                                               self.current_fun_return_type,
                                               try_except_contexts=self.try_except_contexts)
-                if_branch_writer.write_stmt(ir2.Assignment(lhs=ir2.VarReference(type=context.caught_exception_type,
+                if_branch_writer.write_stmt(ir2.Assignment(lhs=ir2.VarReference(expr_type=context.caught_exception_type,
                                                                                 name=self.obfuscate_identifier(context.caught_exception_name),
                                                                                 is_global_function=False,
                                                                                 is_function_that_may_throw=False),
                                                            rhs=ir2.SafeUncheckedCast(error_var,
-                                                                                     type=context.caught_exception_type)))
-                res_i = if_branch_writer.new_var(type=self.current_fun_return_type)
-                err_i = if_branch_writer.new_var(type=ir2.ErrorOrVoidType())
+                                                                                     expr_type=context.caught_exception_type)))
+                res_i = if_branch_writer.new_var(expr_type=self.current_fun_return_type)
+                err_i = if_branch_writer.new_var(expr_type=ir2.ErrorOrVoidType())
                 if_branch_writer.write_stmt(ir2.Assignment(lhs=res_i,
                                                            lhs2=err_i,
                                                            rhs=context.except_fun_call_expr))
@@ -181,7 +181,7 @@ class StmtWriter(Writer):
 
             # x, err = <expr>
 
-            x_var = self.fun_writer.new_var(expr.type)
+            x_var = self.fun_writer.new_var(expr.expr_type)
             error_var = self.fun_writer.new_var(ir2.ErrorOrVoidType())
             self.write_stmt(ir2.Assignment(lhs=x_var, lhs2=error_var, rhs=expr))
             self.write_stmt(ir2.CheckIfError(error_var))
@@ -194,29 +194,29 @@ class StmtWriter(Writer):
         context1 = self.try_except_contexts.pop()
         assert context1 is context
 
-def type_to_ir2(type: ir3.ExprType):
-    if isinstance(type, ir3.BoolType):
+def type_to_ir2(expr_type: ir3.ExprType):
+    if isinstance(expr_type, ir3.BoolType):
         return ir2.BoolType()
-    elif isinstance(type, ir3.IntType):
+    elif isinstance(expr_type, ir3.IntType):
         return ir2.IntType()
-    elif isinstance(type, ir3.TypeType):
+    elif isinstance(expr_type, ir3.TypeType):
         return ir2.TypeType()
-    elif isinstance(type, ir3.BottomType):
+    elif isinstance(expr_type, ir3.BottomType):
         return ir2.BottomType()
-    elif isinstance(type, ir3.ListType):
-        return ir2.ListType(elem_type=type_to_ir2(type.elem_type))
-    elif isinstance(type, ir3.SetType):
-        return ir2.ListType(elem_type=type_to_ir2(type.elem_type))
-    elif isinstance(type, ir3.FunctionType):
+    elif isinstance(expr_type, ir3.ListType):
+        return ir2.ListType(elem_type=type_to_ir2(expr_type.elem_type))
+    elif isinstance(expr_type, ir3.SetType):
+        return ir2.ListType(elem_type=type_to_ir2(expr_type.elem_type))
+    elif isinstance(expr_type, ir3.FunctionType):
         return ir2.FunctionType(argtypes=[type_to_ir2(arg)
-                                          for arg in type.argtypes],
-                                returns=type_to_ir2(type.returns))
-    elif isinstance(type, ir3.CustomType):
-        return ir2.CustomType(name=type.name,
-                              arg_types=[ir2.CustomTypeArgDecl(name=arg.name, type=type_to_ir2(arg.type))
-                                         for arg in type.arg_types])
+                                          for arg in expr_type.argtypes],
+                                returns=type_to_ir2(expr_type.returns))
+    elif isinstance(expr_type, ir3.CustomType):
+        return ir2.CustomType(name=expr_type.name,
+                              arg_types=[ir2.CustomTypeArgDecl(name=arg.name, expr_type=type_to_ir2(arg.expr_type))
+                                         for arg in expr_type.arg_types])
     else:
-        raise NotImplementedError('Unexpected type: %s' % str(type.__class__))
+        raise NotImplementedError('Unexpected type: %s' % str(expr_type.__class__))
 
 def expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.VarReference:
     if isinstance(expr, ir3.VarReference):
@@ -316,27 +316,27 @@ def type_pattern_expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.PatternE
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
 def function_arg_decl_to_ir2(decl: ir3.FunctionArgDecl, writer: Writer):
-    return ir2.FunctionArgDecl(type=type_to_ir2(decl.type),
+    return ir2.FunctionArgDecl(expr_type=type_to_ir2(decl.expr_type),
                                name=writer.obfuscate_identifier(decl.name))
 
 def var_reference_to_ir2(var: ir3.VarReference, writer: StmtWriter):
-    return ir2.VarReference(type=type_to_ir2(var.type),
+    return ir2.VarReference(expr_type=type_to_ir2(var.expr_type),
                             name=var.name if var.is_global_function else writer.obfuscate_identifier(var.name),
                             is_global_function=var.is_global_function,
                             is_function_that_may_throw=var.is_function_that_may_throw)
 
 def _select_arbitrary_forwarded_arg(args: List[ir2.FunctionArgDecl]):
     for arg in args:
-        if not isinstance(arg.type, ir2.FunctionType):
+        if not isinstance(arg.expr_type, ir2.FunctionType):
             selected_arg = arg
             break
     else:
         selected_arg = args[0]
 
-    return ir2.VarReference(type=selected_arg.type,
+    return ir2.VarReference(expr_type=selected_arg.expr_type,
                             name=selected_arg.name,
                             is_global_function=False,
-                            is_function_that_may_throw=isinstance(selected_arg.type, ir2.FunctionType))
+                            is_function_that_may_throw=isinstance(selected_arg.expr_type, ir2.FunctionType))
 
 def match_expr_to_ir2(match_expr: ir3.MatchExpr, writer: StmtWriter):
     matched_vars = [expr_to_ir2(expr, writer)
@@ -347,7 +347,7 @@ def match_expr_to_ir2(match_expr: ir3.MatchExpr, writer: StmtWriter):
         match_case_writer = StmtWriter(writer.fun_writer,
                                        writer.current_fun_name,
                                        writer.current_fun_args,
-                                       type_to_ir2(match_expr.type),
+                                       type_to_ir2(match_expr.expr_type),
                                        writer.try_except_contexts)
         match_case_var = expr_to_ir2(match_case.expr, match_case_writer)
         match_case_writer.write_stmt(ir2.ReturnStmt(result=match_case_var, error=None))
@@ -358,15 +358,15 @@ def match_expr_to_ir2(match_expr: ir3.MatchExpr, writer: StmtWriter):
             forwarded_vars = [_select_arbitrary_forwarded_arg(writer.current_fun_args)]
 
         match_fun_name = writer.new_id()
-        arg_decls = [ir2.FunctionArgDecl(type=var.type, name=var.name) for var in forwarded_vars]
+        arg_decls = [ir2.FunctionArgDecl(expr_type=var.expr_type, name=var.name) for var in forwarded_vars]
         writer.write_function(ir2.FunctionDefn(name=match_fun_name,
                                                description='(meta)function wrapping the code in a branch of a match expression from the function %s' % writer.current_fun_name,
                                                args=arg_decls,
                                                body=match_case_writer.stmts,
-                                               return_type=match_case_var.type))
-        match_fun_ref = ir2.VarReference(type=ir2.FunctionType(argtypes=[var.type
+                                               return_type=match_case_var.expr_type))
+        match_fun_ref = ir2.VarReference(expr_type=ir2.FunctionType(argtypes=[var.expr_type
                                                                          for var in forwarded_vars],
-                                                               returns=match_case_var.type),
+                                                               returns=match_case_var.expr_type),
                                          name=match_fun_name,
                                          is_global_function=True,
                                          is_function_that_may_throw=True)
@@ -449,7 +449,7 @@ def function_call_to_ir2(call_expr: ir3.FunctionCall, writer: StmtWriter):
                                                         args=arg_vars))
 
 def equality_comparison_to_ir2(comparison_expr: ir3.EqualityComparison, writer: StmtWriter):
-    if isinstance(comparison_expr.lhs.type, ir3.SetType):
+    if isinstance(comparison_expr.lhs.expr_type, ir3.SetType):
         return writer.new_var_for_expr(ir2.SetEqualityComparison(lhs=expr_to_ir2(comparison_expr.lhs, writer),
                                                                  rhs=expr_to_ir2(comparison_expr.rhs, writer)))
     else:
@@ -459,7 +459,7 @@ def equality_comparison_to_ir2(comparison_expr: ir3.EqualityComparison, writer: 
 def attribute_access_expr_to_ir2(attribute_access_expr: ir3.AttributeAccessExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.AttributeAccessExpr(var=expr_to_ir2(attribute_access_expr.expr, writer),
                                                            attribute_name=attribute_access_expr.attribute_name,
-                                                           type=type_to_ir2(attribute_access_expr.type)))
+                                                           expr_type=type_to_ir2(attribute_access_expr.expr_type)))
 
 def and_expr_to_ir2(expr: ir3.AndExpr, writer: StmtWriter):
     # y = f() and g()
@@ -568,7 +568,7 @@ def deconstructed_list_comprehension_expr_to_ir2(list_var: ir3.VarReference,
     # [g(x, y)
     #  for x in l]
 
-    result_elem_type = type_to_ir2(result_elem_expr.type)
+    result_elem_type = type_to_ir2(result_elem_expr.expr_type)
     helper_fun_writer = StmtWriter(writer.fun_writer,
                                    current_fun_name=writer.current_fun_name,
                                    current_fun_args=writer.current_fun_args,
@@ -589,13 +589,13 @@ def deconstructed_list_comprehension_expr_to_ir2(list_var: ir3.VarReference,
     helper_fun_name = writer.new_id()
     writer.write_function(ir2.FunctionDefn(name=helper_fun_name,
                                            description='(meta)function wrapping the result expression in a list/set comprehension from the function %s' % writer.current_fun_name,
-                                           args=[ir2.FunctionArgDecl(type=var.type, name=var.name)
+                                           args=[ir2.FunctionArgDecl(expr_type=var.expr_type, name=var.name)
                                                  for var in forwarded_vars],
                                            body=helper_fun_writer.stmts,
                                            return_type=result_elem_type))
 
     helper_fun_call = ir2.FunctionCall(fun=ir2.VarReference(name=helper_fun_name,
-                                                            type=ir2.FunctionType(argtypes=[var.type
+                                                            expr_type=ir2.FunctionType(argtypes=[var.expr_type
                                                                                             for var in forwarded_vars],
                                                                                   returns=result_elem_type),
                                                             is_global_function=True,
@@ -637,7 +637,7 @@ def set_comprehension_expr_to_ir2(expr: ir3.SetComprehension, writer: StmtWriter
     return writer.new_var_for_expr(ir2.ListToSetExpr(l2_var))
 
 def var_reference_to_ir2_pattern(var: ir3.VarReference, writer: StmtWriter):
-    return ir2.VarReferencePattern(type=type_to_ir2(var.type),
+    return ir2.VarReferencePattern(expr_type=type_to_ir2(var.expr_type),
                                    name=var.name if var.is_global_function else writer.obfuscate_identifier(var.name),
                                    is_global_function=var.is_global_function,
                                    is_function_that_may_throw=var.is_function_that_may_throw)
@@ -752,13 +752,13 @@ def try_except_stmt_to_ir2(try_except_stmt: ir3.TryExcept,
 
         then_fun_defn = ir2.FunctionDefn(name=writer.new_id(),
                                          description='(meta)function wrapping the code after a try-except statement from the function %s' % writer.current_fun_name,
-                                         args=[ir2.FunctionArgDecl(type=var.type, name=var.name)
+                                         args=[ir2.FunctionArgDecl(expr_type=var.expr_type, name=var.name)
                                                for var in then_fun_forwarded_vars],
                                          body=then_stmts_writer.stmts,
                                          return_type=writer.current_fun_return_type)
         writer.write_function(then_fun_defn)
 
-        then_fun_ref = ir2.VarReference(type=ir2.FunctionType(argtypes=[arg.type
+        then_fun_ref = ir2.VarReference(expr_type=ir2.FunctionType(argtypes=[arg.expr_type
                                                                         for arg in then_fun_defn.args],
                                                               returns=then_fun_defn.return_type),
                                         name=then_fun_defn.name,
@@ -785,13 +785,13 @@ def try_except_stmt_to_ir2(try_except_stmt: ir3.TryExcept,
 
     except_fun_defn = ir2.FunctionDefn(name=writer.new_id(),
                                        description='(meta)function wrapping the code in an except block from the function %s' % writer.current_fun_name,
-                                       args=[ir2.FunctionArgDecl(type=var.type, name=var.name)
+                                       args=[ir2.FunctionArgDecl(expr_type=var.expr_type, name=var.name)
                                              for var in except_fun_forwarded_vars],
                                        body=except_stmts_writer.stmts,
                                        return_type=writer.current_fun_return_type)
     writer.write_function(except_fun_defn)
 
-    except_fun_ref = ir2.VarReference(type=ir2.FunctionType(argtypes=[arg.type
+    except_fun_ref = ir2.VarReference(expr_type=ir2.FunctionType(argtypes=[arg.expr_type
                                                                       for arg in except_fun_defn.args],
                                                             returns=except_fun_defn.return_type),
                                       name=except_fun_defn.name,
@@ -826,7 +826,7 @@ def return_stmt_to_ir2(return_stmt: ir3.ReturnStmt, writer: StmtWriter):
 def raise_stmt_to_ir2(raise_stmt: ir3.RaiseStmt, writer: StmtWriter):
     exception_expr = expr_to_ir2(raise_stmt.expr, writer)
     for context in writer.try_except_contexts:
-        if context.caught_exception_type == exception_expr.type:
+        if context.caught_exception_type == exception_expr.expr_type:
             # try:
             #   raise f(x)
             # except MyError as e:
@@ -840,12 +840,12 @@ def raise_stmt_to_ir2(raise_stmt: ir3.RaiseStmt, writer: StmtWriter):
             # e = f(x)
             # result, err = handler(e, ...)
             # return result, err
-            exception_var = ir2.VarReference(type=exception_expr.type,
+            exception_var = ir2.VarReference(expr_type=exception_expr.expr_type,
                                              name=writer.obfuscate_identifier(context.caught_exception_name),
                                              is_global_function=False,
                                              is_function_that_may_throw=False)
             writer.write_stmt(ir2.Assignment(lhs=exception_var, rhs=exception_expr))
-            handler_result_var = writer.new_var(context.except_fun_call_expr.type)
+            handler_result_var = writer.new_var(context.except_fun_call_expr.expr_type)
             handler_error_var = writer.new_var(ir2.ErrorOrVoidType())
             writer.write_stmt(ir2.Assignment(lhs=handler_result_var,
                                              lhs2=handler_error_var,
@@ -920,8 +920,8 @@ def module_to_ir2(module: ir3.Module, identifier_generator: Iterator[str]):
     for assertion in module.assertions:
         assert_to_ir2(assertion, stmt_writer)
 
-    custom_types_defns = [type_to_ir2(type) for type in module.custom_types]
-    check_if_error_defn = ir2.CheckIfErrorDefn([(type_to_ir2(type), type.exception_message)
-                                                for type in module.custom_types if type.is_exception_class])
+    custom_types_defns = [type_to_ir2(expr_type) for expr_type in module.custom_types]
+    check_if_error_defn = ir2.CheckIfErrorDefn([(type_to_ir2(expr_type), expr_type.exception_message)
+                                                for expr_type in module.custom_types if expr_type.is_exception_class])
     return ir2.Module(body=custom_types_defns + [check_if_error_defn] + writer.function_defns + stmt_writer.stmts,
                       public_names=module.public_names)

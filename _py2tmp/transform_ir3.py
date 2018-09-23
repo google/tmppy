@@ -202,7 +202,7 @@ class Transformation:
     def transform_attribute_access_expr(self, expr: ir3.AttributeAccessExpr) -> ir3.AttributeAccessExpr:
         return ir3.AttributeAccessExpr(expr=self.transform_expr(expr.expr),
                                        attribute_name=expr.attribute_name,
-                                       type=expr.type)
+                                       expr_type=expr.expr_type)
 
     def transform_equality_comparison(self, expr: ir3.EqualityComparison) -> ir3.EqualityComparison:
         return ir3.EqualityComparison(lhs=self.transform_expr(expr.lhs),

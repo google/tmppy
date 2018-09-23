@@ -172,7 +172,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
 
 
     if not certain_matches and template_defn.main_definition and template_defn.main_definition.body:
-        patterns = [ir0.AtomicTypeLiteral.for_local(var.name, var.type)
+        patterns = [ir0.AtomicTypeLiteral.for_local(var.name, var.expr_type)
                     for var in template_defn.main_definition.args]
         result = unify(template_instantiation.args,
                        local_var_definitions,

@@ -24,15 +24,15 @@ class Writer:
 
     def new_constant_or_typedef(self, expr: ir0.Expr) -> ir0.AtomicTypeLiteral:
         id = self.new_id()
-        if expr.type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
+        if expr.expr_type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
             self.write(ir0.ConstantDef(name=id, expr=expr))
-        elif expr.type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
+        elif expr.expr_type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
             self.write(ir0.Typedef(name=id, expr=expr))
         else:
             # TODO: consider handling VARIADIC_TYPE too.
-            raise NotImplementedError('Unexpected kind: ' + str(expr.type.kind))
+            raise NotImplementedError('Unexpected kind: ' + str(expr.expr_type.kind))
 
-        return ir0.AtomicTypeLiteral.for_local(cpp_type=id, type=expr.type)
+        return ir0.AtomicTypeLiteral.for_local(cpp_type=id, expr_type=expr.expr_type)
 
     def get_toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
 
@@ -227,7 +227,7 @@ class Transformation:
         if self.generates_transformed_ir:
             return ir0.AtomicTypeLiteral(cpp_type=type_literal.cpp_type,
                                          is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
-                                         type=type_literal.type,
+                                         expr_type=type_literal.expr_type,
                                          is_local=type_literal.is_local,
                                          may_be_alias=type_literal.may_be_alias)
 
@@ -236,7 +236,7 @@ class Transformation:
         if self.generates_transformed_ir:
             return ir0.ClassMemberAccess(class_type_expr=class_type_expr,
                                          member_name=class_member_access.member_name,
-                                         member_type=class_member_access.type)
+                                         member_type=class_member_access.expr_type)
 
     def transform_not_expr(self, not_expr: ir0.NotExpr, writer: Writer) -> ir0.Expr:
         expr = self.transform_expr(not_expr.expr, writer)
@@ -313,7 +313,7 @@ class NameReplacementTransformation(Transformation):
         return ir0.AtomicTypeLiteral(cpp_type=self.replacements.get(type_literal.cpp_type, type_literal.cpp_type),
                                      is_local=type_literal.is_local,
                                      is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
-                                     type=type_literal.type,
+                                     expr_type=type_literal.expr_type,
                                      may_be_alias=type_literal.may_be_alias)
 
     def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: Writer):
@@ -335,7 +335,7 @@ class NameReplacementTransformation(Transformation):
                                       result_element_names=template_defn.result_element_names))
 
     def transform_template_arg_decl(self, arg_decl: ir0.TemplateArgDecl):
-        return ir0.TemplateArgDecl(type=arg_decl.type,
+        return ir0.TemplateArgDecl(expr_type=arg_decl.expr_type,
                                    name=self._transform_name(arg_decl.name))
 
     def _transform_name(self, name: str):

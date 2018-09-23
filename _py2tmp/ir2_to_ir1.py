@@ -43,32 +43,32 @@ class StmtWriter(Writer):
         else:
             self.fun_writer.write(elem)
 
-def custom_type_to_ir1(type: ir2.CustomType):
-    return ir1.CustomType(name=type.name,
-                          arg_types=[ir1.CustomTypeArgDecl(name=arg.name, type=type_to_ir1(arg.type))
-                                     for arg in type.arg_types])
+def custom_type_to_ir1(expr_type: ir2.CustomType):
+    return ir1.CustomType(name=expr_type.name,
+                          arg_types=[ir1.CustomTypeArgDecl(name=arg.name, expr_type=type_to_ir1(arg.expr_type))
+                                     for arg in expr_type.arg_types])
 
-def type_to_ir1(type: ir2.ExprType):
-    if isinstance(type, ir2.BoolType):
+def type_to_ir1(expr_type: ir2.ExprType):
+    if isinstance(expr_type, ir2.BoolType):
         return ir1.BoolType()
-    elif isinstance(type, ir2.IntType):
+    elif isinstance(expr_type, ir2.IntType):
         return ir1.IntType()
-    elif isinstance(type, ir2.TypeType):
+    elif isinstance(expr_type, ir2.TypeType):
         return ir1.TypeType()
-    elif isinstance(type, ir2.BottomType):
+    elif isinstance(expr_type, ir2.BottomType):
         return ir1.BottomType()
-    elif isinstance(type, ir2.ErrorOrVoidType):
+    elif isinstance(expr_type, ir2.ErrorOrVoidType):
         return ir1.ErrorOrVoidType()
-    elif isinstance(type, ir2.ListType):
+    elif isinstance(expr_type, ir2.ListType):
         return ir1.TypeType()
-    elif isinstance(type, ir2.FunctionType):
+    elif isinstance(expr_type, ir2.FunctionType):
         return ir1.FunctionType(argtypes=[type_to_ir1(arg)
-                                          for arg in type.argtypes],
-                                returns=type_to_ir1(type.returns))
-    elif isinstance(type, ir2.CustomType):
-        return custom_type_to_ir1(type)
+                                          for arg in expr_type.argtypes],
+                                returns=type_to_ir1(expr_type.returns))
+    elif isinstance(expr_type, ir2.CustomType):
+        return custom_type_to_ir1(expr_type)
     else:
-        raise NotImplementedError('Unexpected type: %s' % str(type.__class__))
+        raise NotImplementedError('Unexpected type: %s' % str(expr_type.__class__))
 
 def expr_to_ir1(expr: Union[ir2.Expr, ir2.PatternExpr]) -> ir1.Expr:
     if isinstance(expr, (ir2.VarReference, ir2.VarReferencePattern)):
@@ -168,11 +168,11 @@ def type_pattern_expr_to_ir1(expr: ir2.PatternExpr) -> ir1.Expr:
         raise NotImplementedError('Unexpected pattern expression: %s' % str(expr.__class__))
 
 def function_arg_decl_to_ir1(decl: ir2.FunctionArgDecl):
-    return ir1.FunctionArgDecl(type=type_to_ir1(decl.type),
+    return ir1.FunctionArgDecl(expr_type=type_to_ir1(decl.expr_type),
                                name=decl.name)
 
 def var_reference_to_ir1(var: Union[ir2.VarReference, ir2.VarReferencePattern]):
-    return ir1.VarReference(type=type_to_ir1(var.type),
+    return ir1.VarReference(expr_type=type_to_ir1(var.expr_type),
                             name=var.name,
                             is_global_function=var.is_global_function,
                             is_function_that_may_throw=var.is_function_that_may_throw)
@@ -244,7 +244,7 @@ def list_expr_to_ir1(list_expr: Union[ir2.ListExpr, ir2.ListPatternExpr]):
 
     arg_exprs = [expr_to_ir1(elem_expr) for elem_expr in list_expr.elems]
     if isinstance(list_expr, ir2.ListPatternExpr) and list_expr.list_extraction_expr:
-        arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(type=ir1.ParameterPackType(type_to_ir1(list_expr.list_extraction_expr)),
+        arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(expr_type=ir1.ParameterPackType(type_to_ir1(list_expr.list_extraction_expr)),
                                                                      name=list_expr.list_extraction_expr.name,
                                                                      is_global_function=list_expr.list_extraction_expr.is_global_function,
                                                                      is_function_that_may_throw=list_expr.list_extraction_expr.is_function_that_may_throw)))
@@ -265,7 +265,7 @@ def equality_comparison_to_ir1(comparison_expr: ir2.EqualityComparison):
 def attribute_access_expr_to_ir1(attribute_access_expr: ir2.AttributeAccessExpr):
     return ir1.AttributeAccessExpr(var=var_reference_to_ir1(attribute_access_expr.var),
                                    attribute_name=attribute_access_expr.attribute_name,
-                                   type=type_to_ir1(attribute_access_expr.type))
+                                   expr_type=type_to_ir1(attribute_access_expr.expr_type))
 
 def not_expr_to_ir1(expr: ir2.NotExpr):
     return ir1.NotExpr(var=var_reference_to_ir1(expr.var))
@@ -336,7 +336,7 @@ def list_concat_expr_to_ir1(expr: ir2.ListConcatExpr):
     #
     # Int64ListConcat<l1, l2>::type
 
-    elem_kind = ir1_to_ir0.type_to_ir0(type_to_ir1(expr.type.elem_type)).kind
+    elem_kind = ir1_to_ir0.type_to_ir0(type_to_ir1(expr.expr_type.elem_type)).kind
     if elem_kind == ir0.ExprKind.BOOL:
         list_concat_template_name = 'BoolListConcat'
     elif elem_kind == ir0.ExprKind.INT64:
@@ -365,28 +365,28 @@ def is_instance_expr_to_ir1(expr: ir2.IsInstanceExpr):
 
 def safe_unchecked_cast_expr_to_ir1(expr: ir2.SafeUncheckedCast):
     return ir1.SafeUncheckedCast(var=var_reference_to_ir1(expr.var),
-                                 type=custom_type_to_ir1(expr.type))
+                                 expr_type=custom_type_to_ir1(expr.expr_type))
 
 def add_to_set_expr_to_ir1(expr: ir2.AddToSetExpr):
     return ir1.AddToSetExpr(set_expr=var_reference_to_ir1(expr.set_expr),
                             elem_expr=var_reference_to_ir1(expr.elem_expr))
 
 def set_equality_comparison_expr_to_ir1(expr: ir2.SetEqualityComparison):
-    assert isinstance(expr.lhs.type, ir2.ListType)
+    assert isinstance(expr.lhs.expr_type, ir2.ListType)
     return ir1.SetEqualityComparison(lhs=var_reference_to_ir1(expr.lhs),
                                      rhs=var_reference_to_ir1(expr.rhs),
-                                     elem_type=type_to_ir1(expr.lhs.type.elem_type))
+                                     elem_type=type_to_ir1(expr.lhs.expr_type.elem_type))
 
 def list_to_set_expr_to_ir1(expr: ir2.ListToSetExpr):
-    assert isinstance(expr.var.type, ir2.ListType)
+    assert isinstance(expr.var.expr_type, ir2.ListType)
     return ir1.ListToSetExpr(var=var_reference_to_ir1(expr.var),
-                             elem_type=type_to_ir1(expr.var.type.elem_type))
+                             elem_type=type_to_ir1(expr.var.expr_type.elem_type))
 
 def set_to_list_expr_to_ir1(expr: ir2.SetToListExpr):
     return var_reference_to_ir1(expr.var)
 
 def var_reference_pattern_to_ir1(expr: ir2.VarReferencePattern):
-    return ir1.VarReference(type=type_to_ir1(expr.type),
+    return ir1.VarReference(expr_type=type_to_ir1(expr.expr_type),
                             name=expr.name,
                             is_global_function=expr.is_global_function,
                             is_function_that_may_throw=expr.is_function_that_may_throw)
@@ -416,7 +416,7 @@ def function_type_pattern_expr_to_ir1(expr: ir2.FunctionTypePatternExpr):
 def template_instantiation_pattern_expr_to_ir1(expr: ir2.TemplateInstantiationPatternExpr):
     arg_exprs = [type_pattern_expr_to_ir1(elem_expr) for elem_expr in expr.arg_exprs]
     if expr.list_extraction_arg_expr:
-        arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(type=ir1.ParameterPackType(type_to_ir1(expr.list_extraction_arg_expr.type)),
+        arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(expr_type=ir1.ParameterPackType(type_to_ir1(expr.list_extraction_arg_expr.expr_type)),
                                                                      name=expr.list_extraction_arg_expr.name,
                                                                      is_global_function=expr.list_extraction_arg_expr.is_global_function,
                                                                      is_function_that_may_throw=expr.list_extraction_arg_expr.is_function_that_may_throw)))

@@ -71,8 +71,8 @@ class VariadicType(ExprType):
         super().__init__(kind=ExprKind.VARIADIC_TYPE)
 
 class Expr(utils.ValueType, TemplateBodyElementOrExpr):
-    def __init__(self, type: ExprType):
-        self.type = type
+    def __init__(self, expr_type: ExprType):
+        self.expr_type = expr_type
 
     def references_any_of(self, variables: Set[str]):
         return any(isinstance(expr, AtomicTypeLiteral) and expr.cpp_type in variables
@@ -99,7 +99,7 @@ class TemplateBodyElement(TemplateBodyElementOrExpr):
 
 class StaticAssert(TemplateBodyElement):
     def __init__(self, expr: Expr, message: str):
-        assert isinstance(expr.type, BoolType)
+        assert isinstance(expr.expr_type, BoolType)
         self.expr = expr
         self.message = message
 
@@ -111,7 +111,7 @@ class StaticAssert(TemplateBodyElement):
 
 class ConstantDef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr):
-        assert isinstance(expr.type, (BoolType, Int64Type))
+        assert isinstance(expr.expr_type, (BoolType, Int64Type))
         self.name = name
         self.expr = expr
 
@@ -123,7 +123,7 @@ class ConstantDef(TemplateBodyElement):
 
 class Typedef(TemplateBodyElement):
     def __init__(self, name: str, expr: Expr):
-        assert isinstance(expr.type, (TypeType, TemplateType))
+        assert isinstance(expr.expr_type, (TypeType, TemplateType))
         self.name = name
         self.expr = expr
 
@@ -134,8 +134,8 @@ class Typedef(TemplateBodyElement):
         yield self.expr
 
 class TemplateArgDecl:
-    def __init__(self, type: ExprType, name: str = ''):
-        self.type = type
+    def __init__(self, expr_type: ExprType, name: str = ''):
+        self.expr_type = expr_type
         self.name = name
 
 _non_identifier_char_pattern = re.compile('[^a-zA-Z0-9_]+')
@@ -177,11 +177,11 @@ class TemplateDefn(TemplateBodyElement):
         self.args = tuple(args)
         self.main_definition = main_definition
         if main_definition:
-            declaration_args = [(arg.type, arg.name) for arg in args]
-            main_defn_args = [(arg.type, arg.name) for arg in main_definition.args]
+            declaration_args = [(arg.expr_type, arg.name) for arg in args]
+            main_defn_args = [(arg.expr_type, arg.name) for arg in main_definition.args]
             assert declaration_args == main_defn_args, '%s != %s' % (
-                ', '.join('(%s, %s)' % (str(type), name) for type, name in declaration_args),
-                ', '.join('(%s, %s)' % (str(type), name) for type, name in main_defn_args))
+                ', '.join('(%s, %s)' % (str(expr_type), name) for expr_type, name in declaration_args),
+                ', '.join('(%s, %s)' % (str(expr_type), name) for expr_type, name in main_defn_args))
         self.specializations = tuple(specializations)
         self.description = description
         self.result_element_names = tuple(sorted(result_element_names))
@@ -201,12 +201,12 @@ class TemplateDefn(TemplateBodyElement):
 class Literal(Expr):
     def __init__(self, value: Union[bool, int]):
         if isinstance(value, bool):
-            type = BoolType()
+           expr_type = BoolType()
         elif isinstance(value, int):
-            type = Int64Type()
+           expr_type = Int64Type()
         else:
             raise NotImplementedError('Unexpected value: ' + repr(value))
-        super().__init__(type)
+        super().__init__(expr_type)
         self.value = value
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
@@ -224,13 +224,13 @@ class AtomicTypeLiteral(Expr):
                  cpp_type: str,
                  is_local: bool,
                  is_metafunction_that_may_return_error: bool,
-                 type: ExprType,
+                 expr_type: ExprType,
                  may_be_alias: bool):
-        assert not (is_metafunction_that_may_return_error and not isinstance(type, TemplateType))
-        super().__init__(type=type)
+        assert not (is_metafunction_that_may_return_error and not isinstance(expr_type, TemplateType))
+        super().__init__(expr_type=expr_type)
         self.cpp_type = cpp_type
         self.is_local = is_local
-        self.type = type
+        self.expr_type = expr_type
         self.is_metafunction_that_may_return_error = is_metafunction_that_may_return_error
         # Only relevant for non-local literals.
         self.may_be_alias = may_be_alias
@@ -253,28 +253,28 @@ class AtomicTypeLiteral(Expr):
 
     @staticmethod
     def for_local(cpp_type: str,
-                  type: ExprType):
+                  expr_type: ExprType):
         return AtomicTypeLiteral(cpp_type=cpp_type,
                                  is_local=True,
-                                 type=type,
-                                 is_metafunction_that_may_return_error=(type.kind == ExprKind.TEMPLATE),
+                                 expr_type=expr_type,
+                                 is_metafunction_that_may_return_error=(expr_type.kind == ExprKind.TEMPLATE),
                                  may_be_alias=True)
 
     @staticmethod
     def for_nonlocal(cpp_type: str,
-                     type: ExprType,
+                     expr_type: ExprType,
                      is_metafunction_that_may_return_error: bool,
                      may_be_alias: bool):
         return AtomicTypeLiteral(cpp_type=cpp_type,
                                  is_local=False,
-                                 type=type,
+                                 expr_type=expr_type,
                                  is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
                                  may_be_alias=may_be_alias)
 
     @staticmethod
     def for_nonlocal_type(cpp_type: str, may_be_alias: bool):
         return AtomicTypeLiteral.for_nonlocal(cpp_type=cpp_type,
-                                              type=TypeType(),
+                                              expr_type=TypeType(),
                                               is_metafunction_that_may_return_error=False,
                                               may_be_alias=may_be_alias)
 
@@ -284,7 +284,7 @@ class AtomicTypeLiteral(Expr):
                               is_metafunction_that_may_return_error: bool,
                               may_be_alias: bool):
         return AtomicTypeLiteral.for_nonlocal(cpp_type=cpp_type,
-                                              type=TemplateType(arg_types),
+                                              expr_type=TemplateType(arg_types),
                                               is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
                                               may_be_alias=may_be_alias)
 
@@ -292,14 +292,14 @@ class AtomicTypeLiteral(Expr):
     def from_nonlocal_template_defn(template_defn: TemplateDefn,
                                     is_metafunction_that_may_return_error: bool):
         return AtomicTypeLiteral.for_nonlocal_template(cpp_type=template_defn.name,
-                                                       arg_types=[arg.type for arg in template_defn.args],
+                                                       arg_types=[arg.expr_type for arg in template_defn.args],
                                                        is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
                                                        may_be_alias=False)
 
 class PointerTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
-        super().__init__(type=TypeType())
-        assert type_expr.type == TypeType()
+        super().__init__(expr_type=TypeType())
+        assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
@@ -314,8 +314,8 @@ class PointerTypeExpr(Expr):
 
 class ReferenceTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
-        super().__init__(type=TypeType())
-        assert type_expr.type == TypeType()
+        super().__init__(expr_type=TypeType())
+        assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
@@ -330,8 +330,8 @@ class ReferenceTypeExpr(Expr):
 
 class RvalueReferenceTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
-        super().__init__(type=TypeType())
-        assert type_expr.type == TypeType()
+        super().__init__(expr_type=TypeType())
+        assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
@@ -346,8 +346,8 @@ class RvalueReferenceTypeExpr(Expr):
 
 class ConstTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
-        super().__init__(type=TypeType())
-        assert type_expr.type == TypeType()
+        super().__init__(expr_type=TypeType())
+        assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
@@ -362,8 +362,8 @@ class ConstTypeExpr(Expr):
 
 class ArrayTypeExpr(Expr):
     def __init__(self, type_expr: Expr):
-        super().__init__(type=TypeType())
-        assert type_expr.type == TypeType()
+        super().__init__(expr_type=TypeType())
+        assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
@@ -378,9 +378,9 @@ class ArrayTypeExpr(Expr):
 
 class FunctionTypeExpr(Expr):
     def __init__(self, return_type_expr: Expr, arg_exprs: List[Expr]):
-        assert return_type_expr.type == TypeType(), return_type_expr.type.__class__.__name__
+        assert return_type_expr.expr_type == TypeType(), return_type_expr.expr_type.__class__.__name__
 
-        super().__init__(type=TypeType())
+        super().__init__(expr_type=TypeType())
         self.return_type_expr = return_type_expr
         self.arg_exprs = tuple(arg_exprs)
 
@@ -398,7 +398,7 @@ class FunctionTypeExpr(Expr):
 
 class UnaryExpr(Expr):
     def __init__(self, expr: Expr, result_type: ExprType):
-        super().__init__(type=result_type)
+        super().__init__(expr_type=result_type)
         self.expr = expr
 
     def get_direct_subexpressions(self):
@@ -406,7 +406,7 @@ class UnaryExpr(Expr):
 
 class BinaryExpr(Expr):
     def __init__(self, lhs: Expr, rhs: Expr, result_type: ExprType):
-        super().__init__(type=result_type)
+        super().__init__(expr_type=result_type)
         self.lhs = lhs
         self.rhs = rhs
 
@@ -416,13 +416,13 @@ class BinaryExpr(Expr):
 
 class ComparisonExpr(BinaryExpr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        assert lhs.type == rhs.type
-        if isinstance(lhs.type, BoolType):
+        assert lhs.expr_type == rhs.expr_type
+        if isinstance(lhs.expr_type, BoolType):
             assert op in ('==', '!=')
-        elif isinstance(lhs.type, Int64Type):
+        elif isinstance(lhs.expr_type, Int64Type):
             assert op in ('==', '!=', '<', '>', '<=', '>=')
         else:
-            raise NotImplementedError('Unexpected type: %s' % str(lhs.type))
+            raise NotImplementedError('Unexpected type: %s' % str(lhs.expr_type))
         super().__init__(lhs, rhs, result_type=BoolType())
         self.op = op
 
@@ -436,8 +436,8 @@ class ComparisonExpr(BinaryExpr):
 class Int64BinaryOpExpr(BinaryExpr):
     def __init__(self, lhs: Expr, rhs: Expr, op: str):
         super().__init__(lhs, rhs, result_type=Int64Type())
-        assert isinstance(lhs.type, Int64Type)
-        assert isinstance(rhs.type, Int64Type)
+        assert isinstance(lhs.expr_type, Int64Type)
+        assert isinstance(rhs.expr_type, Int64Type)
         assert op in ('+', '-', '*', '/', '%')
         self.op = op
 
@@ -453,19 +453,19 @@ class TemplateInstantiation(Expr):
                  template_expr: Expr,
                  args: List[Expr],
                  instantiation_might_trigger_static_asserts: bool):
-        assert isinstance(template_expr.type, TemplateType), str(template_expr.type)
+        assert isinstance(template_expr.expr_type, TemplateType), str(template_expr.expr_type)
 
-        if any(type.kind == ExprKind.VARIADIC_TYPE
-               for types in (template_expr.type.argtypes, (arg.type for arg in args))
-               for type in types):
+        if any(expr_type.kind == ExprKind.VARIADIC_TYPE
+               for types in (template_expr.expr_type.argtypes, (arg.expr_type for arg in args))
+               for expr_type in types):
             # In this case it's fine if the two lists "don't match up"
             pass
         else:
-            assert len(template_expr.type.argtypes) == len(args), 'template_expr.type.argtypes: %s, args: %s' % (template_expr.type.argtypes, args)
-            for arg_type, arg_expr in zip(template_expr.type.argtypes, args):
-                assert arg_expr.type == arg_type, '%s vs %s' % (str(arg_expr.type), str(arg_type))
+            assert len(template_expr.expr_type.argtypes) == len(args), 'template_expr.expr_type.argtypes: %s, args: %s' % (template_expr.expr_type.argtypes, args)
+            for arg_type, arg_expr in zip(template_expr.expr_type.argtypes, args):
+                assert arg_expr.expr_type == arg_type, '%s vs %s' % (str(arg_expr.expr_type), str(arg_type))
 
-        super().__init__(type=TypeType())
+        super().__init__(expr_type=TypeType())
         self.template_expr = template_expr
         self.args = tuple(args)
         self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
@@ -492,7 +492,7 @@ class ClassMemberAccess(UnaryExpr):
 
     def copy_with_subexpressions(self, new_subexpressions: List[Expr]):
         [expr] = new_subexpressions
-        return ClassMemberAccess(class_type_expr=expr, member_name=self.member_name, member_type=self.type)
+        return ClassMemberAccess(class_type_expr=expr, member_name=self.member_name, member_type=self.expr_type)
 
 class NotExpr(UnaryExpr):
     def __init__(self, expr: Expr):
@@ -518,7 +518,7 @@ class UnaryMinusExpr(UnaryExpr):
 
 class VariadicTypeExpansion(UnaryExpr):
     def __init__(self, expr: Expr):
-        assert expr.type == VariadicType()
+        assert expr.expr_type == VariadicType()
         super().__init__(expr, result_type=TypeType())
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):

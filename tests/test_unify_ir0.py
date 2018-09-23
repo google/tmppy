@@ -37,7 +37,7 @@ def type_literal(cpp_type: str):
     return ir0.AtomicTypeLiteral.for_nonlocal_type(cpp_type, may_be_alias=False)
 
 def local_type_literal(cpp_type: str):
-    return ir0.AtomicTypeLiteral.for_local(cpp_type, type=ir0.TypeType())
+    return ir0.AtomicTypeLiteral.for_local(cpp_type, expr_type=ir0.TypeType())
 
 @pytest.mark.parametrize('expr_generator', [
     lambda: ir0.Literal(1),
@@ -90,15 +90,15 @@ def test_unify_ir0_trivial_term_equality(expr_generator):
     assert result.value_by_pattern_variable == []
 
 @pytest.mark.parametrize('expr1,expr2', [
-    (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Ts', type=ir0.VariadicType())),
-     ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Us', type=ir0.VariadicType()))),
+    (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Ts', expr_type=ir0.VariadicType())),
+     ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Us', expr_type=ir0.VariadicType()))),
 ])
 def test_unify_ir0_term_equality_variadic_type_expansion(expr1, expr2):
     result = unify([expr1], [expr2], expr_variables={'Ts'}, pattern_variables={'Us'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
-        (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Us', type=ir0.VariadicType())),
-         [ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Ts', type=ir0.VariadicType()))]),
+        (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Us', expr_type=ir0.VariadicType())),
+         [ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Ts', expr_type=ir0.VariadicType()))]),
     ]
 
 @pytest.mark.parametrize('expr1,expr2', [
@@ -143,10 +143,10 @@ def test_unify_ir0_term_equality_fails_different_direct_values_in_term_syntactic
     assert result.kind == UnificationResultKind.CERTAIN
 
 @pytest.mark.parametrize('expr1,expr2', [
-    (ir0.AtomicTypeLiteral.for_local('int', type=ir0.TypeType()),
-     ir0.AtomicTypeLiteral.for_local('float', type=ir0.TypeType())),
-    (ir0.AtomicTypeLiteral.for_local('int', type=ir0.TypeType()),
-     ir0.AtomicTypeLiteral.for_local('int', type=ir0.VariadicType())),
+    (ir0.AtomicTypeLiteral.for_local('int', expr_type=ir0.TypeType()),
+     ir0.AtomicTypeLiteral.for_local('float', expr_type=ir0.TypeType())),
+    (ir0.AtomicTypeLiteral.for_local('int', expr_type=ir0.TypeType()),
+     ir0.AtomicTypeLiteral.for_local('int', expr_type=ir0.VariadicType())),
     (ir0.AtomicTypeLiteral.for_nonlocal_type('X', may_be_alias=True),
      ir0.AtomicTypeLiteral.for_nonlocal_type('Y', may_be_alias=True)),
     (ir0.AtomicTypeLiteral.for_nonlocal_template('F', arg_types=[], is_metafunction_that_may_return_error=False, may_be_alias=True),
@@ -299,8 +299,8 @@ def test_unify_ir0_term_equality_fails_different_subexpressions_syntactically_co
      ir0.NotExpr(literal(False))),
     (ir0.UnaryMinusExpr(literal(1)),
      ir0.UnaryMinusExpr(literal(2))),
-    (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Ts', type=ir0.VariadicType())),
-     ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Us', type=ir0.VariadicType()))),
+    (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Ts', expr_type=ir0.VariadicType())),
+     ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local('Us', expr_type=ir0.VariadicType()))),
     (ir0.ClassMemberAccess(class_type_expr=type_literal('MyClass'), member_name='value_type', member_type=ir0.TypeType()),
      ir0.ClassMemberAccess(class_type_expr=type_literal('OtherClass'), member_name='value_type', member_type=ir0.TypeType())),
 ], ids=[
@@ -364,13 +364,13 @@ def test_unify_ir0_certain_nontrivial_with_variadic_type_variable():
                    [ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[type_literal('float'),
                                                                          type_literal('double'),
                                                                          ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                                                                                   type=ir0.VariadicType())),
+                                                                                                                                   expr_type=ir0.VariadicType())),
                                                                          type_literal('void')])],
                    expr_variables={'T'}, pattern_variables={'Ts'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
         (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                   type=ir0.VariadicType())),
+                                                                   expr_type=ir0.VariadicType())),
          [local_type_literal('T'),
           type_literal('char')]),
     ]
@@ -378,12 +378,12 @@ def test_unify_ir0_certain_nontrivial_with_variadic_type_variable():
 def test_unify_ir0_certain_nontrivial_with_variadic_type_variable_matches_empty_list():
     result = unify([ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[])],
                    [ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                                                                                   type=ir0.VariadicType()))])],
+                                                                                                                                   expr_type=ir0.VariadicType()))])],
                    expr_variables=set(), pattern_variables={'Ts'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
         (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                   type=ir0.VariadicType())),
+                                                                   expr_type=ir0.VariadicType())),
          []),
     ]
 
@@ -391,12 +391,12 @@ def test_unify_ir0_certain_nontrivial_with_variadic_type_variable_matches_full_n
     result = unify([ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[type_literal('float'),
                                                                          type_literal('double')])],
                    [ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                                                                                   type=ir0.VariadicType()))])],
+                                                                                                                                   expr_type=ir0.VariadicType()))])],
                    expr_variables=set(), pattern_variables={'Ts'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
         (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                   type=ir0.VariadicType())),
+                                                                   expr_type=ir0.VariadicType())),
          [type_literal('float'),
           type_literal('double')]),
     ]
@@ -406,12 +406,12 @@ def test_unify_ir0_certain_nontrivial_with_variadic_type_variable_matches_empty_
     result = unify([ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[type_literal('float')])],
                    [ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[type_literal('float'),
                                                                          ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                                                                                   type=ir0.VariadicType()))])],
+                                                                                                                                   expr_type=ir0.VariadicType()))])],
                    expr_variables=set(), pattern_variables={'Ts'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
         (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                   type=ir0.VariadicType())),
+                                                                   expr_type=ir0.VariadicType())),
          []),
     ]
 
@@ -419,7 +419,7 @@ def test_unify_ir0_certain_nontrivial_with_variadic_type_variable_does_not_match
     result = unify([ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[])],
                    [ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[type_literal('float'),
                                                                          ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                                                                                   type=ir0.VariadicType()))])],
+                                                                                                                                   expr_type=ir0.VariadicType()))])],
                    expr_variables=set(), pattern_variables={'Ts'})
     assert result.kind == UnificationResultKind.IMPOSSIBLE
 
@@ -427,26 +427,26 @@ def test_unify_ir0_variadic_type_variable_matches_multiple_variadics():
     result = unify([ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[type_literal('float'),
                                                                          type_literal('double'),
                                                                          ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                                                                                   type=ir0.VariadicType())),
+                                                                                                                                   expr_type=ir0.VariadicType())),
                                                                          type_literal('char'),
                                                                          ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Us',
-                                                                                                                                   type=ir0.VariadicType())),
+                                                                                                                                   expr_type=ir0.VariadicType())),
                                                                          type_literal('void')])],
                    [ir0.FunctionTypeExpr(type_literal('int'), arg_exprs=[type_literal('float'),
                                                                          type_literal('double'),
                                                                          ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Vs',
-                                                                                                                                   type=ir0.VariadicType())),
+                                                                                                                                   expr_type=ir0.VariadicType())),
                                                                          type_literal('void')])],
                    expr_variables={'Ts', 'Us'}, pattern_variables={'Vs'})
     assert result.kind == UnificationResultKind.CERTAIN
     assert result.value_by_pattern_variable == [
         (ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Vs',
-                                                                   type=ir0.VariadicType())),
+                                                                   expr_type=ir0.VariadicType())),
          [ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Ts',
-                                                                    type=ir0.VariadicType())),
+                                                                    expr_type=ir0.VariadicType())),
           type_literal('char'),
           ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(cpp_type='Us',
-                                                                    type=ir0.VariadicType()))]),
+                                                                    expr_type=ir0.VariadicType()))]),
     ]
 
 if __name__== '__main__':

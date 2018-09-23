@@ -32,31 +32,31 @@ GLOBAL_INLINEABLE_TEMPLATES_BY_NAME = {
     'std::is_same': ir0.TemplateDefn(name='std::is_same',
                                      description='',
                                      result_element_names=['value'],
-                                     args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType()),
-                                           ir0.TemplateArgDecl(name='U', type=ir0.TypeType())],
-                                     main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType()),
-                                                                                      ir0.TemplateArgDecl(name='U', type=ir0.TypeType())],
+                                     args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType()),
+                                           ir0.TemplateArgDecl(name='U', expr_type=ir0.TypeType())],
+                                     main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType()),
+                                                                                      ir0.TemplateArgDecl(name='U', expr_type=ir0.TypeType())],
                                                                                 patterns=None,
                                                                                 body=[ir0.ConstantDef(name='value',
                                                                                                       expr=ir0.Literal(False))],
                                                                                 is_metafunction=True),
-                                     specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType())],
-                                                                                 patterns=[ir0.AtomicTypeLiteral.for_local(cpp_type='T', type=ir0.TypeType()),
-                                                                                           ir0.AtomicTypeLiteral.for_local(cpp_type='T', type=ir0.TypeType())],
+                                     specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType())],
+                                                                                 patterns=[ir0.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir0.TypeType()),
+                                                                                           ir0.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir0.TypeType())],
                                                                                  body=[ir0.ConstantDef(name='value',
                                                                                                        expr=ir0.Literal(True))],
                                                                                  is_metafunction=True)]),
     'std::remove_pointer': ir0.TemplateDefn(name='std::remove_pointer',
                                             description='',
                                             result_element_names=['type'],
-                                            args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType())],
-                                            main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType())],
+                                            args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType())],
+                                            main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType())],
                                                                                        patterns=None,
                                                                                        body=[ir0.Typedef(name='type',
                                                                                                          expr=ir0.AtomicTypeLiteral.for_local('T', ir0.TypeType()))],
                                                                                        is_metafunction=True),
-                                            specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', type=ir0.TypeType())],
-                                                                                        patterns=[ir0.PointerTypeExpr(ir0.AtomicTypeLiteral.for_local(cpp_type='T', type=ir0.TypeType()))],
+                                            specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType())],
+                                                                                        patterns=[ir0.PointerTypeExpr(ir0.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir0.TypeType()))],
                                                                                         body=[ir0.Typedef(name='type',
                                                                                                           expr=ir0.AtomicTypeLiteral.for_local('T', ir0.TypeType()))],
                                                                                         is_metafunction=True)]),
@@ -180,18 +180,18 @@ def normalize_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.Co
 
   return writer.toplevel_elems, False
 
-def create_var_to_var_assignment(lhs: str, rhs: str, type: ir0.ExprType):
-  if type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
+def create_var_to_var_assignment(lhs: str, rhs: str, expr_type: ir0.ExprType):
+  if expr_type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
     return ir0.ConstantDef(name=lhs,
                            expr=ir0.AtomicTypeLiteral.for_local(cpp_type=rhs,
-                                                          type=type))
-  elif type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
+                                                          expr_type=expr_type))
+  elif expr_type.kind in (ir0.ExprKind.TYPE, ir0.ExprKind.TEMPLATE):
     return ir0.Typedef(name=lhs,
                        expr=ir0.AtomicTypeLiteral.for_local(cpp_type=rhs,
-                                                      type=type))
+                                                      expr_type=expr_type))
   else:
     # TODO: consider handling VARIADIC_TYPE too.
-    raise NotImplementedError('Unexpected kind: %s' % str(type.kind))
+    raise NotImplementedError('Unexpected kind: %s' % str(expr_type.kind))
 
 class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
     def __init__(self):
@@ -234,8 +234,8 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
         # x1 = arg1
         for arg in template_specialization_args:
           name_by_expr[ir0.AtomicTypeLiteral.for_local(cpp_type=arg.name,
-                                                       type=arg.type)] = arg.name
-          type_by_name[arg.name] = arg.type
+                                                       expr_type=arg.expr_type)] = arg.name
+          type_by_name[arg.name] = arg.expr_type
 
         result_elems = []
         for elem in elems:
@@ -245,7 +245,7 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
 
             if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.expr in name_by_expr:
                 replacements[elem.name] = name_by_expr[elem.expr]
-                type_by_name[elem.name] = elem.expr.type
+                type_by_name[elem.name] = elem.expr.expr_type
             else:
                 result_elems.append(elem)
                 if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)):
@@ -264,27 +264,27 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
               # a result element to another.
               additional_result_elems.append(create_var_to_var_assignment(lhs=result_elem_name,
                                                                           rhs=replacements2[replacement],
-                                                                          type=type_by_name[replacement]))
+                                                                          expr_type=type_by_name[replacement]))
             elif replacement in result_element_names:
               # We've eliminated the assignment to the result var against another result var, so we need to emit an
               # extra "assignment" assigning a result element to another.
 
               if replacement in type_by_name:
-                  type = type_by_name[replacement]
+                 expr_type = type_by_name[replacement]
               elif result_elem_name in type_by_name:
-                  type = type_by_name[result_elem_name]
+                 expr_type = type_by_name[result_elem_name]
               else:
                   raise NotImplementedError('Unable to determine type. This should never happen.')
 
               additional_result_elems.append(create_var_to_var_assignment(lhs=result_elem_name,
                                                                           rhs=replacement,
-                                                                          type=type))
+                                                                          expr_type=expr_type))
             elif replacement in arg_names:
               # We've eliminated the assignment to the result var against the definition of an argument.
               # So we need to add it back.
               additional_result_elems.append(create_var_to_var_assignment(lhs=result_elem_name,
                                                                           rhs=replacement,
-                                                                          type=type_by_name[replacement]))
+                                                                          expr_type=type_by_name[replacement]))
             else:
               replacements2[replacement] = result_elem_name
 
@@ -320,7 +320,7 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
 
         if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.expr in name_by_expr:
           replacements[elem.name] = name_by_expr[elem.expr]
-          type_by_name[elem.name] = elem.expr.type
+          type_by_name[elem.name] = elem.expr.expr_type
         else:
           result_elems.append(elem)
           if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)):
@@ -353,7 +353,7 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
     def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: transform_ir0.Writer):
         variadic_vars_to_expand = {var.cpp_type
                                    for var in expr.get_free_vars()
-                                   if var.type == ir0.VariadicType() and var.cpp_type not in self.variadic_vars_with_expansion_in_progress}
+                                   if var.expr_type == ir0.VariadicType() and var.cpp_type not in self.variadic_vars_with_expansion_in_progress}
         previous_variadic_vars_with_expansion_in_progress = self.variadic_vars_with_expansion_in_progress
         self.variadic_vars_with_expansion_in_progress = previous_variadic_vars_with_expansion_in_progress.union(variadic_vars_to_expand)
 
@@ -386,7 +386,7 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
         results = []
         for expr in transformed_exprs:
             for var in expr.get_free_vars():
-                if var.type == ir0.VariadicType() and not var.cpp_type in self.variadic_vars_with_expansion_in_progress:
+                if var.expr_type == ir0.VariadicType() and not var.cpp_type in self.variadic_vars_with_expansion_in_progress:
                     results.append(ir0.VariadicTypeExpansion(expr))
                     break
             else:
@@ -1134,7 +1134,7 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
             ', '.join(new_var_name_by_old_var_name.keys()),
             ', '.join(ir0_to_cpp.toplevel_elem_to_cpp_simple(elem) for elem in body))
         return ir0.AtomicTypeLiteral.for_local(cpp_type=new_var_name_by_old_var_name[class_member_access.member_name],
-                                               type=class_member_access.type)
+                                               expr_type=class_member_access.expr_type)
 
 def perform_template_inlining(template_defn: ir0.TemplateDefn,
                               inlineable_refs: Set[str],
