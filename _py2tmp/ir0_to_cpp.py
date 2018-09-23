@@ -347,13 +347,9 @@ def int64_binary_op_expr_to_cpp(expr: ir0.Int64BinaryOpExpr,
 def bool_binary_op_expr_to_cpp(expr: ir0.BoolBinaryOpExpr,
                                enclosing_function_defn_args: List[ir0.TemplateArgDecl],
                                writer: Writer):
-    op = {
-        'and': '&&',
-        'or': '||',
-    }[expr.op]
     return '(%s) %s (%s)' % (
         expr_to_cpp(expr.lhs, enclosing_function_defn_args, writer),
-        op,
+        expr.op,
         expr_to_cpp(expr.rhs, enclosing_function_defn_args, writer))
 
 def _select_best_arg_decl_for_select1st(args: List[ir0.TemplateArgDecl]):

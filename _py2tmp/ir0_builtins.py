@@ -565,7 +565,7 @@ _define_template_with_single_specialization(name='BoolListAll',
                                             value_expr=_is_same(_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))),
                                                                 _bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(_local_variadic_bool('bs'),
                                                                                                                              ir0.Literal(True),
-                                                                                                                             op='or')))))
+                                                                                                                             op='||')))))
 
 # template <typename L>
 # struct BoolListAny;
@@ -581,7 +581,7 @@ _define_template_with_single_specialization(name='BoolListAny',
                                             value_expr=ir0.NotExpr(_is_same(_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))),
                                                                             _bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(_local_variadic_bool('bs'),
                                                                                                                                          ir0.Literal(False),
-                                                                                                                                         op='and'))))))
+                                                                                                                                         op='&&'))))))
 
 
 
@@ -913,7 +913,7 @@ _define_template_with_single_specialization(name='AddToBoolSet',
                                                                                                                                          op='=='))),
                                                                               _bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(lhs=_local_variadic_bool('bs'),
                                                                                                                                            rhs=ir0.Literal(False),
-                                                                                                                                           op='and'))),
+                                                                                                                                           op='&&'))),
                                                                               _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))),
                                                                               _local_bool('b')))
 
@@ -1042,7 +1042,7 @@ _define_template_with_single_specialization(name='IsInBoolSet',
                                                                                                                                        op='=='))),
                                                                             _bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(lhs=_local_variadic_bool('bs'),
                                                                                                                                          rhs=ir0.Literal(False),
-                                                                                                                                         op='and'))))))
+                                                                                                                                         op='&&'))))))
 
 # template <typename S1, typename S2>
 # struct BoolSetEquals;
@@ -1068,10 +1068,10 @@ _define_template_with_single_specialization(name='BoolSetEquals',
                                                                                                                             _local_variadic_bool('bs1')))),
                                                                 rhs=_bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(_local_variadic_bool('bs2'),
                                                                                                                                  ir0.Literal(True),
-                                                                                                                                 op='or')),
+                                                                                                                                 op='||')),
                                                                                   ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(_local_variadic_bool('bs1'),
                                                                                                                                  ir0.Literal(True),
-                                                                                                                                 op='or')))))
+                                                                                                                                 op='||')))))
 
 # template <typename S, int64_t n>
 # struct IsInInt64Set;

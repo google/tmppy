@@ -464,7 +464,7 @@ class BoolBinaryOpExpr(BinaryExpr):
         super().__init__(lhs, rhs, result_type=BoolType())
         assert isinstance(lhs.expr_type, BoolType)
         assert isinstance(rhs.expr_type, BoolType)
-        assert op in ('and', 'or')
+        assert op in ('&&', '||')
         self.op = op
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):

@@ -870,28 +870,28 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
 
     def transform_not_expr(self, not_expr: ir0.NotExpr, writer: transform_ir0.Writer) -> ir0.Expr:
         expr = self.transform_expr(not_expr.expr, writer)
-        # not True => False
-        # not False => True
+        # !true => false
+        # !false => true
         if isinstance(expr, ir0.Literal):
             assert isinstance(expr.value, bool)
             return ir0.Literal(not expr.value)
-        # not not x => x
+        # !!x => x
         if isinstance(expr, ir0.NotExpr):
             return expr.expr
-        # not (x and y) => (not x or not y)
-        # not (x or y) => (not x and not y)
+        # !(x && y) => (!x || !y)
+        # !(x || y) => (!x && !y)
         if isinstance(expr, ir0.BoolBinaryOpExpr):
             op = {
-                'and': 'or',
-                'or': 'and',
+                '&&': '||',
+                '||': '&&',
             }[expr.op]
             return self.transform_expr(ir0.BoolBinaryOpExpr(lhs=ir0.NotExpr(expr.lhs), rhs=ir0.NotExpr(expr.rhs), op=op), writer)
-        # not (x == y) => x != y
-        # not (x != y) => x == y
-        # not (x < y) => x >= y
-        # not (x <= y) => x > y
-        # not (x > y) => x <= y
-        # not (x >= y) => x < y
+        # !(x == y) => x != y
+        # !(x != y) => x == y
+        # !(x < y) => x >= y
+        # !(x <= y) => x > y
+        # !(x > y) => x <= y
+        # !(x >= y) => x < y
         if isinstance(expr, ir0.ComparisonExpr) and expr.op in ('==', '!='):
             op = {
                 '==': '!=',
@@ -975,8 +975,8 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
             if isinstance(rhs, ir0.Literal) and rhs.value == 1:
                 return lhs
 
-        if op == '//':
-            # 16 // 3 => 5
+        if op == '/':
+            # 16 / 3 => 5
             if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
                 return ir0.Literal(lhs.value // rhs.value)
             # x / 1 => x
@@ -1001,40 +1001,40 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
         lhs = self.transform_expr(lhs, writer)
         rhs = self.transform_expr(rhs, writer)
 
-        if op == 'and':
-            # True and False => False
+        if op == '&&':
+            # true && false => false
             if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
                 return ir0.Literal(lhs.value and rhs.value)
-            # True and x => x
+            # true && x => x
             if isinstance(lhs, ir0.Literal) and lhs.value is True:
                 return rhs
-            # x and True => x
+            # x && true => x
             if isinstance(rhs, ir0.Literal) and rhs.value is True:
                 return lhs
-            # False and x => False
+            # false && x => false
             if isinstance(lhs, ir0.Literal) and lhs.value is False:
                 if self._can_remove_subexpression(rhs):
                     return ir0.Literal(False)
-            # x and False => False
+            # x && false => false
             if isinstance(rhs, ir0.Literal) and rhs.value is False:
                 if self._can_remove_subexpression(lhs):
                     return ir0.Literal(False)
 
-        if op == 'or':
-            # True or False => True
+        if op == '||':
+            # true || false => true
             if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
                 return ir0.Literal(lhs.value or rhs.value)
-            # False or x => x
+            # false || x => x
             if isinstance(lhs, ir0.Literal) and lhs.value is False:
                 return rhs
-            # x or False => x
+            # x || false => x
             if isinstance(rhs, ir0.Literal) and rhs.value is False:
                 return lhs
-            # True or x => True
+            # true || x => true
             if isinstance(lhs, ir0.Literal) and lhs.value is True:
                 if self._can_remove_subexpression(rhs):
                     return ir0.Literal(True)
-            # x or True => True
+            # x || true => true
             if isinstance(rhs, ir0.Literal) and rhs.value is True:
                 if self._can_remove_subexpression(lhs):
                     return ir0.Literal(True)
