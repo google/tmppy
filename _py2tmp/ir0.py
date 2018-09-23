@@ -63,7 +63,7 @@ class TypeType(ExprType):
 class TemplateType(ExprType):
     def __init__(self, args: Sequence['TemplateArgDecl']):
         super().__init__(kind=ExprKind.TEMPLATE)
-        self.args = tuple(TemplateArgDecl(arg.expr_type, name='', is_variadic=arg.is_variadic)
+        self.args = tuple(TemplateArgDecl(arg.expr_type, '', arg.is_variadic)
                           for arg in args)
 
 class Expr(utils.ValueType, TemplateBodyElementOrExpr):
@@ -156,20 +156,27 @@ class TemplateSpecialization:
                 or any(isinstance(elem, Typedef) and elem.name == 'type'
                        for elem in body)
                 or any(isinstance(elem, ConstantDef) and elem.name == 'value'
+                       for elem in body)
+                or any(isinstance(elem, Typedef) and elem.name == 'value'
                        for elem in body)), 'body was:\n%s' % '\n'.join(utils.ir_to_string(elem)
                                                                        for elem in body)
 
 class TemplateDefn(TemplateBodyElement):
     def __init__(self,
-                 args: Sequence[TemplateArgDecl],
                  main_definition: Optional[TemplateSpecialization],
                  specializations: Sequence[TemplateSpecialization],
                  name: str,
                  description: str,
-                 result_element_names: Sequence[str]):
+                 result_element_names: Sequence[str],
+                 args: Optional[Sequence[TemplateArgDecl]] = None):
         assert main_definition or specializations
         assert not main_definition or main_definition.patterns is None
+        for specialization in specializations:
+            assert specialization.patterns is not None
         assert '\n' not in description
+        if main_definition and not args:
+            args = main_definition.args
+        assert args is not None
         self.name = name
         self.args = tuple(args)
         self.main_definition = main_definition
@@ -452,6 +459,21 @@ class Int64BinaryOpExpr(BinaryExpr):
         [lhs, rhs] = new_subexpressions
         return Int64BinaryOpExpr(lhs, rhs, self.op)
 
+class BoolBinaryOpExpr(BinaryExpr):
+    def __init__(self, lhs: Expr, rhs: Expr, op: str):
+        super().__init__(lhs, rhs, result_type=BoolType())
+        assert isinstance(lhs.expr_type, BoolType)
+        assert isinstance(rhs.expr_type, BoolType)
+        assert op in ('and', 'or')
+        self.op = op
+
+    def is_same_expr_excluding_subexpressions(self, other: Expr):
+        return isinstance(other, BoolBinaryOpExpr) and self.op == other.op
+
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
+        [lhs, rhs] = new_subexpressions
+        return BoolBinaryOpExpr(lhs, rhs, self.op)
+
 class TemplateInstantiation(Expr):
     def __init__(self,
                  template_expr: Expr,
@@ -524,7 +546,7 @@ class VariadicTypeExpansion(UnaryExpr):
     def __init__(self, expr: Expr):
         assert any(var.is_variadic
                    for var in expr.get_free_vars())
-        super().__init__(expr, result_type=TypeType())
+        super().__init__(expr, result_type=expr.expr_type)
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, VariadicTypeExpansion)

@@ -181,6 +181,8 @@ class Transformation:
             return self.transform_comparison_expr(expr, writer)
         elif isinstance(expr, ir0.Int64BinaryOpExpr):
             return self.transform_int64_binary_op_expr(expr, writer)
+        elif isinstance(expr, ir0.BoolBinaryOpExpr):
+            return self.transform_bool_binary_op_expr(expr, writer)
         elif isinstance(expr, ir0.TemplateInstantiation):
             return self.transform_template_instantiation(expr, writer)
         elif isinstance(expr, ir0.PointerTypeExpr):
@@ -262,6 +264,12 @@ class Transformation:
             lhs, rhs = exprs
             return ir0.Int64BinaryOpExpr(lhs=lhs, rhs=rhs, op=binary_op.op)
 
+    def transform_bool_binary_op_expr(self, binary_op: ir0.BoolBinaryOpExpr, writer: Writer) -> ir0.Expr:
+        exprs = self.transform_exprs([binary_op.lhs, binary_op.rhs], binary_op, writer)
+        if self.generates_transformed_ir:
+            lhs, rhs = exprs
+            return ir0.BoolBinaryOpExpr(lhs=lhs, rhs=rhs, op=binary_op.op)
+
     def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: Writer) -> ir0.Expr:
         result = self.transform_exprs([template_instantiation.template_expr, *template_instantiation.args], template_instantiation, writer)
         if self.generates_transformed_ir:
@@ -304,7 +312,12 @@ class Transformation:
     def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: Writer):
         expr = self.transform_expr(expr.expr, writer)
         if self.generates_transformed_ir:
-            return ir0.VariadicTypeExpansion(expr)
+            if is_expr_variadic(expr):
+                return ir0.VariadicTypeExpansion(expr)
+            else:
+                # This is not just an optimization, it's an error to have a VariadicTypeExpansion() that doesn't contain
+                # any variadic var refs.
+                return expr
 
 class NameReplacementTransformation(Transformation):
     def __init__(self, replacements: Mapping[str, str]):
@@ -347,3 +360,20 @@ class NameReplacementTransformation(Transformation):
             return self.replacements[name]
         else:
             return name
+
+class ComputeIsVariadicTransformation(Transformation):
+    def __init__(self):
+        super().__init__(generates_transformed_ir=False)
+        self.is_variadic = False
+
+    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: Writer):
+        # No need to visit `expr`. Any variadic var inside it is already expanded anyway.
+        return
+
+    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: Writer):
+        self.is_variadic |= type_literal.is_variadic
+
+def is_expr_variadic(expr: ir0.Expr):
+    transformation = ComputeIsVariadicTransformation()
+    transformation.transform_expr(expr, ToplevelWriter(iter([])))
+    return transformation.is_variadic

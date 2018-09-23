@@ -28,6 +28,8 @@ def _unpack_if_variable(expr: ir0.Expr,
     if isinstance(expr, ir0.VariadicTypeExpansion) and isinstance(expr.expr, ir0.AtomicTypeLiteral) and expr.expr.cpp_type in var_names:
         expr = expr.expr
         variadic = True
+    if isinstance(expr, ir0.AtomicTypeLiteral):
+        variadic |= expr.is_variadic
     if isinstance(expr, ir0.AtomicTypeLiteral) and expr.cpp_type in var_names:
         # We keep track of the expr so that we can re-pack this later.
         # If there are multiple they must be the same.
@@ -36,7 +38,7 @@ def _unpack_if_variable(expr: ir0.Expr,
         else:
             literal_expr_by_unique_name[expr.cpp_type] = expr
         if expr.cpp_type in is_variadic:
-            assert variadic == is_variadic[expr.cpp_type]
+            assert variadic == is_variadic[expr.cpp_type], 'Found cpp_type that is both variadic and not variadic in different exprs: %s' % expr.cpp_type
         else:
             is_variadic[expr.cpp_type] = variadic
 
@@ -101,6 +103,7 @@ class _ExprUnificationStrategy(unification.UnificationStrategyForCanonicalizatio
             # These are False because they operate on values, not types, the result can be expressed with a literal too.
             ir0.ComparisonExpr: lambda t: False,
             ir0.Int64BinaryOpExpr: lambda t: False,
+            ir0.BoolBinaryOpExpr: lambda t: False,
             ir0.NotExpr: lambda t: False,
             ir0.UnaryMinusExpr: lambda t: False,
             # This is False in general because the result can be any type/value, but it's true in the special case of
@@ -226,7 +229,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
                       for index, might_be_best in enumerate(might_be_best_match))))
     return None
 
-def unify(exprs: List[ir0.Expr],
+def unify(initial_exprs: List[ir0.Expr],
           local_var_definitions: Mapping[str, ir0.Expr],
           patterns: List[ir0.Expr],
           expr_variables: Set[str],
@@ -237,7 +240,7 @@ def unify(exprs: List[ir0.Expr],
     # is equal to T in a pattern just because they have the same name.
 
     lhs_type_literal_names = set(local_var_definitions.keys())
-    for expr in itertools.chain(exprs, local_var_definitions.values()):
+    for expr in itertools.chain(initial_exprs, local_var_definitions.values()):
         for expr_literal in expr.get_free_vars():
             lhs_type_literal_names.add(expr_literal.cpp_type)
 
@@ -260,7 +263,7 @@ def unify(exprs: List[ir0.Expr],
     literal_expr_by_unique_name: Dict[str, ir0.AtomicTypeLiteral] = dict()
 
     lhs = [_replace_var_names_in_expr(expr, unique_var_name_by_expr_type_literal_name)
-           for expr in exprs]
+           for expr in initial_exprs]
     rhs = [_replace_var_names_in_expr(pattern, unique_var_name_by_pattern_type_literal_name)
            for pattern in patterns]
     context = [(unique_var_name_by_expr_type_literal_name[local_var_name], _replace_var_names_in_expr(value, unique_var_name_by_expr_type_literal_name))
@@ -285,7 +288,7 @@ def unify(exprs: List[ir0.Expr],
     except unification.UnificationFailedException:
         if verbose:
             print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning IMPOSSIBLE due to exception: %s' % (
-                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
                 ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
                 ', '.join(expr_variable for expr_variable in expr_variables),
@@ -297,7 +300,7 @@ def unify(exprs: List[ir0.Expr],
     except unification.UnificationAmbiguousException:
         if verbose:
             print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning POSSIBLE due to exception: %s' % (
-                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
                 ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
                 ', '.join(expr_variable for expr_variable in expr_variables),
@@ -308,7 +311,7 @@ def unify(exprs: List[ir0.Expr],
         return UnificationResult(UnificationResultKind.POSSIBLE)
     except AssertionError as e:
         print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nAssertionError' % (
-            ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+            ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
             ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
             ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
             ', '.join(expr_variable for expr_variable in expr_variables),
@@ -322,7 +325,7 @@ def unify(exprs: List[ir0.Expr],
     except unification.CanonicalizationFailedException:
         if verbose:
             print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning POSSIBLE due to exception: %s' % (
-                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
                 ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
                 ', '.join(expr_variable for expr_variable in expr_variables),
@@ -333,7 +336,7 @@ def unify(exprs: List[ir0.Expr],
         return UnificationResult(UnificationResultKind.POSSIBLE)
     except AssertionError as e:
         print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nvar_expr_equations = %s\nAssertionError' % (
-            ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+            ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
             ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
             ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
             ', '.join(expr_variable for expr_variable in expr_variables),
@@ -370,12 +373,30 @@ def unify(exprs: List[ir0.Expr],
             result_var_expr_equations.append((_replace_var_names_in_expr(var, unique_var_name_by_pattern_type_literal_name.inv),
                                               [_replace_var_names_in_expr(expr, unique_var_name_by_expr_type_literal_name.inv)]))
 
+    for var, exprs in var_expr_equations:
+        for expr in exprs:
+            if var.expr_type != expr.expr_type:
+                if verbose:
+                    print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning IMPOSSIBLE due to type mismatch:\n%s\nwith type:\n%s\n=== vs ===\n%s\nwith type:\m%s' % (
+                        ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
+                        ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
+                        ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
+                        ', '.join(expr_variable for expr_variable in expr_variables),
+                        ', '.join(pattern_variable for pattern_variable in pattern_variables),
+                        unique_var_name_by_expr_type_literal_name,
+                        unique_var_name_by_pattern_type_literal_name,
+                        ir0_to_cpp.expr_to_cpp_simple(var),
+                        str(var.expr_type),
+                        ir0_to_cpp.expr_to_cpp_simple(expr),
+                        str(expr.expr_type)))
+                return UnificationResult(UnificationResultKind.IMPOSSIBLE)
+
     for var, _ in result_var_expr_equations:
         assert isinstance(var, ir0.AtomicTypeLiteral) or (isinstance(var, ir0.VariadicTypeExpansion) and isinstance(var.expr, ir0.AtomicTypeLiteral))
 
         if verbose:
             print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning CERTAIN with result_var_expr_equations:\n%s' % (
-                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in exprs),
+                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
                 ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
                 ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
                 ', '.join(expr_variable for expr_variable in expr_variables),

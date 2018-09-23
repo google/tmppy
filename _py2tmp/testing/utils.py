@@ -17,6 +17,7 @@ import inspect
 import json
 import os
 import tempfile
+import traceback
 import unittest
 import textwrap
 import re
@@ -43,6 +44,9 @@ from _py2tmp import (
     utils,
 )
 
+# TODO: Flip this to true once all tests are fully optimized.
+CHECK_TESTS_WERE_FULLY_OPTIMIZED = False
+
 class TestFailedException(Exception):
     pass
 
@@ -59,15 +63,15 @@ def bisect_with_predicate(last_known_good: int, first_known_bad: int, is_good: C
     assert last_known_good + 1 == first_known_bad
     return first_known_bad
 
-def run_test_with_optional_optimization(run: Callable[[], Any], allow_reaching_max_optimization_loops=False):
+def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reaching_max_optimization_loops=False):
     try:
         optimize_ir0.ConfigurationKnobs.verbose = optimize_ir0.DEFAULT_VERBOSE_SETTING
 
         e1 = None
         try:
             optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = 0
-            run()
-        except TestFailedException as e:
+            cpp_source = run(allow_toplevel_static_asserts_after_optimization=True)
+        except (TestFailedException, AttributeError, AssertionError) as e:
             e1 = e
 
         e2 = None
@@ -75,24 +79,26 @@ def run_test_with_optional_optimization(run: Callable[[], Any], allow_reaching_m
             optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
             optimize_ir0.ConfigurationKnobs.optimization_step_counter = 0
             optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
-            run()
-        except TestFailedException as e:
+            run(allow_toplevel_static_asserts_after_optimization=True)
+        except (TestFailedException, AttributeError, AssertionError) as e:
             e2 = e
 
         if e1 and e2:
-            raise e2
+            raise e1
 
         if not e1 and not e2:
             if optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0 and not allow_reaching_max_optimization_loops:
                 raise TestFailedException('The test passed, but hit max_num_remaining_loops')
+            if CHECK_TESTS_WERE_FULLY_OPTIMIZED:
+                run(allow_toplevel_static_asserts_after_optimization=False)
             return
 
         def predicate(max_num_optimization_steps):
             optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = max_num_optimization_steps
             try:
-                run()
+                run(allow_toplevel_static_asserts_after_optimization=True)
                 return True
-            except TestFailedException as e:
+            except (TestFailedException, AttributeError, AssertionError) as e:
                 return False
 
         if e2:
@@ -102,10 +108,14 @@ def run_test_with_optional_optimization(run: Callable[[], Any], allow_reaching_m
             optimize_ir0.ConfigurationKnobs.verbose = True
             optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = bisect_result
             try:
-                run()
+                run(allow_toplevel_static_asserts_after_optimization=True)
             except TestFailedException as e:
                 [message] = e.args
-                raise TestFailedException('Found test that fails after optimization.\n' + textwrap.dedent(message))
+                raise TestFailedException('Found test that fails after optimization.\nNon-optimized C++ code:\n%s\n%s' % (cpp_source,
+                                                                                                                          textwrap.dedent(message)))
+            except (AttributeError, AssertionError):
+                raise TestFailedException('Found test that fails after optimization.\nNon-optimized C++ code:\n%s\n%s' % (cpp_source,
+                                                                                                                          traceback.format_exc()))
 
             raise Exception('This should never happen, the test failed before with the same max_num_optimization_steps.')
         else:
@@ -114,7 +124,7 @@ def run_test_with_optional_optimization(run: Callable[[], Any], allow_reaching_m
             bisect_result = bisect_with_predicate(0, optimize_ir0.ConfigurationKnobs.optimization_step_counter, lambda n: not predicate(n))
             optimize_ir0.ConfigurationKnobs.verbose = True
             optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = bisect_result
-            run()
+            run(allow_toplevel_static_asserts_after_optimization=True)
             raise TestFailedException('Found test that succeeds only after optimization: ' + ', '.join(e1.args))
     except TestFailedException as e:
         [message] = e.args
@@ -689,7 +699,7 @@ def _convert_tmppy_source_to_ir(python_source, identifier_generator):
     module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2)
     return module_ir2, module_ir1
 
-def _convert_to_cpp_expecting_success(tmppy_source):
+def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization):
     identifier_generator = create_identifier_generator()
     try:
         module_ir2, module_ir1 = _convert_tmppy_source_to_ir(tmppy_source, identifier_generator)
@@ -712,6 +722,28 @@ def _convert_to_cpp_expecting_success(tmppy_source):
         header = optimize_ir0.optimize_header(header, identifier_generator)
         cpp_source = ir0_to_cpp.header_to_cpp(header, identifier_generator)
         cpp_source = utils.clang_format(cpp_source)
+
+        if not allow_toplevel_static_asserts_after_optimization:
+            for elem in header.toplevel_content:
+                if isinstance(elem, ir0.StaticAssert):
+                    raise TestFailedException(textwrap.dedent('''\
+                            The conversion from TMPPy to C++ succeeded, but there were static_assert()s left after optimization.
+                            
+                            TMPPy source:
+                            {tmppy_source}
+                            
+                            TMPPy IR2:
+                            {tmppy_ir2}
+                            
+                            TMPPy IR1:
+                            {tmppy_ir1}
+                            
+                            Generated C++ source:
+                            {cpp_source}
+                            ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                                        tmppy_ir2=str(module_ir2),
+                                        tmppy_ir1=str(module_ir1),
+                                        cpp_source=cpp_source))
 
         return module_ir2, module_ir1, cpp_source
     except ast_to_ir3.CompilationError as e1:
@@ -739,10 +771,11 @@ def assert_compilation_succeeds(extra_cpp_prelude=''):
     def eval(f):
         @wraps(f)
         def wrapper():
-            def run_test():
+            def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
-                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization)
                 expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, extra_cpp_prelude + cpp_source)
+                return cpp_source
             run_test_with_optional_optimization(run_test)
         return wrapper
 
@@ -754,16 +787,17 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
         def wrapper():
             tmppy_source = _get_function_body(f)
 
-            def run_test():
-                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+            def run_test(allow_toplevel_static_asserts_after_optimization: bool):
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
                 expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, extra_cpp_prelude + cpp_source)
+                return cpp_source
             run_test_with_optional_optimization(run_test)
 
             try:
                 optimize_ir0.ConfigurationKnobs.verbose = optimize_ir0.DEFAULT_VERBOSE_SETTING
                 optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
                 optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
-                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
 
                 assert expected_cpp_source[0] == '\n'
                 if cpp_source != expected_cpp_source[1:]:
@@ -811,9 +845,9 @@ def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_e
     def eval(f):
         @wraps(f)
         def wrapper():
-            def run_test():
+            def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
-                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization)
                 expect_cpp_code_compile_error(
                     expected_py2tmp_error_regex,
                     expected_py2tmp_error_desc_regex,
@@ -821,6 +855,7 @@ def assert_compilation_fails(expected_py2tmp_error_regex: str, expected_py2tmp_e
                     module_ir2,
                     module_ir1,
                     cpp_source)
+                return cpp_source
             run_test_with_optional_optimization(run_test)
         return wrapper
     return eval
@@ -830,15 +865,16 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str, allow
     def eval(f):
         @wraps(f)
         def wrapper():
-            def run_test():
+            def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
-                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
                 expect_cpp_code_generic_compile_error(
                     expected_error_regex,
                     tmppy_source,
                     module_ir2,
                     module_ir1,
                     cpp_source)
+                return cpp_source
             run_test_with_optional_optimization(run_test, allow_reaching_max_optimization_loops)
         return wrapper
     return eval
@@ -848,15 +884,16 @@ def assert_compilation_fails_with_static_assert_error(expected_error_regex: str)
     def eval(f):
         @wraps(f)
         def wrapper():
-            def run_test():
+            def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
-                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
                 expect_cpp_code_generic_compile_error(
                     r'(error: static assertion failed: |error: static_assert failed .)' + expected_error_regex,
                     tmppy_source,
                     module_ir2,
                     module_ir1,
                     cpp_source)
+                return cpp_source
             run_test_with_optional_optimization(run_test)
         return wrapper
     return eval
@@ -872,7 +909,7 @@ def _get_line_from_diagnostic(diagnostic):
 def assert_conversion_fails(f):
     @wraps(f)
     def wrapper():
-        def run_test():
+        def run_test(allow_toplevel_static_asserts_after_optimization: bool):
             tmppy_source = _get_function_body(f)
             actual_source_lines = []
             expected_error_regex = None
@@ -990,6 +1027,7 @@ def assert_conversion_fails(f):
                             {tmppy_source}
                             ''').format(actual_note = '\n'.join(actual_note),
                                         tmppy_source = add_line_numbers(tmppy_source)))
+            return '(no C++ source)'
         run_test_with_optional_optimization(run_test)
 
     return wrapper
@@ -998,10 +1036,10 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
     def eval(f):
         @wraps(f)
         def wrapper():
-            def run_test():
+            def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
                 try:
-                    module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source)
+                    module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization)
                     e = None
                 except ir0.CodegenError as e1:
                     e = e1
@@ -1049,6 +1087,7 @@ def assert_conversion_fails_with_codegen_error(expected_error_regex: str):
                                         tmppy_ir2=str(module_ir2),
                                         tmppy_ir1=str(module_ir1),
                                         cpp_source=add_line_numbers(cpp_source)))
+                return cpp_source
             run_test_with_optional_optimization(run_test)
         return wrapper
     return eval

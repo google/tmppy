@@ -108,6 +108,8 @@ def expr_to_cpp(expr: ir0.Expr,
         return unary_minus_expr_to_cpp(expr, enclosing_function_defn_args, writer)
     elif isinstance(expr, ir0.Int64BinaryOpExpr):
         return int64_binary_op_expr_to_cpp(expr, enclosing_function_defn_args, writer)
+    elif isinstance(expr, ir0.BoolBinaryOpExpr):
+        return bool_binary_op_expr_to_cpp(expr, enclosing_function_defn_args, writer)
     else:
         writer = ExprWriter(writer)
         type_expr_to_cpp(expr, enclosing_function_defn_args, writer)
@@ -342,6 +344,18 @@ def int64_binary_op_expr_to_cpp(expr: ir0.Int64BinaryOpExpr,
         expr.op,
         expr_to_cpp(expr.rhs, enclosing_function_defn_args, writer))
 
+def bool_binary_op_expr_to_cpp(expr: ir0.BoolBinaryOpExpr,
+                               enclosing_function_defn_args: List[ir0.TemplateArgDecl],
+                               writer: Writer):
+    op = {
+        'and': '&&',
+        'or': '||',
+    }[expr.op]
+    return '(%s) %s (%s)' % (
+        expr_to_cpp(expr.lhs, enclosing_function_defn_args, writer),
+        op,
+        expr_to_cpp(expr.rhs, enclosing_function_defn_args, writer))
+
 def _select_best_arg_decl_for_select1st(args: List[ir0.TemplateArgDecl]):
     for arg in args:
         if not isinstance(arg.expr_type, ir0.TemplateType):
@@ -377,8 +391,7 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
             arg_index = _select_best_arg_expr_index_for_select1st(args)
             arg_to_replace = args[arg_index]
 
-            is_variadic = any(var.is_variadic
-                              for var in arg_to_replace.get_free_vars())
+            is_variadic = transform_ir0.is_expr_variadic(arg_to_replace)
             if arg_decl.expr_type.kind != ir0.ExprKind.TEMPLATE and arg_to_replace.expr_type.kind != ir0.ExprKind.TEMPLATE:
                 # We use lambdas here just to make sure we collect code coverage of each "branch". They are not necessary.
                 # Note that we use the *Type variants for variadic types too. That's ok, since e.g.
@@ -490,7 +503,11 @@ def class_member_access_to_cpp(expr: ir0.ClassMemberAccess,
 def variadic_type_expansion_to_cpp(expr: ir0.VariadicTypeExpansion,
                                    enclosing_function_defn_args: List[ir0.TemplateArgDecl],
                                    writer: Writer):
-    return expr_to_cpp(expr.expr, enclosing_function_defn_args, writer) + '...'
+    cpp = expr_to_cpp(expr.expr, enclosing_function_defn_args, writer)
+    if expr.expr_type.kind == ir0.ExprKind.TYPE:
+        return cpp + '...'
+    else:
+        return '(' + cpp + ')...'
 
 def not_expr_to_cpp(expr: ir0.NotExpr,
                     enclosing_function_defn_args: List[ir0.TemplateArgDecl],

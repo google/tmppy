@@ -15,7 +15,7 @@ import difflib
 from collections import defaultdict
 
 import itertools
-from _py2tmp import ir0, utils, transform_ir0, ir0_to_cpp, unify_ir0
+from _py2tmp import ir0, utils, transform_ir0, ir0_to_cpp, unify_ir0, ir0_builtins
 import networkx as nx
 from typing import List, Tuple, Union, Dict, Set, Iterator, Callable, Sequence
 
@@ -28,40 +28,90 @@ class ConfigurationKnobs:
     reached_max_num_remaining_loops_counter = 0
     verbose = DEFAULT_VERBOSE_SETTING
 
-
-GLOBAL_INLINEABLE_TEMPLATES_BY_NAME = {
-    'std::is_same': ir0.TemplateDefn(name='std::is_same',
-                                     description='',
-                                     result_element_names=['value'],
-                                     args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False),
-                                           ir0.TemplateArgDecl(name='U', expr_type=ir0.TypeType(), is_variadic=False)],
-                                     main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False),
-                                                                                      ir0.TemplateArgDecl(name='U', expr_type=ir0.TypeType(), is_variadic=False)],
-                                                                                patterns=None,
-                                                                                body=[ir0.ConstantDef(name='value',
-                                                                                                      expr=ir0.Literal(False))],
-                                                                                is_metafunction=True),
-                                     specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False)],
-                                                                                 patterns=[ir0.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir0.TypeType(), is_variadic=False),
-                                                                                           ir0.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir0.TypeType(), is_variadic=False)],
-                                                                                 body=[ir0.ConstantDef(name='value',
-                                                                                                       expr=ir0.Literal(True))],
+GLOBAL_INLINEABLE_TEMPLATES = [
+    ir0.TemplateDefn(name='std::is_same',
+                     description='',
+                     result_element_names=['value'],
+                     args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False),
+                           ir0.TemplateArgDecl(name='U', expr_type=ir0.TypeType(), is_variadic=False)],
+                     main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False),
+                                                                      ir0.TemplateArgDecl(name='U', expr_type=ir0.TypeType(), is_variadic=False)],
+                                                                patterns=None,
+                                                                body=[ir0.ConstantDef(name='value',
+                                                                                      expr=ir0.Literal(False))],
+                                                                is_metafunction=True),
+                     specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False)],
+                                                                 patterns=[ir0.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir0.TypeType(), is_variadic=False),
+                                                                           ir0.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir0.TypeType(), is_variadic=False)],
+                                                                 body=[ir0.ConstantDef(name='value',
+                                                                                       expr=ir0.Literal(True))],
                                                                                  is_metafunction=True)]),
-    'std::remove_pointer': ir0.TemplateDefn(name='std::remove_pointer',
-                                            description='',
-                                            result_element_names=['type'],
-                                            args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False)],
-                                            main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False)],
-                                                                                       patterns=None,
-                                                                                       body=[ir0.Typedef(name='type',
-                                                                                                         expr=ir0.AtomicTypeLiteral.for_local('T', ir0.TypeType(), is_variadic=False))],
-                                                                                       is_metafunction=True),
-                                            specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False)],
-                                                                                        patterns=[ir0.PointerTypeExpr(ir0.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir0.TypeType(), is_variadic=False))],
-                                                                                        body=[ir0.Typedef(name='type',
-                                                                                                          expr=ir0.AtomicTypeLiteral.for_local('T', ir0.TypeType(), is_variadic=False))],
-                                                                                        is_metafunction=True)]),
-}
+    ir0.TemplateDefn(name='std::remove_pointer',
+                     description='',
+                     result_element_names=['type'],
+                     args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False)],
+                     main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False)],
+                                                                patterns=None,
+                                                                body=[ir0.Typedef(name='type',
+                                                                                  expr=ir0.AtomicTypeLiteral.for_local('T', ir0.TypeType(), is_variadic=False))],
+                                                                is_metafunction=True),
+                     specializations=[ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False)],
+                                                                 patterns=[ir0.PointerTypeExpr(ir0.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir0.TypeType(), is_variadic=False))],
+                                                                 body=[ir0.Typedef(name='type',
+                                                                                   expr=ir0.AtomicTypeLiteral.for_local('T', ir0.TypeType(), is_variadic=False))],
+                                                                 is_metafunction=True)]),
+
+    # This must be here because it's used in ir0_to_cpp so we can't remove this even if there are no remaining
+    # references in IR0.
+    # template <bool>
+    # struct AlwaysTrueFromBool {
+    #   static constexpr bool value = true;
+    # };
+    ir0.TemplateDefn(name='AlwaysTrueFromBool',
+                     description='',
+                     main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='b', expr_type=ir0.BoolType(), is_variadic=False)],
+                                                                patterns=None,
+                                                                body=[ir0.ConstantDef(name='value',
+                                                                                      expr=ir0.Literal(True))],
+                                                                is_metafunction=True),
+                     result_element_names=['value'],
+                     specializations=[]),
+
+    # This must be here because it's used in ir0_to_cpp so we can't remove this even if there are no remaining
+    # references in IR0.
+    # template <int64_t>
+    # struct AlwaysTrueFromInt64 {
+    #   static constexpr bool value = true;
+    # };
+    ir0.TemplateDefn(name='AlwaysTrueFromInt64',
+                     description='',
+                     main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='n', expr_type=ir0.Int64Type(), is_variadic=False)],
+                                                                patterns=None,
+                                                                body=[ir0.ConstantDef(name='value',
+                                                                                      expr=ir0.Literal(True))],
+                                                                is_metafunction=True),
+                     result_element_names=['value'],
+                     specializations=[]),
+
+    # This must be here because it's used in ir0_to_cpp so we can't remove this even if there are no remaining
+    # references in IR0.
+    # template <typename>
+    # struct AlwaysTrueFromType {
+    #   static constexpr bool value = true;
+    # };
+    ir0.TemplateDefn(name='AlwaysTrueFromType',
+                     description='',
+                     main_definition=ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(name='T', expr_type=ir0.TypeType(), is_variadic=False)],
+                                                                patterns=None,
+                                                                body=[ir0.ConstantDef(name='value',
+                                                                                      expr=ir0.Literal(True))],
+                                                                is_metafunction=True),
+                     result_element_names=['value'],
+                     specializations=[]),
+]
+
+GLOBAL_INLINEABLE_TEMPLATES_BY_NAME = {template_defn.name: template_defn
+                                       for template_defn in GLOBAL_INLINEABLE_TEMPLATES}
 
 def template_defn_to_cpp(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
   writer = ir0_to_cpp.ToplevelWriter(identifier_generator)
@@ -302,6 +352,8 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
         if is_metafunction and result_elems:
             assert (any(isinstance(elem, ir0.Typedef) and elem.name == 'type'
                         for elem in result_elems)
+                    or any(isinstance(elem, ir0.Typedef) and elem.name == 'value'
+                           for elem in result_elems)
                     or any(isinstance(elem, ir0.ConstantDef) and elem.name == 'value'
                            for elem in result_elems)), 'type_by_name == %s\nreplacements2 == %s\nbody was:\n%s' % (
                 type_by_name,
@@ -357,9 +409,7 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
         self.variadic_vars_with_expansion_in_progress = variadic_vars_with_expansion_in_progress
 
     def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: transform_ir0.Writer):
-        variadic_vars_to_expand = {var.cpp_type
-                                   for var in expr.get_free_vars()
-                                   if var.is_variadic and var.cpp_type not in self.variadic_vars_with_expansion_in_progress}
+        variadic_vars_to_expand = compute_non_expanded_variadic_vars_transformation(expr.expr)
         previous_variadic_vars_with_expansion_in_progress = self.variadic_vars_with_expansion_in_progress
         self.variadic_vars_with_expansion_in_progress = previous_variadic_vars_with_expansion_in_progress.union(variadic_vars_to_expand)
 
@@ -371,12 +421,15 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
         if values_by_variadic_var_to_expand:
             self._check_variadic_var_replacement(values_by_variadic_var_to_expand)
 
-            num_values_to_expand = len(next(iter(values_by_variadic_var_to_expand.values())))
-            assert all(len(values) == num_values_to_expand
+            first_value_to_expand = next(iter(values_by_variadic_var_to_expand.values()))
+            num_values_to_expand = len(first_value_to_expand) if isinstance(first_value_to_expand, list) else 1
+            assert all((len(values) if isinstance(values, list) else 1) == num_values_to_expand
                        for values in values_by_variadic_var_to_expand.values())
             for i in range(0, num_values_to_expand):
                 child_replacement_expr_by_var = self.replacement_expr_by_var.copy()
                 for var, values in values_by_variadic_var_to_expand.items():
+                    if not isinstance(values, list):
+                        values = [values]
                     child_replacement_expr_by_var[var] = values[i]
                 child_transformation = ReplaceVarWithExprTransformation(child_replacement_expr_by_var)
                 transformed_expr = child_transformation.transform_expr(expr.expr, writer)
@@ -391,10 +444,8 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
 
         results = []
         for expr in transformed_exprs:
-            for var in expr.get_free_vars():
-                if var.is_variadic and not var.cpp_type in self.variadic_vars_with_expansion_in_progress:
-                    results.append(ir0.VariadicTypeExpansion(expr))
-                    break
+            if compute_non_expanded_variadic_vars_transformation(expr):
+                results.append(ir0.VariadicTypeExpansion(expr))
             else:
                 results.append(expr)
 
@@ -403,7 +454,7 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
     def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: transform_ir0.Writer):
         if type_literal.cpp_type in self.replacement_expr_by_var:
             result = self.replacement_expr_by_var[type_literal.cpp_type]
-            if isinstance(result, list):
+            if isinstance(result, list) and len(result) == 1:
                 [result] = result
             return result
         return type_literal
@@ -414,10 +465,20 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
             for expr in exprs:
                 expr_or_expr_list = self.transform_expr(expr, writer)
                 for expr in (expr_or_expr_list if isinstance(expr_or_expr_list, list) else [expr_or_expr_list]):
+                    assert isinstance(expr, ir0.Expr)
                     results.append(expr)
             return results
         else:
-            return super().transform_exprs(exprs, original_parent_element, writer)
+            results = []
+            for expr_or_expr_list in super().transform_exprs(exprs, original_parent_element, writer):
+                for expr in (expr_or_expr_list if isinstance(expr_or_expr_list, list) else [expr_or_expr_list]):
+                    assert isinstance(expr, ir0.Expr)
+                    results.append(expr)
+
+            if len(results) != len(exprs):
+                raise VariadicVarReplacementNotPossibleException('The replacement caused a different number of child exprs in a %s' % original_parent_element.__class__.__name__)
+
+            return results
 
     def _compute_variadic_pattern(self, values: Union[ir0.Expr, List[ir0.Expr]], strict: bool):
         if not isinstance(values, list):
@@ -435,8 +496,11 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
 
     def _check_variadic_var_replacement(self,
                                         values_by_variadic_var_to_expand: Dict[str, Union[ir0.Expr, List[ir0.Expr]]]):
-        num_values_to_expand_in_first_replacement = len(next(iter(values_by_variadic_var_to_expand.values())))
-        if not all(len(values) == num_values_to_expand_in_first_replacement
+        first_replacement = next(iter(values_by_variadic_var_to_expand.values()))
+        if not isinstance(first_replacement, list):
+            first_replacement = [first_replacement]
+        num_values_to_expand_in_first_replacement = len(first_replacement)
+        if not all((len(values) if isinstance(values, list) else 1) == num_values_to_expand_in_first_replacement
                    for values in values_by_variadic_var_to_expand.values()):
             # We can't perform the replacement syntactically, even if it might make sense semantically.
             # E.g. we can't replace Ts={Xs...}, Us={Ys..., float} in "std::pair<Ts, Us>...".
@@ -444,7 +508,8 @@ class ReplaceVarWithExprTransformation(transform_ir0.Transformation):
                                                              'num_values_to_expand_in_first_replacement = %s, values_by_variadic_var_to_expand = %s' % (
                 num_values_to_expand_in_first_replacement, str(values_by_variadic_var_to_expand)))
 
-        values_lists = [list(values) for values in values_by_variadic_var_to_expand.values()]
+        values_lists = [[values] if isinstance(values, ir0.Expr) else list(values)
+                        for values in values_by_variadic_var_to_expand.values()]
         while values_lists[0]:
             # If no front items are variadic expansions, we can disregard those and check the rest.
             for values in values_lists:
@@ -801,6 +866,7 @@ class ConstantFoldingTransformation(transform_ir0.Transformation):
 class ExpressionSimplificationTransformation(transform_ir0.Transformation):
     def __init__(self):
         super().__init__()
+        self.in_variadic_type_expansion = False
 
     def transform_not_expr(self, not_expr: ir0.NotExpr, writer: transform_ir0.Writer) -> ir0.Expr:
         expr = self.transform_expr(not_expr.expr, writer)
@@ -812,6 +878,31 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
         # not not x => x
         if isinstance(expr, ir0.NotExpr):
             return expr.expr
+        # not (x and y) => (not x or not y)
+        # not (x or y) => (not x and not y)
+        if isinstance(expr, ir0.BoolBinaryOpExpr):
+            op = {
+                'and': 'or',
+                'or': 'and',
+            }[expr.op]
+            return self.transform_expr(ir0.BoolBinaryOpExpr(lhs=ir0.NotExpr(expr.lhs), rhs=ir0.NotExpr(expr.rhs), op=op), writer)
+        # not (x == y) => x != y
+        # not (x != y) => x == y
+        # not (x < y) => x >= y
+        # not (x <= y) => x > y
+        # not (x > y) => x <= y
+        # not (x >= y) => x < y
+        if isinstance(expr, ir0.ComparisonExpr) and expr.op in ('==', '!='):
+            op = {
+                '==': '!=',
+                '!=': '==',
+                '<': '>=',
+                '<=': '>',
+                '>': '<=',
+                '>=': '<',
+            }[expr.op]
+            return ir0.ComparisonExpr(expr.lhs, expr.rhs, op)
+
         return ir0.NotExpr(expr)
 
     def transform_unary_minus_expr(self, unary_minus: ir0.UnaryMinusExpr, writer: transform_ir0.Writer) -> ir0.Expr:
@@ -871,10 +962,12 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
                 return ir0.Literal(lhs.value * rhs.value)
             # 0 * x => 0
             if isinstance(lhs, ir0.Literal) and lhs.value == 0:
-                return ir0.Literal(0)
+                if self._can_remove_subexpression(rhs):
+                    return ir0.Literal(0)
             # x * 0 => 0
             if isinstance(rhs, ir0.Literal) and rhs.value == 0:
-                return ir0.Literal(0)
+                if self._can_remove_subexpression(lhs):
+                    return ir0.Literal(0)
             # 1 * x => x
             if isinstance(lhs, ir0.Literal) and lhs.value == 1:
                 return rhs
@@ -900,6 +993,54 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
 
         return ir0.Int64BinaryOpExpr(lhs, rhs, op)
 
+    def transform_bool_binary_op_expr(self, binary_op: ir0.BoolBinaryOpExpr, writer: transform_ir0.Writer) -> ir0.Expr:
+        lhs = binary_op.lhs
+        rhs = binary_op.rhs
+        op = binary_op.op
+
+        lhs = self.transform_expr(lhs, writer)
+        rhs = self.transform_expr(rhs, writer)
+
+        if op == 'and':
+            # True and False => False
+            if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
+                return ir0.Literal(lhs.value and rhs.value)
+            # True and x => x
+            if isinstance(lhs, ir0.Literal) and lhs.value is True:
+                return rhs
+            # x and True => x
+            if isinstance(rhs, ir0.Literal) and rhs.value is True:
+                return lhs
+            # False and x => False
+            if isinstance(lhs, ir0.Literal) and lhs.value is False:
+                if self._can_remove_subexpression(rhs):
+                    return ir0.Literal(False)
+            # x and False => False
+            if isinstance(rhs, ir0.Literal) and rhs.value is False:
+                if self._can_remove_subexpression(lhs):
+                    return ir0.Literal(False)
+
+        if op == 'or':
+            # True or False => True
+            if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
+                return ir0.Literal(lhs.value or rhs.value)
+            # False or x => x
+            if isinstance(lhs, ir0.Literal) and lhs.value is False:
+                return rhs
+            # x or False => x
+            if isinstance(rhs, ir0.Literal) and rhs.value is False:
+                return lhs
+            # True or x => True
+            if isinstance(lhs, ir0.Literal) and lhs.value is True:
+                if self._can_remove_subexpression(rhs):
+                    return ir0.Literal(True)
+            # x or True => True
+            if isinstance(rhs, ir0.Literal) and rhs.value is True:
+                if self._can_remove_subexpression(lhs):
+                    return ir0.Literal(True)
+
+        return ir0.BoolBinaryOpExpr(lhs, rhs, op)
+
     def transform_comparison_expr(self, comparison: ir0.ComparisonExpr, writer: transform_ir0.Writer) -> ir0.Expr:
         lhs = comparison.lhs
         rhs = comparison.rhs
@@ -923,10 +1064,11 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
                 return ir0.Literal(lhs.value >= rhs.value)
 
         if op in ('==', '!=') and self._is_syntactically_equal(lhs, rhs) and not _expr_can_trigger_static_asserts(lhs):
-            return {
-                '==': ir0.Literal(True),
-                '!=': ir0.Literal(False),
-            }[op]
+            if self._can_remove_subexpression(lhs) and self._can_remove_subexpression(rhs):
+                return {
+                    '==': ir0.Literal(True),
+                    '!=': ir0.Literal(False),
+                }[op]
 
         return ir0.ComparisonExpr(lhs, rhs, op)
 
@@ -948,6 +1090,18 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
             return False
         return all(self._is_syntactically_equal(lhs_expr, rhs_expr)
                    for lhs_expr, rhs_expr in zip(lhs_exprs, rhs_exprs))
+
+    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: transform_ir0.Writer):
+        old_in_variadic_type_expansion = self.in_variadic_type_expansion
+        self.in_variadic_type_expansion = True
+        result = super().transform_variadic_type_expansion(expr, writer)
+        self.in_variadic_type_expansion = old_in_variadic_type_expansion
+        return result
+
+    def _can_remove_subexpression(self, expr: ir0.Expr):
+        # If we're in a variadic type expr, we can't remove variadic sub-exprs (not in general at least).
+        # E.g. BoolList<(F<Ts>::value || true)...> can't be optimized to BoolList<true>
+        return not self.in_variadic_type_expansion or not transform_ir0.is_expr_variadic(expr)
 
 def perform_constant_folding(template_defn: ir0.TemplateDefn,
                              identifier_generator: Iterator[str],
@@ -1039,6 +1193,12 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
         self.inlineable_templates_by_name = inlineable_templates_by_name.copy()
         self.parent_template_specialization_definitions = dict()
 
+    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: transform_ir0.Writer):
+        # Inlining template instantiations inside variadic type expansions can't be done in general.
+        # E.g. AlwaysFalseFromType can't be inlined in:
+        # BoolList<AlwaysFalseFromType<Ts>::value...>
+        return expr
+
     def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: transform_ir0.Writer):
         old_parent_template_specialization_definitions = self.parent_template_specialization_definitions
         self.parent_template_specialization_definitions = dict()
@@ -1085,6 +1245,9 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
             template_instantiation = class_member_access.expr
             template_defn_to_inline = GLOBAL_INLINEABLE_TEMPLATES_BY_NAME[template_instantiation.template_expr.cpp_type]
         else:
+            return class_member_access
+
+        if _contains_variadic_var_expansion_expr(class_member_access.expr):
             return class_member_access
 
         toplevel_writer = writer.get_toplevel_writer()
@@ -1151,6 +1314,37 @@ class TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
         return ir0.AtomicTypeLiteral.for_local(cpp_type=new_var_name_by_old_var_name[class_member_access.member_name],
                                                expr_type=class_member_access.expr_type,
                                                is_variadic=False)
+
+class ContainsVariadicVarExpansionExpr(transform_ir0.Transformation):
+    def __init__(self):
+        super().__init__(generates_transformed_ir=False)
+        self.result = False
+
+    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: transform_ir0.Writer):
+        self.result = True
+
+def _contains_variadic_var_expansion_expr(expr: ir0.Expr):
+    transformation = ContainsVariadicVarExpansionExpr()
+    transformation.transform_expr(expr, transform_ir0.ToplevelWriter(iter([])))
+    return transformation.result
+
+class ComputeNonExpandedVariadicVarsTransformation(transform_ir0.Transformation):
+    def __init__(self):
+        super().__init__(generates_transformed_ir=False)
+        self.result = set()
+
+    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: transform_ir0.Writer):
+        # No need to visit `expr`. Any variadic var inside it is already expanded anyway.
+        return
+
+    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: transform_ir0.Writer):
+        if type_literal.is_variadic:
+            self.result.add(type_literal.cpp_type)
+
+def compute_non_expanded_variadic_vars_transformation(expr: ir0.Expr):
+    transformation = ComputeNonExpandedVariadicVarsTransformation()
+    transformation.transform_expr(expr, transform_ir0.ToplevelWriter(iter([])))
+    return transformation.result
 
 def perform_template_inlining(template_defn: ir0.TemplateDefn,
                               inlineable_refs: Set[str],

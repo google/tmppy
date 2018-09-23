@@ -101,8 +101,12 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
             if len(rhs_list) != 1 and not strategy.is_list_var(lhs) and not any(isinstance(expr, str) and strategy.is_list_var(expr)
                                                                                 for expr in rhs_list):
                 # Different number of args and no list expr to consider.
-                raise UnificationFailedException('Found expr lists of different lengths with no list exprs: %s vs %s' % (
-                    exprs_to_string(strategy, lhs_list), exprs_to_string(strategy, rhs_list)))
+                if expanded_non_syntactically_comparable_expr:
+                    raise UnificationAmbiguousException('Found expr lists of different lengths with no list exprs: %s vs %s\nAfter expanding a non-syntactically-comparable expr:\n%s' % (
+                        exprs_to_string(strategy, lhs_list), exprs_to_string(strategy, rhs_list), strategy.term_to_string(expanded_non_syntactically_comparable_expr)))
+                else:
+                    raise UnificationFailedException('Found expr lists of different lengths with no list exprs: %s vs %s' % (
+                        exprs_to_string(strategy, lhs_list), exprs_to_string(strategy, rhs_list)))
 
             for rhs in rhs_list:
                 _occurence_check(lhs, rhs, strategy, var_expr_equations, context_var_expr_equations, expanded_non_syntactically_comparable_expr)
@@ -156,12 +160,19 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
             # We already matched everything.
             continue
 
-        if not any(isinstance(arg, str) and strategy.is_list_var(arg)
-                   for arg in lhs_list) \
-                and not any(isinstance(arg, str) and strategy.is_list_var(arg)
-                                       for arg in rhs_list):
+        if not any(strategy.is_list_var(arg)
+                   for lhs in lhs_list
+                   for arg in _get_free_variables(lhs, strategy)) \
+                and not any(strategy.is_list_var(arg)
+                            for rhs in rhs_list
+                            for arg in _get_free_variables(rhs, strategy)):
             # There are no list args but one of the two sides still has unmatched elems.
-            raise UnificationFailedException()
+            if expanded_non_syntactically_comparable_expr:
+                raise UnificationAmbiguousException('Deduced %s = %s, which differ in length and have no list vars\nAfter expanding a non-syntactically-comparable expr:\n%s' % (
+                    exprs_to_string(strategy, lhs_list), exprs_to_string(strategy, rhs_list), strategy.term_to_string(expanded_non_syntactically_comparable_expr)))
+            else:
+                raise UnificationFailedException('Deduced %s = %s, which differ in length and have no list vars' % (
+                    exprs_to_string(strategy, lhs_list), exprs_to_string(strategy, rhs_list)))
 
         if removed_something:
             # We put back the trimmed list and re-start running the code at the beginning of the iteration.
@@ -186,7 +197,10 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
                     # [] = [*l1, ... *ln]
                     expr_expr_equations.append(([arg], []))
                 else:
-                    raise UnificationFailedException()
+                    if expanded_non_syntactically_comparable_expr:
+                        raise UnificationAmbiguousException()
+                    else:
+                        raise UnificationFailedException()
             continue
 
         if rhs_list and (([expr for expr in lhs_list if isinstance(expr, str) and strategy.is_list_var(expr)] == [lhs_list[-1]]
