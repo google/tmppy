@@ -126,7 +126,7 @@ def test_template_instantiation_literal_success():
     from tmppy import Type
     assert Type.pointer(Type('int')) == Type.template_instantiation('std::add_pointer', [Type('int')]).type
 
-@assert_compilation_succeeds(extra_cpp_prelude='''\
+@assert_compilation_succeeds(always_allow_toplevel_static_asserts_after_optimization=True, extra_cpp_prelude='''\
 struct Holder {
   template <typename T, typename U>
   struct Inner {

@@ -787,24 +787,15 @@ def template_instantiation_expr_to_ir0(expr: ir1.TemplateInstantiation, writer: 
         assert error_expr is None
         ir0_arg_exprs.append(ir0_expr)
 
-    if expr.template_name == 'List':
-        args = [ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name='', is_variadic=True)]
-        may_be_alias = False
-    elif expr.template_name == 'BoolList':
-        args = [ir0.TemplateArgDecl(expr_type=ir0.BoolType(), name='', is_variadic=True)]
-        may_be_alias = False
-    elif expr.template_name == 'Int64List':
-        args = [ir0.TemplateArgDecl(expr_type=ir0.Int64Type(), name='', is_variadic=True)]
-        may_be_alias = False
-    else:
-        args = [ir0.TemplateArgDecl(expr_type=type_to_ir0(arg.expr_type), name='', is_variadic=isinstance(arg.expr_type, ir1.ParameterPackType))
-                for arg in expr.arg_exprs]
-        may_be_alias = True
+    template_expr = ir0_builtins.GLOBAL_LITERALS_BY_NAME.get(expr.template_name, None)
+    if template_expr is None:
+        template_expr = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=expr.template_name,
+                                                                    args=[ir0.TemplateArgDecl(expr_type=type_to_ir0(arg.expr_type), name='', is_variadic=isinstance(arg.expr_type, ir1.ParameterPackType))
+                                                                          for arg in expr.arg_exprs],
+                                                                    is_metafunction_that_may_return_error=False,
+                                                                    may_be_alias=True)
 
-    return ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=expr.template_name,
-                                                                                               args=args,
-                                                                                               is_metafunction_that_may_return_error=False,
-                                                                                               may_be_alias=may_be_alias),
+    return ir0.TemplateInstantiation(template_expr=template_expr,
                                      args=ir0_arg_exprs,
                                      instantiation_might_trigger_static_asserts=expr.instantiation_might_trigger_static_asserts)
 
@@ -825,17 +816,15 @@ def template_instantiation_with_list_expr_to_ir0(expr: ir1.TemplateInstantiation
 
     args_var_name = writer.new_id()
 
-    # TODO: move this information in the global literal section above once we support variadic bool/int params.
-    may_be_alias = {
-        'std::is_same': False,
-    }.get(expr.template_name, True)
+    template_expr = ir0_builtins.GLOBAL_LITERALS_BY_NAME.get(expr.template_name, None)
+    if template_expr is None:
+        template_expr = ir0.AtomicTypeLiteral.for_nonlocal_template(expr.template_name,
+                                                                    args=[ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name='', is_variadic=True)],
+                                                                    is_metafunction_that_may_return_error=False,
+                                                                    may_be_alias=True)
 
     # Foo<Args...>
-
-    template_instantiation_expr = ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(expr.template_name,
-                                                                                                                      args=[ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name='', is_variadic=True)],
-                                                                                                                      is_metafunction_that_may_return_error=False,
-                                                                                                                      may_be_alias=may_be_alias),
+    template_instantiation_expr = ir0.TemplateInstantiation(template_expr=template_expr,
                                                             args=[ir0.VariadicTypeExpansion(ir0.AtomicTypeLiteral.for_local(args_var_name,
                                                                                                                             ir0.TypeType(),
                                                                                                                             is_variadic=True))],
@@ -1252,9 +1241,9 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
 
     elem_kind = lhs_vars[0].expr_type.kind
     if elem_kind == ir0.ExprKind.BOOL:
-        list_literal = ir0_builtins.GlobalLiterals.bool_list_with_arity(len(lhs_vars))
+        list_literal = ir0_builtins.GlobalLiterals.BOOL_LIST
     elif elem_kind == ir0.ExprKind.INT64:
-        list_literal = ir0_builtins.GlobalLiterals.int64_list_with_arity(len(lhs_vars))
+        list_literal = ir0_builtins.GlobalLiterals.INT_LIST
     elif elem_kind == ir0.ExprKind.TYPE:
         list_literal = ir0_builtins.GlobalLiterals.LIST
     else:

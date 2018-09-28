@@ -767,13 +767,13 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
                             tmppy_ir1=str(module_ir1),
                             error_message=e.args[0]))
 
-def assert_compilation_succeeds(extra_cpp_prelude=''):
+def assert_compilation_succeeds(extra_cpp_prelude='', always_allow_toplevel_static_asserts_after_optimization=False):
     def eval(f):
         @wraps(f)
         def wrapper():
             def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
-                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization)
+                module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization or always_allow_toplevel_static_asserts_after_optimization)
                 expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, extra_cpp_prelude + cpp_source)
                 return cpp_source
             run_test_with_optional_optimization(run_test)

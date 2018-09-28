@@ -107,8 +107,8 @@ class _ExprUnificationStrategy(unification.UnificationStrategyForCanonicalizatio
             ir0.NotExpr: lambda t: False,
             ir0.UnaryMinusExpr: lambda t: False,
             # This is False in general because the result can be any type/value, but it's true in the special case of
-            # nonlocal templates (note: this assumes that they are actually templates, not just templated using
-            # declarations).
+            # nonlocal classes/templates (note: this assumes that they are actually classes/templates, not just
+            # possibly-templated using declarations).
             ir0.AtomicTypeLiteral: lambda t: not t.is_local and not t.may_be_alias,
             # This is False because the result can be any type/value
             ir0.ClassMemberAccess: lambda t: False,

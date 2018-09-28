@@ -91,6 +91,16 @@ class GlobalLiterals:
                                                                     _type_arg_decl('')],
                                                               may_be_alias=False)
 
+    STD_PAIR = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::pair',
+                                                           is_metafunction_that_may_return_error=False,
+                                                           args=[_type_arg_decl(''), _type_arg_decl('')],
+                                                           may_be_alias=False)
+
+    STD_TUPLE = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::tuple',
+                                                            is_metafunction_that_may_return_error=False,
+                                                            args=[_variadic_type_arg_decl('')],
+                                                            may_be_alias=False)
+
     BOOL_LIST_TO_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='BoolListToSet',
                                                                    args=[_type_arg_decl('')],
                                                                    is_metafunction_that_may_return_error=False,
@@ -190,24 +200,9 @@ class GlobalLiterals:
                                                                  is_metafunction_that_may_return_error=False,
                                                                  may_be_alias=False)
 
-    # TODO: the arity param is a hack^W patch while we don't support variadic bool types. Once we do we can make this a
-    # constant.
-    @staticmethod
-    def bool_list_with_arity(n: int):
-        return ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='BoolList',
-                                                           args=[_bool_arg_decl('')] * n,
-                                                           is_metafunction_that_may_return_error=False,
-                                                           may_be_alias=False)
-
-    # TODO: the arity param is a hack^W patch while we don't support variadic int types. Once we do we can make this a
-    # constant.
-    @staticmethod
-    def int64_list_with_arity(n: int):
-        return ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Int64List',
-                                                           args=[_int64_arg_decl('')] * n,
-                                                           is_metafunction_that_may_return_error=False,
-                                                           may_be_alias=False)
-
+GLOBAL_LITERALS_BY_NAME = {x.cpp_type: x
+                           for x in GlobalLiterals.__dict__.values()
+                           if isinstance(x, ir0.AtomicTypeLiteral)}
 
 def _metafunction_call(template_expr: ir0.Expr,
                        args: Sequence[ir0.Expr],
