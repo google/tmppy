@@ -237,7 +237,7 @@ def test_reference_type_expr_as_match_expr_matched_success():
         })
     assert f(Type.reference(Type('int'))) == Type('int')
 
-@assert_compilation_succeeds()
+@assert_compilation_succeeds(always_allow_toplevel_static_asserts_after_optimization=True)
 def test_reference_type_expr_as_match_expr_not_matched_success():
     from tmppy import Type, match
     def f(t: Type):

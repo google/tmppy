@@ -30,7 +30,7 @@ def test_type_reference_literal_success():
     from tmppy import Type
     assert Type.reference(Type('int')) == Type.reference(Type('int'))
 
-@assert_compilation_succeeds()
+@assert_compilation_succeeds(always_allow_toplevel_static_asserts_after_optimization=True)
 def test_type_reference_literal_collapsed():
     from tmppy import Type
     assert Type.reference(Type('int')) == Type.reference(Type.reference(Type('int')))
@@ -40,22 +40,22 @@ def test_type_rvalue_reference_literal_success():
     from tmppy import Type
     assert Type.rvalue_reference(Type('int')) == Type.rvalue_reference(Type('int'))
 
-@assert_compilation_succeeds()
+@assert_compilation_succeeds(always_allow_toplevel_static_asserts_after_optimization=True)
 def test_type_rvalue_reference_literal_different_from_two_references_success():
     from tmppy import Type
     assert Type.rvalue_reference(Type('int')) != Type.reference(Type.reference(Type('int')))
 
-@assert_compilation_succeeds()
+@assert_compilation_succeeds(always_allow_toplevel_static_asserts_after_optimization=True)
 def test_type_rvalue_reference_literal_collapsed():
     from tmppy import Type
     assert Type.rvalue_reference(Type('int')) == Type.rvalue_reference(Type.rvalue_reference(Type('int')))
 
-@assert_compilation_succeeds()
+@assert_compilation_succeeds(always_allow_toplevel_static_asserts_after_optimization=True)
 def test_type_rvalue_reference_literal_collapsed_with_reference():
     from tmppy import Type
     assert Type.reference(Type('int')) == Type.rvalue_reference(Type.reference(Type('int')))
 
-@assert_compilation_succeeds()
+@assert_compilation_succeeds(always_allow_toplevel_static_asserts_after_optimization=True)
 def test_type_rvalue_reference_literal_collapsed_with_reference_reverse_order():
     from tmppy import Type
     assert Type.reference(Type('int')) == Type.rvalue_reference(Type.reference(Type('int')))

@@ -44,8 +44,7 @@ from _py2tmp import (
     utils,
 )
 
-# TODO: Flip this to true once all tests are fully optimized.
-CHECK_TESTS_WERE_FULLY_OPTIMIZED = False
+CHECK_TESTS_WERE_FULLY_OPTIMIZED = True
 
 class TestFailedException(Exception):
     pass
