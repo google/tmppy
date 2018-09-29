@@ -232,15 +232,7 @@ def list_expr_to_ir1(list_expr: Union[ir2.ListExpr, ir2.ListPatternExpr]):
     #
     # IntList<1, 2, x>
 
-    elem_kind = ir1_to_ir0.type_to_ir0(type_to_ir1(list_expr.elem_type)).kind
-    if elem_kind == ir0.ExprKind.BOOL:
-        list_template_name = 'BoolList'
-    elif elem_kind == ir0.ExprKind.INT64:
-        list_template_name = 'Int64List'
-    elif elem_kind == ir0.ExprKind.TYPE:
-        list_template_name = 'List'
-    else:
-        raise NotImplementedError('elem_kind: %s' % elem_kind)
+    list_template_name = ir1_to_ir0.list_template_name_for_type(ir1_to_ir0.type_to_ir0(type_to_ir1(list_expr.elem_type)))
 
     arg_exprs = [expr_to_ir1(elem_expr) for elem_expr in list_expr.elems]
     if isinstance(list_expr, ir2.ListPatternExpr) and list_expr.list_extraction_expr:
