@@ -107,8 +107,8 @@ class Transformation:
         args = [self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args]
         template_specialization = self.transform_template_specialization(template_defn.main_definition,
                                                                          writer) if template_defn.main_definition is not None else None
-        specializations = [self.transform_template_specialization(specialization, writer) for specialization in
-                            template_defn.specializations]
+        specializations = [self.transform_template_specialization(specialization, writer)
+                           for specialization in template_defn.specializations]
         if self.generates_transformed_ir:
             writer.write(ir0.TemplateDefn(args=args,
                                           main_definition=template_specialization,

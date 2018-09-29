@@ -60,10 +60,15 @@ class TypeType(ExprType):
     def __init__(self):
         super().__init__(kind=ExprKind.TYPE)
 
+class TemplateArgType(utils.ValueType):
+    def __init__(self, expr_type: ExprType, is_variadic: bool):
+        self.expr_type = expr_type
+        self.is_variadic = is_variadic
+
 class TemplateType(ExprType):
-    def __init__(self, args: Sequence['TemplateArgDecl']):
+    def __init__(self, args: Sequence[TemplateArgType]):
         super().__init__(kind=ExprKind.TEMPLATE)
-        self.args = tuple(TemplateArgDecl(arg.expr_type, '', arg.is_variadic)
+        self.args = tuple(TemplateArgType(arg.expr_type, arg.is_variadic)
                           for arg in args)
 
 class Expr(utils.ValueType, TemplateBodyElementOrExpr):
@@ -131,6 +136,7 @@ class Typedef(TemplateBodyElement):
 
 class TemplateArgDecl(utils.ValueType):
     def __init__(self, expr_type: ExprType, name: str, is_variadic: bool):
+        assert name
         self.expr_type = expr_type
         self.name = name
         self.is_variadic = is_variadic
@@ -153,11 +159,9 @@ class TemplateSpecialization:
         self.body = tuple(body)
         assert (not body
                 or not is_metafunction
-                or any(isinstance(elem, Typedef) and elem.name == 'type'
+                or any(isinstance(elem, Typedef) and elem.name in ('type', 'error', 'value')
                        for elem in body)
                 or any(isinstance(elem, ConstantDef) and elem.name == 'value'
-                       for elem in body)
-                or any(isinstance(elem, Typedef) and elem.name == 'value'
                        for elem in body)), 'body was:\n%s' % '\n'.join(utils.ir_to_string(elem)
                                                                        for elem in body)
 
@@ -291,7 +295,7 @@ class AtomicTypeLiteral(Expr):
 
     @staticmethod
     def for_nonlocal_template(cpp_type: str,
-                              args: Sequence[TemplateArgDecl],
+                              args: Sequence[TemplateArgType],
                               is_metafunction_that_may_return_error: bool,
                               may_be_alias: bool):
         return AtomicTypeLiteral.for_nonlocal(cpp_type=cpp_type,
@@ -303,7 +307,8 @@ class AtomicTypeLiteral(Expr):
     def from_nonlocal_template_defn(template_defn: TemplateDefn,
                                     is_metafunction_that_may_return_error: bool):
         return AtomicTypeLiteral.for_nonlocal_template(cpp_type=template_defn.name,
-                                                       args=template_defn.args,
+                                                       args=[TemplateArgType(expr_type=arg.expr_type, is_variadic=arg.is_variadic)
+                                                             for arg in template_defn.args],
                                                        is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
                                                        may_be_alias=False)
 

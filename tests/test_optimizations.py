@@ -102,29 +102,41 @@ def test_optimization_function_call_at_toplevel():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_14> struct CheckIfError { using type = void; };
-template <bool TmppyInternal_5, bool> struct TmppyInternal_15;
+template <bool TmppyInternal_5, bool TmppyInternal_16> struct TmppyInternal_18;
+// Split that generates error of: (meta)function generated for an if-else
+// statement
+template <bool TmppyInternal_5> struct TmppyInternal_18<TmppyInternal_5, true> {
+  using error = void;
+};
+// Split that generates error of: (meta)function generated for an if-else
+// statement
+template <bool TmppyInternal_5>
+struct TmppyInternal_18<TmppyInternal_5, false> {
+  using error = void;
+};
+template <bool TmppyInternal_5, bool TmppyInternal_16> struct TmppyInternal_19;
 template <bool TmppyInternal_5> struct f;
 template <bool TmppyInternal_5> struct g;
 template <bool TmppyInternal_5> struct f {
   static constexpr int64_t value =
-      TmppyInternal_15<TmppyInternal_5, TmppyInternal_5>::value;
+      TmppyInternal_19<TmppyInternal_5, TmppyInternal_5>::value;
   using error =
-      typename TmppyInternal_15<TmppyInternal_5, TmppyInternal_5>::error;
+      typename TmppyInternal_18<TmppyInternal_5, TmppyInternal_5>::error;
 };
 template <bool TmppyInternal_5> struct g {
   static constexpr int64_t value = f<TmppyInternal_5>::value;
   using error = void;
 };
-// (meta)function generated for an if-else statement
-template <bool TmppyInternal_5> struct TmppyInternal_15<TmppyInternal_5, true> {
+// Split that generates value of: (meta)function generated for an if-else
+// statement
+template <bool TmppyInternal_5> struct TmppyInternal_19<TmppyInternal_5, true> {
   static constexpr int64_t value = 3LL;
-  using error = void;
 };
-// (meta)function generated for an if-else statement
+// Split that generates value of: (meta)function generated for an if-else
+// statement
 template <bool TmppyInternal_5>
-struct TmppyInternal_15<TmppyInternal_5, false> {
+struct TmppyInternal_19<TmppyInternal_5, false> {
   static constexpr int64_t value = g<true>::value;
-  using error = void;
 };
 ''')
 def test_optimization_of_mutually_recursive_functions():
@@ -141,29 +153,41 @@ def test_optimization_of_mutually_recursive_functions():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_14> struct CheckIfError { using type = void; };
-template <bool TmppyInternal_5, bool> struct TmppyInternal_15;
+template <bool TmppyInternal_5, bool TmppyInternal_16> struct TmppyInternal_18;
+// Split that generates error of: (meta)function generated for an if-else
+// statement
+template <bool TmppyInternal_5> struct TmppyInternal_18<TmppyInternal_5, true> {
+  using error = void;
+};
+// Split that generates error of: (meta)function generated for an if-else
+// statement
+template <bool TmppyInternal_5>
+struct TmppyInternal_18<TmppyInternal_5, false> {
+  using error = void;
+};
+template <bool TmppyInternal_5, bool TmppyInternal_16> struct TmppyInternal_19;
 template <bool TmppyInternal_5> struct f;
 template <bool TmppyInternal_5> struct g;
 template <bool TmppyInternal_5> struct f {
   static constexpr int64_t value =
-      TmppyInternal_15<TmppyInternal_5, TmppyInternal_5>::value;
+      TmppyInternal_19<TmppyInternal_5, TmppyInternal_5>::value;
   using error =
-      typename TmppyInternal_15<TmppyInternal_5, TmppyInternal_5>::error;
+      typename TmppyInternal_18<TmppyInternal_5, TmppyInternal_5>::error;
 };
 template <bool TmppyInternal_5> struct g {
   static constexpr int64_t value = f<TmppyInternal_5>::value;
   using error = void;
 };
-// (meta)function generated for an if-else statement
+// Split that generates value of: (meta)function generated for an if-else
+// statement
 template <bool TmppyInternal_5>
-struct TmppyInternal_15<TmppyInternal_5, false> {
+struct TmppyInternal_19<TmppyInternal_5, false> {
   static constexpr int64_t value = 3LL;
-  using error = void;
 };
-// (meta)function generated for an if-else statement
-template <bool TmppyInternal_5> struct TmppyInternal_15<TmppyInternal_5, true> {
+// Split that generates value of: (meta)function generated for an if-else
+// statement
+template <bool TmppyInternal_5> struct TmppyInternal_19<TmppyInternal_5, true> {
   static constexpr int64_t value = g<false>::value;
-  using error = void;
 };
 ''')
 def test_optimization_of_mutually_recursive_functions_branches_swapped():
@@ -180,32 +204,47 @@ def test_optimization_of_mutually_recursive_functions_branches_swapped():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_16> struct CheckIfError { using type = void; };
-template <typename TmppyInternal_5, bool> struct TmppyInternal_17;
+template <typename TmppyInternal_5, bool TmppyInternal_18>
+struct TmppyInternal_20;
+// Split that generates error of: (meta)function generated for an if-else
+// statement
+template <typename TmppyInternal_5>
+struct TmppyInternal_20<TmppyInternal_5, true> {
+  using error = void;
+};
+// Split that generates error of: (meta)function generated for an if-else
+// statement
+template <typename TmppyInternal_5>
+struct TmppyInternal_20<TmppyInternal_5, false> {
+  using error = void;
+};
+template <typename TmppyInternal_5, bool TmppyInternal_18>
+struct TmppyInternal_21;
 template <typename TmppyInternal_5> struct f;
 template <typename TmppyInternal_5> struct g;
 template <typename TmppyInternal_5> struct f {
   static constexpr bool TmppyInternal_7 =
       std::is_same<TmppyInternal_5, int>::value;
   static constexpr int64_t value =
-      TmppyInternal_17<TmppyInternal_5, TmppyInternal_7>::value;
+      TmppyInternal_21<TmppyInternal_5, TmppyInternal_7>::value;
   using error =
-      typename TmppyInternal_17<TmppyInternal_5, TmppyInternal_7>::error;
+      typename TmppyInternal_20<TmppyInternal_5, TmppyInternal_7>::error;
 };
 template <typename TmppyInternal_5> struct g {
   static constexpr int64_t value = f<TmppyInternal_5>::value;
   using error = void;
 };
-// (meta)function generated for an if-else statement
+// Split that generates value of: (meta)function generated for an if-else
+// statement
 template <typename TmppyInternal_5>
-struct TmppyInternal_17<TmppyInternal_5, true> {
+struct TmppyInternal_21<TmppyInternal_5, true> {
   static constexpr int64_t value = 3LL;
-  using error = void;
 };
-// (meta)function generated for an if-else statement
+// Split that generates value of: (meta)function generated for an if-else
+// statement
 template <typename TmppyInternal_5>
-struct TmppyInternal_17<TmppyInternal_5, false> {
+struct TmppyInternal_21<TmppyInternal_5, false> {
   static constexpr int64_t value = g<int>::value;
-  using error = void;
 };
 ''')
 def test_optimization_of_mutually_recursive_functions_with_type_param():
@@ -444,68 +483,32 @@ def test_match_optimization_with_multiple_specializations_chooses_more_specific_
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename... Ts> struct GetFirstError { using type = void; };
-template <typename... Ts> struct GetFirstError<void, Ts...> {
-  using type = typename GetFirstError<Ts...>::type;
-};
-template <typename T, typename... Ts> struct GetFirstError<T, Ts...> {
-  using type = T;
-};
 template <typename TmppyInternal_23> struct CheckIfError { using type = void; };
-template <bool TmppyInternal_5, bool> struct TmppyInternal_24;
-// (meta)function generated for an if-else statement
-template <bool TmppyInternal_5> struct TmppyInternal_24<TmppyInternal_5, true> {
+template <bool TmppyInternal_5, bool TmppyInternal_25> struct TmppyInternal_33;
+// Split that generates value of: (meta)function generated for an if-else
+// statement
+template <bool TmppyInternal_5> struct TmppyInternal_33<TmppyInternal_5, true> {
   static constexpr int64_t value = 5LL;
-  using error = void;
 };
-// (meta)function generated for an if-else statement
+// Split that generates value of: (meta)function generated for an if-else
+// statement
 template <bool TmppyInternal_5>
-struct TmppyInternal_24<TmppyInternal_5, false> {
+struct TmppyInternal_33<TmppyInternal_5, false> {
   static constexpr int64_t value = -1LL;
-  using error = void;
 };
 template <bool TmppyInternal_5> struct f {
   static constexpr int64_t value =
-      TmppyInternal_24<TmppyInternal_5, TmppyInternal_5>::value;
-  using error =
-      typename TmppyInternal_24<TmppyInternal_5, TmppyInternal_5>::error;
-};
-// (meta)function wrapping the expression in a list comprehension
-template <bool TmppyInternal_9> struct TmppyInternal_25 {
-  static constexpr int64_t value =
-      TmppyInternal_24<TmppyInternal_9, TmppyInternal_9>::value;
+      TmppyInternal_33<TmppyInternal_5, TmppyInternal_5>::value;
   using error = void;
 };
-template <typename L> struct TmppyInternal_26;
-template <bool... elems> struct TmppyInternal_26<BoolList<(elems)...>> {
-  using type = Int64List<(TmppyInternal_25<elems>::value)...>;
-  using error =
-      typename GetFirstError<typename TmppyInternal_25<elems>::error...>::type;
-};
-template <typename TmppyInternal_13, typename TmppyInternal_12, bool>
-struct TmppyInternal_28;
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_13, typename TmppyInternal_12>
-struct TmppyInternal_28<TmppyInternal_13, TmppyInternal_12, true> {
-  using type = void;
-  using error = TmppyInternal_13;
-};
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_13, typename TmppyInternal_12>
-struct TmppyInternal_28<TmppyInternal_13, TmppyInternal_12, false> {
-  using error = void;
-  using type = TmppyInternal_12;
+template <typename L> struct TmppyInternal_35;
+// Split that generates type of:
+template <bool... elems> struct TmppyInternal_35<BoolList<(elems)...>> {
+  using type = Int64List<(TmppyInternal_33<elems, elems>::value)...>;
 };
 template <typename TmppyInternal_8> struct g {
-  using TmppyInternal_12 = typename TmppyInternal_26<TmppyInternal_8>::type;
-  using TmppyInternal_13 = typename TmppyInternal_26<TmppyInternal_8>::error;
-  static constexpr bool TmppyInternal_73 =
-      !(std::is_same<typename TmppyInternal_26<TmppyInternal_8>::error,
-                     void>::value);
-  using type = typename TmppyInternal_28<TmppyInternal_13, TmppyInternal_12,
-                                         TmppyInternal_73>::type;
-  using error = typename TmppyInternal_28<TmppyInternal_13, TmppyInternal_12,
-                                          TmppyInternal_73>::error;
+  using type = typename TmppyInternal_35<TmppyInternal_8>::type;
+  using error = void;
 };
 ''')
 def test_optimization_list_comprehension_bool_to_int():
@@ -522,74 +525,35 @@ def test_optimization_list_comprehension_bool_to_int():
 @assert_code_optimizes_to(r'''
 #include <tmppy/tmppy.h>
 #include <type_traits>
-template <typename... Ts> struct GetFirstError { using type = void; };
-template <typename... Ts> struct GetFirstError<void, Ts...> {
-  using type = typename GetFirstError<Ts...>::type;
-};
-template <typename T, typename... Ts> struct GetFirstError<T, Ts...> {
-  using type = T;
-};
 template <typename TmppyInternal_26> struct CheckIfError { using type = void; };
-template <bool TmppyInternal_5, bool> struct TmppyInternal_27;
-// (meta)function generated for an if-else statement
-template <bool TmppyInternal_5> struct TmppyInternal_27<TmppyInternal_5, true> {
+template <bool TmppyInternal_5, bool TmppyInternal_28> struct TmppyInternal_36;
+// Split that generates value of: (meta)function generated for an if-else
+// statement
+template <bool TmppyInternal_5> struct TmppyInternal_36<TmppyInternal_5, true> {
   static constexpr int64_t value = 5LL;
-  using error = void;
 };
-// (meta)function generated for an if-else statement
+// Split that generates value of: (meta)function generated for an if-else
+// statement
 template <bool TmppyInternal_5>
-struct TmppyInternal_27<TmppyInternal_5, false> {
+struct TmppyInternal_36<TmppyInternal_5, false> {
   static constexpr int64_t value = -1LL;
-  using error = void;
 };
 template <bool TmppyInternal_5> struct f {
   static constexpr int64_t value =
-      TmppyInternal_27<TmppyInternal_5, TmppyInternal_5>::value;
-  using error =
-      typename TmppyInternal_27<TmppyInternal_5, TmppyInternal_5>::error;
-};
-// (meta)function wrapping the expression in a list comprehension
-template <bool TmppyInternal_10, int64_t TmppyInternal_9>
-struct TmppyInternal_28 {
-  static constexpr int64_t value =
-      (TmppyInternal_27<TmppyInternal_10, TmppyInternal_10>::value) +
-      (TmppyInternal_9);
+      TmppyInternal_36<TmppyInternal_5, TmppyInternal_5>::value;
   using error = void;
 };
-template <typename L, int64_t TmppyInternal_9> struct TmppyInternal_29;
+template <typename L, int64_t TmppyInternal_9> struct TmppyInternal_38;
+// Split that generates type of:
 template <bool... elems, int64_t TmppyInternal_9>
-struct TmppyInternal_29<BoolList<(elems)...>, TmppyInternal_9> {
-  using type = Int64List<(TmppyInternal_28<elems, TmppyInternal_9>::value)...>;
-  using error = typename GetFirstError<
-      typename TmppyInternal_28<elems, TmppyInternal_9>::error...>::type;
-};
-template <typename TmppyInternal_15, typename TmppyInternal_14, bool>
-struct TmppyInternal_31;
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_15, typename TmppyInternal_14>
-struct TmppyInternal_31<TmppyInternal_15, TmppyInternal_14, true> {
-  using type = void;
-  using error = TmppyInternal_15;
-};
-// (meta)function generated for an if-else statement
-template <typename TmppyInternal_15, typename TmppyInternal_14>
-struct TmppyInternal_31<TmppyInternal_15, TmppyInternal_14, false> {
-  using error = void;
-  using type = TmppyInternal_14;
+struct TmppyInternal_38<BoolList<(elems)...>, TmppyInternal_9> {
+  using type = Int64List<((TmppyInternal_36<elems, elems>::value) +
+                          (TmppyInternal_9))...>;
 };
 template <typename TmppyInternal_8, int64_t TmppyInternal_9> struct g {
-  using TmppyInternal_14 =
-      typename TmppyInternal_29<TmppyInternal_8, TmppyInternal_9>::type;
-  using TmppyInternal_15 =
-      typename TmppyInternal_29<TmppyInternal_8, TmppyInternal_9>::error;
-  static constexpr bool TmppyInternal_85 =
-      !(std::is_same<
-          typename TmppyInternal_29<TmppyInternal_8, TmppyInternal_9>::error,
-          void>::value);
-  using type = typename TmppyInternal_31<TmppyInternal_15, TmppyInternal_14,
-                                         TmppyInternal_85>::type;
-  using error = typename TmppyInternal_31<TmppyInternal_15, TmppyInternal_14,
-                                          TmppyInternal_85>::error;
+  using type =
+      typename TmppyInternal_38<TmppyInternal_8, TmppyInternal_9>::type;
+  using error = void;
 };
 ''')
 def test_optimization_list_comprehension_bool_to_int_with_captured_var():

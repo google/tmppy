@@ -437,7 +437,7 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
                     }};
                     '''.format(**locals()))
 
-            select1st_type = ir0.TemplateType(args=[ir0.TemplateArgDecl(expr_type=arg_to_replace.expr_type, name='', is_variadic=is_variadic),
+            select1st_type = ir0.TemplateType(args=[ir0.TemplateArgType(expr_type=arg_to_replace.expr_type, is_variadic=is_variadic),
                                                     arg_decl])
             select1st_instantiation = ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_local(cpp_type=select1st_variant,
                                                                                                               expr_type=select1st_type,
@@ -533,9 +533,12 @@ def toplevel_elem_to_cpp(elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Type
     else:
         raise NotImplementedError('Unexpected toplevel element: %s' % str(elem.__class__))
 
-def toplevel_elem_to_cpp_simple(elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]):
+def toplevel_elem_to_cpp_simple(elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef, ir0.TemplateDefn]):
     writer = ToplevelWriter(iter([]))
-    toplevel_elem_to_cpp(elem, writer)
+    if isinstance(elem, ir0.TemplateDefn):
+        template_defn_to_cpp(elem, enclosing_function_defn_args=[], writer=writer)
+    else:
+        toplevel_elem_to_cpp(elem, writer)
     return ''.join(writer.strings)
 
 class ComputeTemplateDefnsThatMustComeBeforeTransformation(transform_ir0.Transformation):
@@ -673,7 +676,7 @@ def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
                     if template_defn.main_definition:
                         specializations.append(template_defn.main_definition)
 
-                    last_specialization = None
+                    last_specialization: ir0.TemplateSpecialization = None
                     for specialization in specializations:
                         if any(template_name in connected_component_names
                                for template_name in compute_template_defns_that_must_come_before_specialization(specialization)):

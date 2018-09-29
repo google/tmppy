@@ -78,7 +78,7 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
             optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
             optimize_ir0.ConfigurationKnobs.optimization_step_counter = 0
             optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
-            run(allow_toplevel_static_asserts_after_optimization=True)
+            optimized_cpp_source = run(allow_toplevel_static_asserts_after_optimization=True)
         except (TestFailedException, AttributeError, AssertionError) as e:
             e2 = e
 
@@ -87,7 +87,7 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
 
         if not e1 and not e2:
             if optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0 and not allow_reaching_max_optimization_loops:
-                raise TestFailedException('The test passed, but hit max_num_remaining_loops')
+                raise TestFailedException('The test passed, but hit max_num_remaining_loops.\nOptimized C++ code:\n%s' % optimized_cpp_source)
             if CHECK_TESTS_WERE_FULLY_OPTIMIZED:
                 run(allow_toplevel_static_asserts_after_optimization=False)
             return
@@ -717,14 +717,25 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
                             error_message = e.args[0]))
 
     try:
-        header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
-        header = optimize_ir0.optimize_header(header, identifier_generator)
-        cpp_source = ir0_to_cpp.header_to_cpp(header, identifier_generator)
+        non_optimized_header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
+        optimized_header = optimize_ir0.optimize_header(non_optimized_header, identifier_generator)
+        cpp_source = ir0_to_cpp.header_to_cpp(optimized_header, identifier_generator)
         cpp_source = utils.clang_format(cpp_source)
 
         if not allow_toplevel_static_asserts_after_optimization:
-            for elem in header.toplevel_content:
+            for elem in optimized_header.toplevel_content:
                 if isinstance(elem, ir0.StaticAssert):
+                    # Re-run the optimization in verbose mode so that we output more detail on the error.
+                    optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
+                    optimize_ir0.ConfigurationKnobs.verbose = True
+                    optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
+                    optimized_header = optimize_ir0.optimize_header(non_optimized_header, identifier_generator)
+                    cpp_source = ir0_to_cpp.header_to_cpp(optimized_header, identifier_generator)
+                    cpp_source = utils.clang_format(cpp_source)
+
+                    if optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter:
+                        raise TestFailedException('Reached max_num_remaining_loops_counter.')
+
                     raise TestFailedException(textwrap.dedent('''\
                             The conversion from TMPPy to C++ succeeded, but there were static_assert()s left after optimization.
                             

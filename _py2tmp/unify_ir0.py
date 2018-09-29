@@ -161,12 +161,14 @@ class UnificationResult:
         self.kind = kind
         self.value_by_pattern_variable = pattern_var_expr_equations
 
-def unify_template_instantiation_with_definition(template_instantiation: ir0.TemplateInstantiation,
-                                                 local_var_definitions: Mapping[str, ir0.Expr],
-                                                 template_defn: ir0.TemplateDefn,
-                                                 identifier_generator: Iterable[str],
-                                                 verbose: bool) -> Optional[Tuple[ir0.TemplateSpecialization,
-                                                                                  List[Tuple[ir0.AtomicTypeLiteral, List[ir0.Expr]]]]]:
+def find_matches_in_unification_of_template_instantiation_with_definition(template_instantiation: ir0.TemplateInstantiation,
+                                                                          local_var_definitions: Mapping[str, ir0.Expr],
+                                                                          result_elem_name: str,
+                                                                          template_defn: ir0.TemplateDefn,
+                                                                          identifier_generator: Iterable[str],
+                                                                          verbose: bool) -> Tuple[List[Tuple[ir0.TemplateSpecialization,
+                                                                                                             List[Tuple[ir0.AtomicTypeLiteral, List[ir0.Expr]]]]],
+                                                                                                  List[ir0.TemplateSpecialization]]:
     instantiation_vars = {var.cpp_type
                           for var in template_instantiation.get_free_vars()}
 
@@ -174,6 +176,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
                                 List[Tuple[ir0.AtomicTypeLiteral,
                                            List[ir0.Expr]]]]] = \
         []
+    possible_matches: List[ir0.TemplateSpecialization] = []
     for specialization in template_defn.specializations:
         result = unify(template_instantiation.args,
                        local_var_definitions,
@@ -186,13 +189,9 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
         if result.kind == UnificationResultKind.CERTAIN:
             certain_matches.append((specialization, result.value_by_pattern_variable))
         elif result.kind == UnificationResultKind.POSSIBLE:
-            # This must be stricter than all certain matches (if any) so we can't pick one for sure.
-            if verbose:
-                print('No unification found for template %s because there was a result with kind POSSIBLE, so we can\'t inline that.' % template_defn.name)
-            return None
+            possible_matches.append(specialization)
 
-
-    if not certain_matches and template_defn.main_definition and template_defn.main_definition.body:
+    if template_defn.main_definition and template_defn.main_definition.body:
         patterns = [ir0.AtomicTypeLiteral.for_local(var.name, var.expr_type, is_variadic=var.is_variadic)
                     for var in template_defn.main_definition.args]
         result = unify(template_instantiation.args,
@@ -203,14 +202,15 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
                         for var in template_defn.main_definition.args},
                        identifier_generator,
                        verbose)
+        assert result.kind != UnificationResultKind.IMPOSSIBLE
         if result.kind == UnificationResultKind.CERTAIN:
             certain_matches.append((template_defn.main_definition,
                                     result.value_by_pattern_variable))
+        else:
+            possible_matches.append(template_defn.main_definition)
 
     if not certain_matches:
-        if verbose:
-            print('No unification found for template %s because there were no matches with kind==CERTAIN, so we can\'t inline that.' % template_defn.name)
-        return None
+        return [], possible_matches
 
     might_be_best_match = [True for _ in certain_matches]
     for i, (specialization1, value_by_pattern_variable1) in enumerate(certain_matches):
@@ -220,6 +220,12 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
                 specialization2_arg_vars = {var.name for var in specialization2.args}
 
                 # Let's see if we can prove that certain_matches[i] is more strict than certain_matches[j]
+                if not specialization1.patterns:
+                    might_be_best_match[i] = False
+                    continue
+                if not specialization2.patterns:
+                    might_be_best_match[j] = False
+                    continue
                 result = unify(specialization1.patterns,
                                dict(),
                                specialization2.patterns,
@@ -234,17 +240,87 @@ def unify_template_instantiation_with_definition(template_instantiation: ir0.Tem
                if might_be_best]
     assert indexes
 
-    if len(indexes) == 1:
-        return certain_matches[indexes[0]]
+    return [certain_matches[i]
+            for i in indexes], possible_matches
 
-    # We've found multiple specializations that definitely match and aren't stricter than each other. So we can't say
-    # for certain which one will be chosen (it probably depends on the specific arguments of the caller template).
+def is_syntactically_equal(expr1: ir0.Expr, expr2: ir0.Expr):
+    if not expr1.is_same_expr_excluding_subexpressions(expr2):
+        return False
+    subexpressions1 = list(expr1.get_direct_subexpressions())
+    subexpressions2 = list(expr2.get_direct_subexpressions())
+    if len(subexpressions1) != len(subexpressions2):
+        return False
+    return all(is_syntactically_equal(expr1, expr2)
+               for expr1, expr2 in zip(subexpressions1, subexpressions2))
+
+def unify_template_instantiation_with_definition(template_instantiation: ir0.TemplateInstantiation,
+                                                 local_var_definitions: Mapping[str, ir0.Expr],
+                                                 result_elem_name: str,
+                                                 template_defn: ir0.TemplateDefn,
+                                                 identifier_generator: Iterable[str],
+                                                 verbose: bool) -> Union[None,
+                                                                         Tuple[ir0.TemplateSpecialization,
+                                                                               Optional[List[Tuple[ir0.AtomicTypeLiteral, List[ir0.Expr]]]]],
+                                                                         ir0.Expr]:
+    certain_matches, possible_matches = find_matches_in_unification_of_template_instantiation_with_definition(template_instantiation=template_instantiation,
+                                                                                                              local_var_definitions=local_var_definitions,
+                                                                                                              result_elem_name=result_elem_name,
+                                                                                                              template_defn=template_defn,
+                                                                                                              identifier_generator=identifier_generator,
+                                                                                                              verbose=verbose)
+    possible_matches = [(specialization, None)
+                        for specialization in possible_matches]
+
+    if certain_matches or possible_matches:
+        result_exprs: List[ir0.Expr] = []
+        for specialization, _ in itertools.chain(certain_matches, possible_matches):
+            if any(isinstance(elem, ir0.StaticAssert)
+                   for elem in specialization.body):
+                break
+            [result_elem] = [elem
+                             for elem in specialization.body
+                             if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.name == result_elem_name]
+            assert isinstance(result_elem, (ir0.ConstantDef, ir0.Typedef))
+            if any(True for _ in result_elem.expr.get_free_vars()):
+                break
+            result_exprs.append(result_elem.expr)
+        else:
+            # If we didn't break out of the loop, it means that all certain/possible matches would lead to a result
+            # expr with no free vars.
+
+            first_result_expr = result_exprs[0]
+            for expr in result_exprs:
+                if not is_syntactically_equal(expr, first_result_expr):
+                    break
+            else:
+                # If we didn't break out of the loop, it means that all certain/possible matches would lead to *the same*
+                # result expr with no free vars.
+                return first_result_expr
+
+    if possible_matches:
+        # This must be stricter than all certain matches (if any) so we can't pick one for sure.
+        if verbose:
+            print('No unification found for template %s because there was a result with kind POSSIBLE, so we can\'t inline that.' % template_defn.name)
+        return None
+
+    if not certain_matches:
+        if verbose:
+            print('No unification found for template %s because there were no matches with kind==CERTAIN, so we can\'t inline that.' % template_defn.name)
+        return None
+
+    if len(certain_matches) == 1:
+        return certain_matches[0]
+
+    # We've found multiple specializations that definitely match and aren't stricter than each other.
+
+    # We can't say for certain which one will be chosen (it probably depends on the specific arguments of the caller
+    # template).
     if verbose:
         print('No unification found for template %s because there were multiple specializations with kind==CERTAIN and none of them was stricter than the others. Solutions:\n%s' % (
             template_defn.name,
             '\n'.join('{%s}' % ', '.join('%s = [%s]' % (pattern_var.cpp_type, ', '.join(ir0_to_cpp.expr_to_cpp_simple(value) for value in values))
-                                                        for pattern_var, values in certain_matches[index][1])
-                      for index, might_be_best in enumerate(might_be_best_match))))
+                                                        for pattern_var, values in replacements)
+                      for specialization, replacements in certain_matches)))
     return None
 
 def unify(initial_exprs: List[ir0.Expr],
