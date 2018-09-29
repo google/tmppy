@@ -605,14 +605,20 @@ def list_template_name_for_type(expr_type: ir0.ExprType):
     else:
         raise NotImplementedError('expr_type.kind: %s' % expr_type.kind)
 
-def _define_transform_list_to_list_template(source_type: ir0.ExprType, dest_type: ir0.ExprType, writer: Writer):
-    # template <typename L, template <bool> class F>
+def _define_transform_list_to_list_template(source_type: ir0.ExprType,
+                                            dest_type: ir0.ExprType,
+                                            forwarded_args: List[ir0.TemplateArgDecl],
+                                            writer: Writer):
+    for arg in forwarded_args:
+        assert not arg.is_variadic
+
+    # template <typename L, template <bool, typename, bool> class F, typename ForwardedT, bool forwarded_bool>
     # struct TransformBoolListToInt64List;
     #
-    # template <bool... bs, template <bool> class F>
-    # struct TransformBoolListToInt64List<BoolList<bs...>, F> {
-    #   using error = typename GetFirstError<typename F<bs>::error...>::type;
-    #   using type = Int64List<F<bs>::value...>;
+    # template <bool... bs, template <bool, typename, bool> class F, typename ForwardedT, bool forwarded_bool>
+    # struct TransformBoolListToInt64List<BoolList<bs...>, F, ForwardedT, forwarded_bool> {
+    #   using error = typename GetFirstError<typename F<bs, ForwardedT, forwarded_bool>::error...>::type;
+    #   using type = Int64List<F<bs, ForwardedT, forwarded_bool>::value...>;
     # };
 
     source_type_list_name = list_template_name_for_type(source_type)
@@ -622,9 +628,12 @@ def _define_transform_list_to_list_template(source_type: ir0.ExprType, dest_type
     list_arg_decl = ir0.TemplateArgDecl(name='L', expr_type=ir0.TypeType(), is_variadic=False)
     template_specialization_writer = TemplateBodyWriter(writer, parent_arbitrary_arg=list_arg_decl, parent_return_type=ir0.TypeType())
 
+    forwarded_exprs = [ir0.AtomicTypeLiteral.for_local(cpp_type=arg.name, expr_type=arg.expr_type, is_variadic=False)
+                       for arg in forwarded_args]
+
     source_arg_decl = ir0.TemplateArgDecl(expr_type=source_type, name='elem', is_variadic=False)
     source_variadic_arg_decl = ir0.TemplateArgDecl(expr_type=source_type, name='elems', is_variadic=True)
-    functor_arg_decl = ir0.TemplateArgDecl(expr_type=ir0.TemplateType([source_arg_decl]), name='F', is_variadic=False)
+    functor_arg_decl = ir0.TemplateArgDecl(expr_type=ir0.TemplateType([source_arg_decl] + forwarded_args), name='F', is_variadic=False)
     source_arg_expr = ir0.AtomicTypeLiteral.for_local('elem', source_type, is_variadic=False)
     source_variadic_arg_expr = ir0.AtomicTypeLiteral.for_local('elems', source_type, is_variadic=True)
     dest_variadic_arg_expr = ir0.AtomicTypeLiteral.for_local('results', dest_type, is_variadic=True)
@@ -634,10 +643,10 @@ def _define_transform_list_to_list_template(source_type: ir0.ExprType, dest_type
                                                                                                                    may_be_alias=False),
                                                          args=[ir0.VariadicTypeExpansion(source_variadic_arg_expr)],
                                                          instantiation_might_trigger_static_asserts=False)
-    functor_expr = ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType(args=[source_arg_expr]), is_variadic=False)
+    functor_expr = ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType(args=[source_arg_expr] + forwarded_exprs), is_variadic=False)
 
     type_expr, error_expr = _create_metafunction_call(template_expr=functor_expr,
-                                                      args=[source_variadic_arg_expr],
+                                                      args=[source_variadic_arg_expr] + forwarded_exprs,
                                                       member_type=dest_type,
                                                       writer=template_specialization_writer)
     error_expr, _ = _create_metafunction_call(template_expr=ir0_builtins.GlobalLiterals.GET_FIRST_ERROR,
@@ -658,18 +667,18 @@ def _define_transform_list_to_list_template(source_type: ir0.ExprType, dest_type
 
     writer.write(ir0.TemplateDefn(main_definition=None,
                                   specializations=[ir0.TemplateSpecialization(args=[source_variadic_arg_decl,
-                                                                                    functor_arg_decl],
+                                                                                    functor_arg_decl] + forwarded_args,
                                                                               patterns=[source_list_pattern_expr,
                                                                                         ir0.AtomicTypeLiteral.for_local(cpp_type='F',
                                                                                                                         expr_type=ir0.TemplateType([source_arg_decl]),
-                                                                                                                        is_variadic=False)],
+                                                                                                                        is_variadic=False),
+                                                                                        ] + forwarded_exprs,
                                                                               body=template_specialization_writer.elems,
                                                                               is_metafunction=True)],
                                   name=transform_list_to_list_template_name,
                                   description='',
                                   result_element_names=['type', 'error'],
-                                  args=[list_arg_decl,
-                                        functor_arg_decl]))
+                                  args=[list_arg_decl, functor_arg_decl] + forwarded_args))
 
     return transform_list_to_list_template_name
 
@@ -679,10 +688,17 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
                      for var in ir1.get_unique_free_variables_in_stmts([ir1.ReturnStmt(result=expr.result_elem_expr,
                                                                                        error=None)])
                      if var.name != expr.loop_var.name]
+    forwarded_vars = [var_reference_to_ir0(var)
+                       for var in captured_vars]
+    forwarded_arg_decls = [ir0.TemplateArgDecl(expr_type=var.expr_type, name=var.cpp_type, is_variadic=False)
+                           for var in forwarded_vars]
+    for var in forwarded_vars:
+        assert not var.is_variadic
 
     x_type = type_to_ir0(expr.loop_var.expr_type)
     assert not isinstance(expr.loop_var.expr_type, ir1.ParameterPackType)
     result_elem_type = type_to_ir0(expr.result_elem_expr.expr_type)
+
 
     template_arg_decl = ir0.TemplateArgDecl(expr_type=x_type,
                                             name=expr.loop_var.name,
@@ -695,86 +711,49 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
     helper_template_defn = ir0.TemplateDefn(name=writer.new_id(),
                                             description='(meta)function wrapping the expression in a list comprehension',
                                             specializations=[],
-                                            main_definition=ir0.TemplateSpecialization(args=[template_arg_decl],
+                                            main_definition=ir0.TemplateSpecialization(args=[template_arg_decl] + forwarded_arg_decls,
                                                                                        patterns=None,
                                                                                        body=helper_template_body_writer.elems,
                                                                                        is_metafunction=True),
                                             result_element_names=['type', 'value', 'error'])
 
+
     # TODO: introduce an unchecked version of this and use it when we know that the list comprehension can't result in
     # an error.
-    transform_metafunction_name = _define_transform_list_to_list_template(x_type, result_elem_type, writer)
+    transform_metafunction_name = _define_transform_list_to_list_template(source_type=x_type,
+                                                                          dest_type=result_elem_type,
+                                                                          forwarded_args=forwarded_arg_decls,
+                                                                          writer=writer)
 
     transform_list_template_literal = ir0.AtomicTypeLiteral.for_nonlocal_template(
         cpp_type=transform_metafunction_name,
         args=[ir0.TemplateArgDecl(name='', expr_type=type_to_ir0(expr.list_var.expr_type), is_variadic=isinstance(expr.list_var.expr_type, ir1.ParameterPackType)),
-              ir0.TemplateArgDecl(name='', expr_type=ir0.TemplateType(args=[ir0.TemplateArgDecl(expr_type=x_type, name='', is_variadic=False)]), is_variadic=False)],
+              ir0.TemplateArgDecl(name='', expr_type=ir0.TemplateType(args=[ir0.TemplateArgDecl(expr_type=x_type, name='', is_variadic=False)] + forwarded_arg_decls), is_variadic=False),
+              ] + forwarded_arg_decls,
         is_metafunction_that_may_return_error=expr.result_elem_expr.fun.is_function_that_may_throw,
         may_be_alias=False)
 
-    if not captured_vars:
-        # z = [f(x)
-        #      for x in l]
-        #
-        # Becomes:
-        #
-        # template <typename X>
-        # struct Helper {
-        #   using type = typename f<X>::type;
-        # };
-        #
-        # using Z = typename TransformTypeListToTypeList<L, Helper>::type;
+    # z = [f(y, x, z)
+    #      for x in l]
+    #
+    # Becomes:
+    #
+    # template <typename X>
+    # struct Helper {
+    #   using type = typename f<X>::type;
+    # };
+    #
+    # using Z = typename TransformTypeList<L, Helper, Y, Z>::type;
 
-        writer.write(helper_template_defn)
+    writer.write(helper_template_defn)
 
-        return _create_metafunction_call(template_expr=transform_list_template_literal,
-                                         args=[var_reference_to_ir0(expr.list_var),
-                                               ir0.AtomicTypeLiteral.from_nonlocal_template_defn(helper_template_defn,
-                                                                                                 is_metafunction_that_may_return_error=expr.result_elem_expr.fun.is_function_that_may_throw)],
-                                         member_type=type_to_ir0(expr.expr_type),
-                                         writer=writer)
-    else:
-        # z = [f(y, x, z)
-        #      for x in l]
-        #
-        # Becomes:
-        #
-        # template <typename Y, typename Z>
-        # struct HelperWrapper {
-        #   template <typename X>
-        #   struct Helper {
-        #     using type = typename f<Y, X, Z>::type;
-        #   };
-        # };
-        #
-        # using Z = typename TransformTypeList<L, HelperWrapper<Y, Z>::Helper>::type;
-
-        captured_vars_as_template_args = [ir0.TemplateArgDecl(expr_type=type_to_ir0(var.expr_type),
-                                                              name=var.name,
-                                                              is_variadic=isinstance(var.expr_type, ir1.ParameterPackType))
-                                          for var in captured_vars]
-        helper_wrapper_template_defn = ir0.TemplateDefn(name=writer.new_id(),
-                                                        description='(meta)function(-ish) wrapping the metafunction that implements the expression in a list comprehension (to pass captured local vars)',
-                                                        specializations=[],
-                                                        main_definition=ir0.TemplateSpecialization(args=captured_vars_as_template_args,
-                                                                                                   patterns=None,
-                                                                                                   body=[helper_template_defn],
-                                                                                                   is_metafunction=False),
-                                                        result_element_names=['value', 'type', 'error'])
-
-        writer.write(helper_wrapper_template_defn)
-        helper_template_expr = ir0.ClassMemberAccess(class_type_expr=ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.from_nonlocal_template_defn(helper_wrapper_template_defn,
-                                                                                                                                                               is_metafunction_that_may_return_error=False),
-                                                                                               args=[var_reference_to_ir0(var)
-                                                                                                     for var in captured_vars],
-                                                                                               instantiation_might_trigger_static_asserts=True),
-                                                     member_name=helper_template_defn.name,
-                                                     member_type=ir0.TemplateType(args=[ir0.TemplateArgDecl(expr_type=x_type, name='', is_variadic=False)]))
-        return _create_metafunction_call(template_expr=transform_list_template_literal,
-                                         args=[var_reference_to_ir0(expr.list_var),
-                                               helper_template_expr],
-                                         member_type=type_to_ir0(expr.expr_type),
-                                         writer=writer)
+    return _create_metafunction_call(template_expr=transform_list_template_literal,
+                                     args=[var_reference_to_ir0(expr.list_var),
+                                           ir0.AtomicTypeLiteral.from_nonlocal_template_defn(helper_template_defn,
+                                                                                             is_metafunction_that_may_return_error=expr.result_elem_expr.fun.is_function_that_may_throw),
+                                           ] + forwarded_vars,
+                                     member_type=type_to_ir0(expr.expr_type),
+                                     writer=writer)
 
 def class_member_access_expr_to_ir0(expr: ir1.ClassMemberAccess, writer: Writer):
     result_var, error_var = expr_to_ir0(expr.class_type_expr, writer)
