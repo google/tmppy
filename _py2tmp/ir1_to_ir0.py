@@ -250,9 +250,13 @@ def _create_metafunction_call(template_expr: ir0.Expr,
     result_expr = ir0.ClassMemberAccess(class_type_expr=template_instantiation_expr,
                                         member_name=member_name,
                                         member_type=member_type)
-    error_expr = ir0.ClassMemberAccess(class_type_expr=template_instantiation_expr,
-                                       member_name='error',
-                                       member_type=ir0.TypeType())
+    if template_expr.is_metafunction_that_may_return_error:
+        error_expr = ir0.ClassMemberAccess(class_type_expr=template_instantiation_expr,
+                                           member_name='error',
+                                           member_type=ir0.TypeType())
+    else:
+        error_expr = None
+
     return result_expr, error_expr
 
 def is_trivial_specialization(args: Sequence[ir0.TemplateArgDecl],
@@ -647,10 +651,11 @@ def _define_transform_list_to_list_template(source_type: ir0.ExprType,
                                                       args=[source_variadic_arg_expr] + forwarded_exprs,
                                                       member_type=dest_type,
                                                       writer=template_specialization_writer)
-    error_expr, _ = _create_metafunction_call(template_expr=ir0_builtins.GlobalLiterals.GET_FIRST_ERROR,
-                                              args=[ir0.VariadicTypeExpansion(error_expr)],
-                                              member_type=ir0.TypeType(),
-                                              writer=template_specialization_writer)
+    if error_expr:
+        error_expr, _ = _create_metafunction_call(template_expr=ir0_builtins.GlobalLiterals.GET_FIRST_ERROR,
+                                                  args=[ir0.VariadicTypeExpansion(error_expr)],
+                                                  member_type=ir0.TypeType(),
+                                                  writer=template_specialization_writer)
 
     dest_list_literal = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=dest_type_list_name,
                                                                     args=[dest_variadic_arg_expr],
