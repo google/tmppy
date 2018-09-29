@@ -43,6 +43,12 @@ class UnificationStrategy(Generic[TermT]):
 
     def equality_requires_syntactical_equality(self, term: TermT) -> bool: ...
 
+    # Given term1, term2 such that:
+    # * not is_same_term_excluding_args(term1, term2)
+    # * not equality_requires_syntactical_equality(term1) or not equality_requires_syntactical_equality(term2)
+    # if this returns False they are definitely different, otherwise we don't know.
+    def may_be_equal(self, term1: TermT, term2: TermT) -> bool: ...
+
 _NonListExpr = Union[str, TermT]
 _Expr = Union[_NonListExpr, List[_NonListExpr]]
 
@@ -118,17 +124,20 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
             [rhs] = rhs_list
             assert not isinstance(lhs, str)
             assert not isinstance(rhs, str)
-            if not expanded_non_syntactically_comparable_expr and not strategy.equality_requires_syntactical_equality(lhs):
-               expanded_non_syntactically_comparable_expr = lhs
-            if not expanded_non_syntactically_comparable_expr and not strategy.equality_requires_syntactical_equality(rhs):
-               expanded_non_syntactically_comparable_expr = rhs
+            expanding_non_syntactically_comparable_expr = None
+            if not strategy.equality_requires_syntactical_equality(lhs):
+                expanding_non_syntactically_comparable_expr = lhs
+            if not strategy.equality_requires_syntactical_equality(rhs):
+                expanding_non_syntactically_comparable_expr = rhs
             if not strategy.is_same_term_excluding_args(lhs, rhs):
-                if expanded_non_syntactically_comparable_expr:
+                if expanded_non_syntactically_comparable_expr or (expanding_non_syntactically_comparable_expr and strategy.may_be_equal(lhs, rhs)):
                     raise UnificationAmbiguousException('Found different terms (even excluding args):\n%s\n== vs ==\n%s\nAfter expanding a non-syntactically-comparable expr:\n%s' % (
-                        strategy.term_to_string(lhs), strategy.term_to_string(rhs), strategy.term_to_string(expanded_non_syntactically_comparable_expr)))
+                        strategy.term_to_string(lhs), strategy.term_to_string(rhs), strategy.term_to_string(expanded_non_syntactically_comparable_expr or expanding_non_syntactically_comparable_expr)))
                 else:
                     raise UnificationFailedException('Found different terms (even excluding args):\n%s\n== vs ==\n%s' % (
                         strategy.term_to_string(lhs), strategy.term_to_string(rhs)))
+            if not expanded_non_syntactically_comparable_expr:
+                expanded_non_syntactically_comparable_expr = expanding_non_syntactically_comparable_expr
             lhs_args = strategy.get_term_args(lhs)
             rhs_args = strategy.get_term_args(rhs)
             expr_expr_equations.append((lhs_args, rhs_args))

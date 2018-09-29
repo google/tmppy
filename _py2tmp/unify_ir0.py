@@ -113,10 +113,28 @@ class _ExprUnificationStrategy(unification.UnificationStrategyForCanonicalizatio
             # This is False because the result can be any type/value
             ir0.ClassMemberAccess: lambda t: False,
             # These two are False because of collapsing: std::is_same<int&, (int&) &&>
-            # TODO: we could make the optimizer a bit smarter here, implementing the collapsing logic.
             ir0.ReferenceTypeExpr: lambda t: False,
             ir0.RvalueReferenceTypeExpr: lambda t: False,
         }[term.__class__](term)
+
+    def may_be_equal(self, term1: ir0.Expr, term2: ir0.Expr):
+        assert not self.is_same_term_excluding_args(term1, term2)
+        assert not self.equality_requires_syntactical_equality(term1) or not self.equality_requires_syntactical_equality(term2)
+
+        if not self.equality_requires_syntactical_equality(term1) and not self.equality_requires_syntactical_equality(term2):
+            return True
+
+        if self.equality_requires_syntactical_equality(term2):
+            term2, term1 = term1, term2
+
+        assert self.equality_requires_syntactical_equality(term1)
+        assert not self.equality_requires_syntactical_equality(term2)
+
+        if term2.__class__ in (ir0.ReferenceTypeExpr, ir0.RvalueReferenceTypeExpr) and term1.__class__ !=ir0.AtomicTypeLiteral:
+            # A reference/rvalue-reference can't be equal to a non-reference, non-atomic expr.
+            return False
+
+        return True
 
 def _replace_var_names_in_expr(expr: Union[ir0.Expr, List[ir0.Expr]], new_name_by_old_name: Mapping[str, str]):
     if isinstance(expr, list):

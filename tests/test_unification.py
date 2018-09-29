@@ -56,6 +56,9 @@ class ExampleUnificationStrategy(unification.UnificationStrategyForCanonicalizat
     def equality_requires_syntactical_equality(self, term: Term) -> bool:
         return True
 
+    def may_be_equal(self, term1: Term, term2: Term) -> bool:
+        return True
+
 # This is not defined as __eq__ to make sure that the unification implementation doesn't rely on TermT's __eq__.
 def expr_equals(expr1: Union[str, Term], expr2: Union[str, Term]):
     if isinstance(expr1, str):
