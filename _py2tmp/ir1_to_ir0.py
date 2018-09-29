@@ -129,7 +129,8 @@ def type_to_ir0(expr_type: ir1.ExprType):
     elif isinstance(expr_type, ir1.BottomType):
         return ir0.TypeType()
     elif isinstance(expr_type, ir1.ParameterPackType):
-        assert expr_type.element_type == ir1.TypeType()
+        return type_to_ir0(expr_type.element_type)
+    elif isinstance(expr_type, ir1.ListType):
         return ir0.TypeType()
     else:
         raise NotImplementedError('Unexpected type: %s' % str(expr_type.__class__))
@@ -1296,6 +1297,7 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
     assignment_to_ir0(ir1.Assignment(lhs=assignment.rhs,
                                      rhs=ir1.TemplateInstantiation(template_name=list_literal.cpp_type,
                                                                    arg_exprs=assignment.lhs_list,
+                                                                   expr_type=ir1.ListType(assignment.lhs_list[0].expr_type),
                                                                    instantiation_might_trigger_static_asserts=False)),
                       then_writer)
     stmts_to_ir0(other_stmts, write_continuation_fun_call, then_writer)

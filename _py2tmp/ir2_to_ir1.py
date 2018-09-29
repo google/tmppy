@@ -60,7 +60,7 @@ def type_to_ir1(expr_type: ir2.ExprType):
     elif isinstance(expr_type, ir2.ErrorOrVoidType):
         return ir1.ErrorOrVoidType()
     elif isinstance(expr_type, ir2.ListType):
-        return ir1.TypeType()
+        return ir1.ListType(type_to_ir1(expr_type.elem_type))
     elif isinstance(expr_type, ir2.FunctionType):
         return ir1.FunctionType(argtypes=[type_to_ir1(arg)
                                           for arg in expr_type.argtypes],
@@ -194,7 +194,7 @@ def int_literal_to_ir1(literal: ir2.IntLiteral):
     return ir1.IntLiteral(value=literal.value)
 
 def atomic_type_literal_to_ir1(literal: Union[ir2.AtomicTypeLiteral, ir2.AtomicTypeLiteralPattern]):
-    return ir1.AtomicTypeLiteral(cpp_type=literal.cpp_type)
+    return ir1.AtomicTypeLiteral(cpp_type=literal.cpp_type, expr_type=type_to_ir1(literal.expr_type))
 
 def pointer_type_expr_to_ir1(expr: Union[ir2.PointerTypeExpr, ir2.PointerTypePatternExpr]):
     return ir1.PointerTypeExpr(expr_to_ir1(expr.type_expr))
@@ -243,6 +243,7 @@ def list_expr_to_ir1(list_expr: Union[ir2.ListExpr, ir2.ListPatternExpr]):
 
     return ir1.TemplateInstantiation(template_name=list_template_name,
                                      arg_exprs=arg_exprs,
+                                     expr_type=type_to_ir1(list_expr.expr_type),
                                      instantiation_might_trigger_static_asserts=False)
 
 def function_call_to_ir1(call_expr: ir2.FunctionCall):
@@ -344,7 +345,7 @@ def list_concat_expr_to_ir1(expr: ir2.ListConcatExpr):
 
     return ir1.ClassMemberAccess(class_type_expr=template_instantiation,
                                  member_name='type',
-                                 member_type=ir1.TypeType())
+                                 member_type=type_to_ir1(expr.expr_type))
 
 def list_comprehension_expr_to_ir1(expr: ir2.ListComprehensionExpr):
     return ir1.ListComprehensionExpr(list_var=var_reference_to_ir1(expr.list_var),
@@ -384,7 +385,7 @@ def var_reference_pattern_to_ir1(expr: ir2.VarReferencePattern):
                             is_function_that_may_throw=expr.is_function_that_may_throw)
 
 def atomic_type_literal_pattern_to_ir1(expr: ir2.AtomicTypeLiteralPattern):
-    return ir1.AtomicTypeLiteral(expr.cpp_type)
+    return ir1.AtomicTypeLiteral(cpp_type=expr.cpp_type, expr_type=type_to_ir1(expr.expr_type))
 
 def pointer_type_pattern_expr_to_ir1(expr: ir2.PointerTypePatternExpr):
     return ir1.PointerTypeExpr(type_pattern_expr_to_ir1(expr.type_expr))

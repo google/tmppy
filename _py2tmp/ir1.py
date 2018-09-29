@@ -64,6 +64,13 @@ class TypeType(ExprType):
     def __str__(self):
         return 'Type'
 
+class ListType(ExprType):
+    def __init__(self, elem_type: ExprType):
+        self.elem_type = elem_type
+
+    def __str__(self):
+        return 'List[%s]' % str(self.elem_type)
+
 class ErrorOrVoidType(ExprType):
     def __str__(self):
         return 'ErrorOrVoid'
@@ -237,8 +244,9 @@ class BoolLiteral(Expr):
 
 
 class AtomicTypeLiteral(Expr):
-    def __init__(self, cpp_type: str):
-        super().__init__(expr_type=TypeType())
+    def __init__(self, cpp_type: str, expr_type: ExprType):
+        assert isinstance(expr_type, (TypeType, ListType))
+        super().__init__(expr_type=expr_type)
         self.cpp_type = cpp_type
 
     def get_free_variables(self):
@@ -335,7 +343,7 @@ class ArrayTypeExpr(Expr):
 class FunctionTypeExpr(Expr):
     def __init__(self, return_type_expr: Expr, arg_list_expr: Expr):
         assert return_type_expr.expr_type == TypeType()
-        assert arg_list_expr.expr_type == TypeType()
+        assert arg_list_expr.expr_type == ListType(TypeType()), arg_list_expr.expr_type
 
         super().__init__(expr_type=TypeType())
         self.return_type_expr = return_type_expr
@@ -358,8 +366,9 @@ class TemplateInstantiation(Expr):
     def __init__(self,
                  template_name: str,
                  arg_exprs: Sequence[Expr],
-                 instantiation_might_trigger_static_asserts: bool):
-        super().__init__(expr_type=TypeType())
+                 instantiation_might_trigger_static_asserts: bool,
+                 expr_type: ExprType = TypeType()):
+        super().__init__(expr_type=expr_type)
         self.template_name = template_name
         self.arg_exprs = arg_exprs
         self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
@@ -398,6 +407,8 @@ class TemplateInstantiationWithList(Expr):
                  template_name: str,
                  arg_list_expr: Expr,
                  instantiation_might_trigger_static_asserts: bool):
+        assert isinstance(arg_list_expr.expr_type, ListType), arg_list_expr.expr_type
+
         super().__init__(expr_type=TypeType())
         self.template_name = template_name
         self.arg_list_expr = arg_list_expr
@@ -432,6 +443,8 @@ class ClassMemberAccess(Expr):
 
 class TemplateMemberAccess(Expr):
     def __init__(self, class_type_expr: VarReference, member_name: str, arg_list_expr: VarReference):
+        assert isinstance(arg_list_expr.expr_type, ListType)
+
         super().__init__(expr_type=TypeType())
         self.class_type_expr = class_type_expr
         self.member_name = member_name
@@ -498,8 +511,8 @@ class EqualityComparison(Expr):
 class SetEqualityComparison(Expr):
     def __init__(self, lhs: VarReference, rhs: VarReference, elem_type: ExprType):
         super().__init__(expr_type=BoolType())
-        assert isinstance(lhs.expr_type, TypeType)
-        assert lhs.expr_type == rhs.expr_type
+        assert isinstance(lhs.expr_type, ListType)
+        assert isinstance(rhs.expr_type, ListType)
         self.lhs = lhs
         self.rhs = rhs
         self.elem_type = elem_type
@@ -517,8 +530,8 @@ class SetEqualityComparison(Expr):
 
 class ListToSetExpr(Expr):
     def __init__(self, var: VarReference, elem_type: ExprType):
-        assert var.expr_type == TypeType()
-        super().__init__(expr_type=TypeType())
+        assert isinstance(var.expr_type, ListType)
+        super().__init__(expr_type=var.expr_type)
         self.elem_type = elem_type
         self.var = var
 
@@ -674,8 +687,8 @@ class SafeUncheckedCast(Expr):
 
 class ListComprehensionExpr(Expr):
     def __init__(self, list_var: VarReference, loop_var: VarReference, result_elem_expr: FunctionCall):
-        assert isinstance(list_var.expr_type, TypeType)
-        super().__init__(expr_type=TypeType())
+        assert isinstance(list_var.expr_type, ListType), list_var.expr_type
+        super().__init__(expr_type=ListType(result_elem_expr.expr_type))
         self.list_var = list_var
         self.loop_var = loop_var
         self.result_elem_expr = result_elem_expr
@@ -695,8 +708,8 @@ class ListComprehensionExpr(Expr):
 
 class AddToSetExpr(Expr):
     def __init__(self, set_expr: VarReference, elem_expr: VarReference):
-        assert isinstance(set_expr.expr_type, TypeType)
-        super().__init__(expr_type=TypeType())
+        assert isinstance(set_expr.expr_type, ListType), set_expr.expr_type
+        super().__init__(expr_type=set_expr.expr_type)
         self.set_expr = set_expr
         self.elem_expr = elem_expr
 
@@ -750,7 +763,7 @@ class Assignment(Stmt):
                  lhs: VarReference,
                  rhs: Expr,
                  lhs2: Optional[VarReference] = None):
-        assert lhs.expr_type == rhs.expr_type, 'Different types: %s vs %s' % (str(lhs.expr_type.__dict__), str(rhs.expr_type.__dict__))
+        assert lhs.expr_type == rhs.expr_type, 'Different types: %s vs %s. RHS class: %s' % (str(lhs.expr_type), str(rhs.expr_type), rhs.__class__.__name__)
         if lhs2:
             assert isinstance(lhs2.expr_type, ErrorOrVoidType)
             assert isinstance(rhs, (MatchExpr, FunctionCall, ListComprehensionExpr))
@@ -782,8 +795,10 @@ class UnpackingAssignment(Stmt):
                  lhs_list: Sequence[VarReference],
                  rhs: VarReference,
                  error_message: str):
-        assert isinstance(rhs.expr_type, TypeType)
+        assert isinstance(rhs.expr_type, ListType)
         assert lhs_list
+        for lhs in lhs_list:
+            assert lhs.expr_type == rhs.expr_type.elem_type
         self.lhs_list = tuple(lhs_list)
         self.rhs = rhs
         self.error_message = error_message
