@@ -1163,7 +1163,7 @@ def list_comprehension_ast_to_ir3(ast_node: ast.ListComp,
 
     child_context = compilation_context.create_child_context(function_name=compilation_context.current_function_name)
     child_context.add_symbol(name=generator.target.id,
-                             expr_type=list_expr.elem_type,
+                             expr_type=list_expr.expr_type.elem_type,
                              definition_ast_node=generator.target,
                              is_only_partially_defined=False,
                              is_function_that_may_throw=False)
@@ -1175,7 +1175,7 @@ def list_comprehension_ast_to_ir3(ast_node: ast.ListComp,
 
     return ir3.ListComprehension(list_expr=list_expr,
                                  loop_var=ir3.VarReference(name=generator.target.id,
-                                                           expr_type=list_expr.elem_type,
+                                                           expr_type=list_expr.expr_type.elem_type,
                                                            is_global_function=False,
                                                            is_function_that_may_throw=False),
                                  result_elem_expr=result_elem_expr)

@@ -441,5 +441,167 @@ def test_match_optimization_with_multiple_specializations_chooses_more_specific_
         })
     assert _f(Type.pointer(Type.pointer(Type('int')))) == Type.array(Type('int'))
 
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename... Ts> struct GetFirstError { using type = void; };
+template <typename... Ts> struct GetFirstError<void, Ts...> {
+  using type = typename GetFirstError<Ts...>::type;
+};
+template <typename T, typename... Ts> struct GetFirstError<T, Ts...> {
+  using type = T;
+};
+template <typename TmppyInternal_23> struct CheckIfError { using type = void; };
+template <bool TmppyInternal_5, bool> struct TmppyInternal_24;
+// (meta)function generated for an if-else statement
+template <bool TmppyInternal_5> struct TmppyInternal_24<TmppyInternal_5, true> {
+  static constexpr int64_t value = 5LL;
+  using error = void;
+};
+// (meta)function generated for an if-else statement
+template <bool TmppyInternal_5>
+struct TmppyInternal_24<TmppyInternal_5, false> {
+  static constexpr int64_t value = -1LL;
+  using error = void;
+};
+template <bool TmppyInternal_5> struct f {
+  static constexpr int64_t value =
+      TmppyInternal_24<TmppyInternal_5, TmppyInternal_5>::value;
+  using error =
+      typename TmppyInternal_24<TmppyInternal_5, TmppyInternal_5>::error;
+};
+// (meta)function wrapping the expression in a list comprehension
+template <bool TmppyInternal_9> struct TmppyInternal_25 {
+  static constexpr int64_t value =
+      TmppyInternal_24<TmppyInternal_9, TmppyInternal_9>::value;
+  using error = void;
+};
+template <typename L> struct TmppyInternal_26;
+template <bool... elems> struct TmppyInternal_26<BoolList<(elems)...>> {
+  using type = Int64List<(TmppyInternal_25<elems>::value)...>;
+  using error =
+      typename GetFirstError<typename TmppyInternal_25<elems>::error...>::type;
+};
+template <typename TmppyInternal_13, typename TmppyInternal_12, bool>
+struct TmppyInternal_28;
+// (meta)function generated for an if-else statement
+template <typename TmppyInternal_13, typename TmppyInternal_12>
+struct TmppyInternal_28<TmppyInternal_13, TmppyInternal_12, true> {
+  using type = void;
+  using error = TmppyInternal_13;
+};
+// (meta)function generated for an if-else statement
+template <typename TmppyInternal_13, typename TmppyInternal_12>
+struct TmppyInternal_28<TmppyInternal_13, TmppyInternal_12, false> {
+  using error = void;
+  using type = TmppyInternal_12;
+};
+template <typename TmppyInternal_8> struct g {
+  using TmppyInternal_12 = typename TmppyInternal_26<TmppyInternal_8>::type;
+  using TmppyInternal_13 = typename TmppyInternal_26<TmppyInternal_8>::error;
+  static constexpr bool TmppyInternal_73 =
+      !(std::is_same<typename TmppyInternal_26<TmppyInternal_8>::error,
+                     void>::value);
+  using type = typename TmppyInternal_28<TmppyInternal_13, TmppyInternal_12,
+                                         TmppyInternal_73>::type;
+  using error = typename TmppyInternal_28<TmppyInternal_13, TmppyInternal_12,
+                                          TmppyInternal_73>::error;
+};
+''')
+def test_optimization_list_comprehension_bool_to_int():
+    from typing import List
+    def f(b: bool):
+        if b:
+            return 5
+        else:
+            return -1
+    def g(l: List[bool]):
+        return [f(x) for x in l]
+    assert g([True, False]) == [5, -1]
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename... Ts> struct GetFirstError { using type = void; };
+template <typename... Ts> struct GetFirstError<void, Ts...> {
+  using type = typename GetFirstError<Ts...>::type;
+};
+template <typename T, typename... Ts> struct GetFirstError<T, Ts...> {
+  using type = T;
+};
+template <typename TmppyInternal_26> struct CheckIfError { using type = void; };
+template <bool TmppyInternal_5, bool> struct TmppyInternal_27;
+// (meta)function generated for an if-else statement
+template <bool TmppyInternal_5> struct TmppyInternal_27<TmppyInternal_5, true> {
+  static constexpr int64_t value = 5LL;
+  using error = void;
+};
+// (meta)function generated for an if-else statement
+template <bool TmppyInternal_5>
+struct TmppyInternal_27<TmppyInternal_5, false> {
+  static constexpr int64_t value = -1LL;
+  using error = void;
+};
+template <bool TmppyInternal_5> struct f {
+  static constexpr int64_t value =
+      TmppyInternal_27<TmppyInternal_5, TmppyInternal_5>::value;
+  using error =
+      typename TmppyInternal_27<TmppyInternal_5, TmppyInternal_5>::error;
+};
+// (meta)function wrapping the expression in a list comprehension
+template <bool TmppyInternal_10, int64_t TmppyInternal_9>
+struct TmppyInternal_28 {
+  static constexpr int64_t value =
+      (TmppyInternal_27<TmppyInternal_10, TmppyInternal_10>::value) +
+      (TmppyInternal_9);
+  using error = void;
+};
+template <typename L, int64_t TmppyInternal_9> struct TmppyInternal_29;
+template <bool... elems, int64_t TmppyInternal_9>
+struct TmppyInternal_29<BoolList<(elems)...>, TmppyInternal_9> {
+  using type = Int64List<(TmppyInternal_28<elems, TmppyInternal_9>::value)...>;
+  using error = typename GetFirstError<
+      typename TmppyInternal_28<elems, TmppyInternal_9>::error...>::type;
+};
+template <typename TmppyInternal_15, typename TmppyInternal_14, bool>
+struct TmppyInternal_31;
+// (meta)function generated for an if-else statement
+template <typename TmppyInternal_15, typename TmppyInternal_14>
+struct TmppyInternal_31<TmppyInternal_15, TmppyInternal_14, true> {
+  using type = void;
+  using error = TmppyInternal_15;
+};
+// (meta)function generated for an if-else statement
+template <typename TmppyInternal_15, typename TmppyInternal_14>
+struct TmppyInternal_31<TmppyInternal_15, TmppyInternal_14, false> {
+  using error = void;
+  using type = TmppyInternal_14;
+};
+template <typename TmppyInternal_8, int64_t TmppyInternal_9> struct g {
+  using TmppyInternal_14 =
+      typename TmppyInternal_29<TmppyInternal_8, TmppyInternal_9>::type;
+  using TmppyInternal_15 =
+      typename TmppyInternal_29<TmppyInternal_8, TmppyInternal_9>::error;
+  static constexpr bool TmppyInternal_85 =
+      !(std::is_same<
+          typename TmppyInternal_29<TmppyInternal_8, TmppyInternal_9>::error,
+          void>::value);
+  using type = typename TmppyInternal_31<TmppyInternal_15, TmppyInternal_14,
+                                         TmppyInternal_85>::type;
+  using error = typename TmppyInternal_31<TmppyInternal_15, TmppyInternal_14,
+                                          TmppyInternal_85>::error;
+};
+''')
+def test_optimization_list_comprehension_bool_to_int_with_captured_var():
+    from typing import List
+    def f(b: bool):
+        if b:
+            return 5
+        else:
+            return -1
+    def g(l: List[bool], n: int):
+        return [f(x) + n for x in l]
+    assert g([True, False], 6) == [11, 5]
+
 if __name__== '__main__':
     main(__file__)
