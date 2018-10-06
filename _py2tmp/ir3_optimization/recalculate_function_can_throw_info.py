@@ -13,9 +13,10 @@
 # limitations under the License.
 
 from collections import defaultdict
-from _py2tmp import ir3, transform_ir3
+from typing import Dict
 import networkx as nx
-from typing import List, Tuple, Union, Dict, Set, Iterator, Callable
+from _py2tmp import ir3, transform_ir3
+
 
 class GetReferencedGlobalFunctionNamesTransformation(transform_ir3.Transformation):
     def __init__(self):
@@ -114,7 +115,3 @@ def recalculate_function_can_throw_info(module: ir3.Module):
       function_can_throw[function_name] = condensed_node_can_throw[connected_component_index]
 
   return apply_function_can_throw_info(module, function_can_throw)
-
-def optimize_module(module: ir3.Module):
-    module = recalculate_function_can_throw_info(module)
-    return module

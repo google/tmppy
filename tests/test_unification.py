@@ -11,13 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import itertools
-from typing import Iterable, List, Dict, Union, Tuple, Set
+
+from typing import List, Union, Tuple, Dict
 
 import pytest
 
-from _py2tmp import unification
+from _py2tmp.ir0_optimization import unification
 from _py2tmp.testing.utils import main
+from _py2tmp.ir0_optimization.unification import ListExpansion, UnificationStrategy
+
 
 class Term:
     def __init__(self, name: str, args: List[Union[str, 'Term']]):
@@ -27,13 +29,12 @@ class Term:
     def __repr__(self):
         return '%s(%s)' % (self.name, ', '.join(str(arg) for arg in self.args))
 
-NonListExpr = Union[str, Term]
+NonListExpr = Union[str, Term, ListExpansion[Term]]
 Expr = Union[NonListExpr, List[NonListExpr]]
 
 class ExampleUnificationStrategy(unification.UnificationStrategyForCanonicalization[Term]):
-    def __init__(self, vars_forbidden_on_lhs: List[str], list_vars: Set[str]):
+    def __init__(self, vars_forbidden_on_lhs: List[str]):
         self.vars_forbidden_on_lhs = vars_forbidden_on_lhs
-        self.list_vars = list_vars
 
     def is_same_term_excluding_args(self, term1: Term, term2: Term):
         return term1.name == term2.name
@@ -47,9 +48,6 @@ class ExampleUnificationStrategy(unification.UnificationStrategyForCanonicalizat
     def can_var_be_on_lhs(self, var: str):
         return var not in self.vars_forbidden_on_lhs
 
-    def is_list_var(self, var: str):
-        return var in self.list_vars
-
     def term_to_string(self, term: Term) -> str:
         return repr(term)
 
@@ -58,6 +56,24 @@ class ExampleUnificationStrategy(unification.UnificationStrategyForCanonicalizat
 
     def may_be_equal(self, term1: Term, term2: Term) -> bool:
         return True
+
+    def replace_variables_in_expr(self, expr: UnificationStrategy.Expr,
+                                  replacements: Dict[str, List[UnificationStrategy.Expr]],
+                                  expanded_var_replacements: Dict[str, List[UnificationStrategy.Expr]]) -> UnificationStrategy.Expr:
+        if isinstance(expr, str):
+            if expr in replacements:
+                return replacements[expr]
+            if expr in expanded_var_replacements:
+                return expanded_var_replacements[expr]
+            return expr
+
+        if isinstance(expr, ListExpansion):
+            return ListExpansion(self.replace_variables_in_expr(expr.expr, replacements, expanded_var_replacements))
+
+        return self.term_copy_with_args(expr,
+                                        [self.replace_variables_in_expr(arg, replacements, expanded_var_replacements)
+                                         for arg in self.get_term_args(expr)])
+
 
 # This is not defined as __eq__ to make sure that the unification implementation doesn't rely on TermT's __eq__.
 def expr_equals(expr1: Union[str, Term], expr2: Union[str, Term]):
@@ -68,21 +84,36 @@ def expr_equals(expr1: Union[str, Term], expr2: Union[str, Term]):
                                                                                                                    for arg1, arg2 in zip(expr1.args, expr2.args))
     raise NotImplementedError('Unexpected expr type: %s' % expr1.__class__.__name__)
 
+def expr_to_str(expr: Expr):
+    if isinstance(expr, str):
+        return expr
+    elif isinstance(expr, ListExpansion):
+        return '%s...' % expr_to_str(expr.expr)
+    else:
+        return ExampleUnificationStrategy([]).term_to_string(expr)
+
 def unify(expr_expr_equations: List[Tuple[Expr, Expr]],
           canonicalize: bool,
-          vars_forbidden_on_lhs: List[str] = [],
-          list_vars: Set[str] = set()):
-    strategy = ExampleUnificationStrategy(vars_forbidden_on_lhs, list_vars)
-    var_expr_equations = unification.unify(expr_expr_equations, dict(), strategy)
-    if canonicalize:
-        var_expr_equations = unification.canonicalize(var_expr_equations, strategy)
+          vars_forbidden_on_lhs: List[str] = []):
+    strategy = ExampleUnificationStrategy(vars_forbidden_on_lhs)
+    var_expr_equations, expanded_var_expr_equations = unification.unify(expr_expr_equations, dict(), strategy)
+
     result_dict = dict()
-    for lhs, rhs in var_expr_equations.items():
-        if strategy.is_list_var(lhs):
-            result_dict[lhs] = '[' + ', '.join(str(rhs_elem) for rhs_elem in rhs) + ']'
-        else:
-            [rhs] = rhs
-            result_dict[lhs] = str(rhs)
+    if canonicalize:
+        var_expr_equations = unification.canonicalize(var_expr_equations, expanded_var_expr_equations, strategy)
+        for lhs, rhs in var_expr_equations:
+            if isinstance(lhs, ListExpansion):
+                result_dict['%s...' % lhs.expr] = '[' + ', '.join(expr_to_str(rhs_elem)
+                                                                  for rhs_elem in rhs) + ']'
+            else:
+                result_dict[lhs] = expr_to_str(rhs)
+    else:
+        for lhs, rhs in var_expr_equations.items():
+            result_dict[lhs] = expr_to_str(rhs)
+        for lhs, rhs in expanded_var_expr_equations.items():
+            result_dict['%s...' % lhs] = '[' + ', '.join(expr_to_str(rhs_elem)
+                                                         for rhs_elem in rhs) + ']'
+
     return result_dict
 
 @pytest.mark.parametrize('canonicalize,vars_forbidden_on_lhs', [
@@ -432,88 +463,88 @@ def test_unify_two_equalities_with_substitution_other_order_with_canonicalizatio
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_list_var_with_list_var(canonicalize):
     equations = unify([
-        ('x', 'y'),
-    ], canonicalize, list_vars={'x', 'y'})
+        (ListExpansion('x'), ListExpansion('y')),
+    ], canonicalize)
     assert equations == {
-        'x': '[y]'
+        'x': 'y'
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_list_var_with_empty_list(canonicalize):
     equations = unify([
-        ('x', []),
-    ], canonicalize, list_vars={'x'})
+        (ListExpansion('x'), []),
+    ], canonicalize)
     assert equations == {
-        'x': '[]'
+        'x...': '[]'
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_list_var_with_term(canonicalize):
     equations = unify([
-        ('x', [Term('f', ['y'])]),
-    ], canonicalize, list_vars={'x'})
+        (ListExpansion('x'), [Term('f', ['y'])]),
+    ], canonicalize)
     assert equations == {
-        'x': '[f(y)]'
+        'x...': '[f(y)]'
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_lists_common_prefix(canonicalize):
     equations = unify([
-        (['x', 'y', 'z'], ['x', 'y', Term('f', []), 'k']),
-    ], canonicalize, list_vars={'z'})
+        (['x', 'y', ListExpansion('z')], ['x', 'y', Term('f', []), 'k']),
+    ], canonicalize)
     assert equations == {
-        'z': '[f(), k]'
+        'z...': '[f(), k]'
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_lists_common_suffix(canonicalize):
     equations = unify([
-        (['z', 'x', 'y'], [Term('f', []), 'k', 'x', 'y', ]),
-    ], canonicalize, list_vars={'z'})
+        ([ListExpansion('z'), 'x', 'y'], [Term('f', []), 'k', 'x', 'y', ]),
+    ], canonicalize)
     assert equations == {
-        'z': '[f(), k]'
+        'z...': '[f(), k]'
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_lists_common_prefix_and_suffix(canonicalize):
     equations = unify([
-        (['x', 'z', 'y'], ['x', Term('f', []), 'k', 'y']),
-    ], canonicalize, list_vars={'z'})
+        (['x', ListExpansion('z'), 'y'], ['x', Term('f', []), 'k', 'y']),
+    ], canonicalize)
     assert equations == {
-        'z': '[f(), k]'
+        'z...': '[f(), k]'
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_lists_zero_to_many_list_vars(canonicalize):
     equations = unify([
-        ([], ['y', 'z']),
-    ], canonicalize, list_vars={'y', 'z'})
+        ([], [ListExpansion('y'), ListExpansion('z')]),
+    ], canonicalize)
     assert equations == {
-        'y': '[]',
-        'z': '[]',
+        'y...': '[]',
+        'z...': '[]',
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_lists_one_to_many_list_vars(canonicalize):
     equations = unify([
-        (['x'], [Term('f', []), 'y', Term('g', []), 'z', Term('h', [])]),
-    ], canonicalize, list_vars={'x', 'y', 'z'})
+        ([ListExpansion('x')], [Term('f', []), ListExpansion('y'), Term('g', []), ListExpansion('z'), Term('h', [])]),
+    ], canonicalize)
     assert equations == {
-        'x': '[f(), y, g(), z, h()]'
+        'x...': '[f(), y..., g(), z..., h()]'
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_lists_many_to_many_list_vars(canonicalize):
     with pytest.raises(unification.UnificationAmbiguousException):
         unify([
-            (['x', Term('f', []), 'y'], ['z', Term('f', []), 'k']),
-        ], canonicalize, list_vars={'x', 'y', 'z', 'k'})
+            ([ListExpansion('x'), Term('f', []), ListExpansion('y')], [ListExpansion('z'), Term('f', []), ListExpansion('k')]),
+        ], canonicalize)
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_lists_many_to_many_list_vars_ok_if_same(canonicalize):
     equations = unify([
-        (['x', Term('f', []), 'y'], ['x', Term('f', []), 'y']),
-    ], canonicalize, list_vars={'x', 'y'})
+        ([ListExpansion('x'), Term('f', []), ListExpansion('y')], [ListExpansion('x'), Term('f', []), ListExpansion('y')]),
+    ], canonicalize)
     assert equations == {}
 
 if __name__== '__main__':

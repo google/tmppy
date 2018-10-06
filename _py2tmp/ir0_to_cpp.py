@@ -13,7 +13,8 @@
 # limitations under the License.
 
 from typing import List, Iterator, Tuple, Union, Callable
-from _py2tmp import ir0, optimize_ir0, transform_ir0, utils
+from _py2tmp import ir0, transform_ir0, utils
+from _py2tmp.ir0_optimization import optimize_ir0
 
 class Writer:
     def new_id(self) -> str: ...  # pragma: no cover

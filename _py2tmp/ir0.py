@@ -439,6 +439,7 @@ class ComparisonExpr(BinaryExpr):
             assert op in ('==', '!=', '<', '>', '<=', '>=')
         else:
             raise NotImplementedError('Unexpected type: %s' % str(lhs.expr_type))
+
         super().__init__(lhs, rhs, result_type=BoolType())
         self.op = op
 
@@ -491,8 +492,10 @@ class TemplateInstantiation(Expr):
             # In this case it's fine if the two lists "don't match up"
             pass
         else:
-            assert len(template_expr.expr_type.args) == len(args), 'template_expr: %s, template_expr.type.argtypes:\n%s, args:\n%s' % (
-                str(template_expr), template_expr.expr_type.args, args)
+            from _py2tmp.ir0_to_cpp import expr_to_cpp_simple
+
+            assert len(template_expr.expr_type.args) == len(args), 'template_expr: %s,\ntemplate_expr.type.argtypes:\n%s\nargs:\n%s' % (
+                expr_to_cpp_simple(template_expr), template_expr.expr_type.args, ', '.join(expr_to_cpp_simple(arg) for arg in args))
             for arg_decl, arg_expr in zip(template_expr.expr_type.args, args):
                 assert arg_decl.expr_type == arg_expr.expr_type, '\n%s vs:\n%s' % (str(arg_decl.expr_type), str(arg_expr.expr_type))
 

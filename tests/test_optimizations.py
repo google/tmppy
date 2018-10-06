@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import pytest
 
 from py2tmp.testing import *
 from _py2tmp.testing.utils import main
@@ -484,31 +483,33 @@ def test_match_optimization_with_multiple_specializations_chooses_more_specific_
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_23> struct CheckIfError { using type = void; };
-template <bool TmppyInternal_5, bool TmppyInternal_25> struct TmppyInternal_33;
+template <bool TmppyInternal_5, bool TmppyInternal_25> struct TmppyInternal_34;
 // Split that generates value of: (meta)function generated for an if-else
 // statement
-template <bool TmppyInternal_5> struct TmppyInternal_33<TmppyInternal_5, true> {
+template <bool TmppyInternal_5> struct TmppyInternal_34<TmppyInternal_5, true> {
   static constexpr int64_t value = 5LL;
 };
 // Split that generates value of: (meta)function generated for an if-else
 // statement
 template <bool TmppyInternal_5>
-struct TmppyInternal_33<TmppyInternal_5, false> {
+struct TmppyInternal_34<TmppyInternal_5, false> {
   static constexpr int64_t value = -1LL;
 };
 template <bool TmppyInternal_5> struct f {
   static constexpr int64_t value =
-      TmppyInternal_33<TmppyInternal_5, TmppyInternal_5>::value;
+      TmppyInternal_34<TmppyInternal_5, TmppyInternal_5>::value;
   using error = void;
 };
-template <typename L> struct TmppyInternal_35;
+template <typename TmppyInternal_8> struct TmppyInternal_40;
 // Split that generates type of:
-template <bool... elems> struct TmppyInternal_35<BoolList<(elems)...>> {
-  using type = Int64List<(TmppyInternal_33<elems, elems>::value)...>;
+template <bool... TmppyInternal_26>
+struct TmppyInternal_40<BoolList<(TmppyInternal_26)...>> {
+  using type = Int64List<(
+      TmppyInternal_34<TmppyInternal_26, TmppyInternal_26>::value)...>;
 };
 template <typename TmppyInternal_8> struct g {
-  using type = typename TmppyInternal_35<TmppyInternal_8>::type;
   using error = void;
+  using type = typename TmppyInternal_40<TmppyInternal_8>::type;
 };
 ''')
 def test_optimization_list_comprehension_bool_to_int():
@@ -526,34 +527,36 @@ def test_optimization_list_comprehension_bool_to_int():
 #include <tmppy/tmppy.h>
 #include <type_traits>
 template <typename TmppyInternal_26> struct CheckIfError { using type = void; };
-template <bool TmppyInternal_5, bool TmppyInternal_28> struct TmppyInternal_36;
+template <bool TmppyInternal_5, bool TmppyInternal_28> struct TmppyInternal_37;
 // Split that generates value of: (meta)function generated for an if-else
 // statement
-template <bool TmppyInternal_5> struct TmppyInternal_36<TmppyInternal_5, true> {
+template <bool TmppyInternal_5> struct TmppyInternal_37<TmppyInternal_5, true> {
   static constexpr int64_t value = 5LL;
 };
 // Split that generates value of: (meta)function generated for an if-else
 // statement
 template <bool TmppyInternal_5>
-struct TmppyInternal_36<TmppyInternal_5, false> {
+struct TmppyInternal_37<TmppyInternal_5, false> {
   static constexpr int64_t value = -1LL;
 };
 template <bool TmppyInternal_5> struct f {
   static constexpr int64_t value =
-      TmppyInternal_36<TmppyInternal_5, TmppyInternal_5>::value;
+      TmppyInternal_37<TmppyInternal_5, TmppyInternal_5>::value;
   using error = void;
 };
-template <typename L, int64_t TmppyInternal_9> struct TmppyInternal_38;
+template <typename TmppyInternal_8, int64_t TmppyInternal_9>
+struct TmppyInternal_43;
 // Split that generates type of:
-template <bool... elems, int64_t TmppyInternal_9>
-struct TmppyInternal_38<BoolList<(elems)...>, TmppyInternal_9> {
-  using type = Int64List<((TmppyInternal_36<elems, elems>::value) +
-                          (TmppyInternal_9))...>;
+template <bool... TmppyInternal_29, int64_t TmppyInternal_9>
+struct TmppyInternal_43<BoolList<(TmppyInternal_29)...>, TmppyInternal_9> {
+  using type =
+      Int64List<((TmppyInternal_37<TmppyInternal_29, TmppyInternal_29>::value) +
+                 (TmppyInternal_9))...>;
 };
 template <typename TmppyInternal_8, int64_t TmppyInternal_9> struct g {
-  using type =
-      typename TmppyInternal_38<TmppyInternal_8, TmppyInternal_9>::type;
   using error = void;
+  using type =
+      typename TmppyInternal_43<TmppyInternal_8, TmppyInternal_9>::type;
 };
 ''')
 def test_optimization_list_comprehension_bool_to_int_with_captured_var():
@@ -566,6 +569,31 @@ def test_optimization_list_comprehension_bool_to_int_with_captured_var():
     def g(l: List[bool], n: int):
         return [f(x) + n for x in l]
     assert g([True, False], 6) == [11, 5]
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_31> struct CheckIfError { using type = void; };
+template <typename TmppyInternal_5> struct TmppyInternal_53;
+// Split that generates type of:
+template <typename... TmppyInternal_32>
+struct TmppyInternal_53<List<TmppyInternal_32...>> {
+  using type = List<TmppyInternal_32 *const...>;
+};
+template <typename TmppyInternal_5> struct f {
+  using error = void;
+  using type = typename TmppyInternal_53<TmppyInternal_5>::type;
+};
+''')
+def test_optimization_multiple_list_comprehensions():
+    from typing import List
+    from tmppy import Type
+    def f(l0: List[Type]):
+        l1 = [Type.pointer(x) for x in l0]
+        l2 = [Type.const(x) for x in l1]
+        return l2
+    assert f([Type('int'), Type('float')]) == [Type.const(Type.pointer(Type('int'))),
+                                               Type.const(Type.pointer(Type('float')))]
 
 if __name__== '__main__':
     main(__file__)

@@ -20,12 +20,11 @@ from _py2tmp import (
     ir3_to_ir2,
     ir2_to_ir1,
     ir1_to_ir0,
-    optimize_ir3,
-    optimize_ir0,
     ir0_to_cpp,
     utils,
 )
 
+from _py2tmp import ir0_optimization, ir3_optimization
 import argparse
 
 def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
@@ -42,7 +41,7 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
         print(utils.ir_to_string(module_ir3))
         print()
 
-    module_ir3 = optimize_ir3.optimize_module(module_ir3)
+    module_ir3 = ir3_optimization.optimize_module(module_ir3)
     if verbose:
         print('TMPPy IR3 after optimization:')
         print(utils.ir_to_string(module_ir3))
@@ -66,7 +65,7 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
         print(utils.ir_to_string(header_ir0))
         print()
 
-    header_ir0 = optimize_ir0.optimize_header(header_ir0, identifier_generator)
+    header_ir0 = ir0_optimization.optimize_header(header_ir0, identifier_generator)
     if verbose:
         print('TMPPy IR0 after optimization:')
         print(utils.ir_to_string(header_ir0))

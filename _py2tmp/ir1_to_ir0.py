@@ -1404,8 +1404,39 @@ def _select_arbitrary_parent_arg(args: Sequence[ir0.TemplateArgDecl]) -> ir0.Tem
 
 def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter):
     try:
-        args = [function_arg_decl_to_ir0(arg)
-                for arg in function_defn.args]
+        args = []
+        specialization_args = []
+        patterns = []
+        has_nontrivial_patterns = False
+        extra_stmts = []
+        for arg in function_defn.args:
+            ir0_arg = function_arg_decl_to_ir0(arg)
+            args.append(ir0_arg)
+            if isinstance(arg.expr_type, ir1.ListType):
+                elem_type = type_to_ir0(arg.expr_type.elem_type)
+                elems_literal = ir0.AtomicTypeLiteral.for_local(cpp_type=writer.new_id(),
+                                                                expr_type=elem_type,
+                                                                is_variadic=True)
+                specialization_args.append(ir0.TemplateArgDecl(name=elems_literal.cpp_type,
+                                                               expr_type=elems_literal.expr_type,
+                                                               is_variadic=True))
+                template_instantiation = ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=list_template_name_for_type(elem_type),
+                                                                                                                             args=[ir0.TemplateArgType(expr_type=elem_type,
+                                                                                                                                                       is_variadic=True)],
+                                                                                                                             is_metafunction_that_may_return_error=False,
+                                                                                                                             may_be_alias=False),
+                                                                   args=[ir0.VariadicTypeExpansion(elems_literal)],
+                                                                   instantiation_might_trigger_static_asserts=False)
+                patterns.append(template_instantiation)
+                extra_stmts.append(ir0.Typedef(name=arg.name,
+                                               expr=template_instantiation))
+                has_nontrivial_patterns = True
+            else:
+                patterns.append(ir0.AtomicTypeLiteral.for_local(cpp_type=ir0_arg.name,
+                                                                expr_type=ir0_arg.expr_type,
+                                                                is_variadic=ir0_arg.is_variadic))
+                specialization_args.append(ir0_arg)
+
         if args:
             parent_arbitrary_arg = _select_arbitrary_parent_arg(args)
         else:
@@ -1413,29 +1444,46 @@ def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter
                                                        name=writer.new_id(),
                                                        is_variadic=False)
             args = [parent_arbitrary_arg]
+            assert not has_nontrivial_patterns
 
         return_type = type_to_ir0(function_defn.return_type)
         body_writer = TemplateBodyWriter(writer,
                                          parent_arbitrary_arg=parent_arbitrary_arg,
                                          parent_return_type=return_type)
+        for stmt in extra_stmts:
+            body_writer.write(stmt)
         stmts_to_ir0(function_defn.body,
                      write_continuation_fun_call=None,
                      writer=body_writer)
-
-        main_definition = _create_metafunction_specialization(args=args,
-                                                              patterns=None,
-                                                              body=body_writer.elems)
 
         if return_type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
             result_element_names = ['value', 'error']
         else:
             result_element_names = ['type', 'error']
 
-        writer.write(ir0.TemplateDefn(main_definition=main_definition,
-                                      name=function_defn.name,
-                                      description=function_defn.description,
-                                      specializations=[],
-                                      result_element_names=result_element_names))
+        if has_nontrivial_patterns:
+            # We don't really need a specialization, but defining this template only for the list types helps the
+            # optimizer inline other templates into this one (since it can assume that the param is a list).
+            specialization = _create_metafunction_specialization(args=specialization_args,
+                                                                 patterns=patterns,
+                                                                 body=body_writer.elems)
+
+            writer.write(ir0.TemplateDefn(main_definition=None,
+                                          args=args,
+                                          name=function_defn.name,
+                                          description=function_defn.description,
+                                          specializations=[specialization],
+                                          result_element_names=result_element_names))
+        else:
+            main_definition = _create_metafunction_specialization(args=args,
+                                                                  patterns=None,
+                                                                  body=body_writer.elems)
+
+            writer.write(ir0.TemplateDefn(main_definition=main_definition,
+                                          name=function_defn.name,
+                                          description=function_defn.description,
+                                          specializations=[],
+                                          result_element_names=result_element_names))
     except (AssertionError, AttributeError, TypeError) as e:  # pragma: no cover
         print('While converting a function defn to low IR:\n' + str(ir1.Module(body=[function_defn],
                                                                                public_names=set())))

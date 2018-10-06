@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Union, Dict, Mapping
-
+from typing import List, Iterable, Union, Mapping
 from _py2tmp import ir0
-
 
 class Writer:
     def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]): ...  # pragma: no cover

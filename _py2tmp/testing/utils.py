@@ -26,7 +26,7 @@ import itertools
 import subprocess
 from functools import wraps
 import difflib
-from typing import Callable, Any
+from typing import Callable
 
 import pytest
 
@@ -37,12 +37,11 @@ from _py2tmp import (
     ir3_to_ir2,
     ir2_to_ir1,
     ir1_to_ir0,
-    optimize_ir3,
-    optimize_ir0,
     ir0_to_cpp,
     ir0,
     utils,
 )
+from _py2tmp import ir3_optimization, ir0_optimization
 
 CHECK_TESTS_WERE_FULLY_OPTIMIZED = True
 
@@ -64,20 +63,20 @@ def bisect_with_predicate(last_known_good: int, first_known_bad: int, is_good: C
 
 def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reaching_max_optimization_loops=False):
     try:
-        optimize_ir0.ConfigurationKnobs.verbose = optimize_ir0.DEFAULT_VERBOSE_SETTING
+        ir0_optimization.ConfigurationKnobs.verbose = ir0_optimization.DEFAULT_VERBOSE_SETTING
 
         e1 = None
         try:
-            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = 0
+            ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = 0
             cpp_source = run(allow_toplevel_static_asserts_after_optimization=True)
         except (TestFailedException, AttributeError, AssertionError) as e:
             e1 = e
 
         e2 = None
         try:
-            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
-            optimize_ir0.ConfigurationKnobs.optimization_step_counter = 0
-            optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
+            ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = -1
+            ir0_optimization.ConfigurationKnobs.optimization_step_counter = 0
+            ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
             optimized_cpp_source = run(allow_toplevel_static_asserts_after_optimization=True)
         except (TestFailedException, AttributeError, AssertionError) as e:
             e2 = e
@@ -86,14 +85,14 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
             raise e1
 
         if not e1 and not e2:
-            if optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0 and not allow_reaching_max_optimization_loops:
+            if ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0 and not allow_reaching_max_optimization_loops:
                 raise TestFailedException('The test passed, but hit max_num_remaining_loops.\nOptimized C++ code:\n%s' % optimized_cpp_source)
             if CHECK_TESTS_WERE_FULLY_OPTIMIZED:
                 run(allow_toplevel_static_asserts_after_optimization=False)
             return
 
         def predicate(max_num_optimization_steps):
-            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = max_num_optimization_steps
+            ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = max_num_optimization_steps
             try:
                 run(allow_toplevel_static_asserts_after_optimization=True)
                 return True
@@ -103,9 +102,9 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
         if e2:
             # Fails with optimization, succeeds without.
             # Bisect to find the issue.
-            bisect_result = bisect_with_predicate(0, optimize_ir0.ConfigurationKnobs.optimization_step_counter, predicate)
-            optimize_ir0.ConfigurationKnobs.verbose = True
-            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = bisect_result
+            bisect_result = bisect_with_predicate(0, ir0_optimization.ConfigurationKnobs.optimization_step_counter, predicate)
+            ir0_optimization.ConfigurationKnobs.verbose = True
+            ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = bisect_result
             try:
                 run(allow_toplevel_static_asserts_after_optimization=True)
             except TestFailedException as e:
@@ -120,9 +119,9 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
         else:
             # Fails without optimization, succeeds with.
             # Bisect to find the issue.
-            bisect_result = bisect_with_predicate(0, optimize_ir0.ConfigurationKnobs.optimization_step_counter, lambda n: not predicate(n))
-            optimize_ir0.ConfigurationKnobs.verbose = True
-            optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = bisect_result
+            bisect_result = bisect_with_predicate(0, ir0_optimization.ConfigurationKnobs.optimization_step_counter, lambda n: not predicate(n))
+            ir0_optimization.ConfigurationKnobs.verbose = True
+            ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = bisect_result
             run(allow_toplevel_static_asserts_after_optimization=True)
             raise TestFailedException('Found test that succeeds only after optimization: ' + ', '.join(e1.args))
     except TestFailedException as e:
@@ -693,7 +692,7 @@ def _convert_tmppy_source_to_ir(python_source, identifier_generator):
     filename='<unknown>'
     source_ast = ast.parse(python_source, filename)
     module_ir3 = ast_to_ir3.module_ast_to_ir3(source_ast, filename, python_source.splitlines(), identifier_generator)
-    module_ir3 = optimize_ir3.optimize_module(module_ir3)
+    module_ir3 = ir3_optimization.optimize_module(module_ir3)
     module_ir2 = ir3_to_ir2.module_to_ir2(module_ir3, identifier_generator)
     module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2)
     return module_ir2, module_ir1
@@ -718,7 +717,7 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
 
     try:
         non_optimized_header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
-        optimized_header = optimize_ir0.optimize_header(non_optimized_header, identifier_generator)
+        optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator)
         cpp_source = ir0_to_cpp.header_to_cpp(optimized_header, identifier_generator)
         cpp_source = utils.clang_format(cpp_source)
 
@@ -726,14 +725,14 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
             for elem in optimized_header.toplevel_content:
                 if isinstance(elem, ir0.StaticAssert):
                     # Re-run the optimization in verbose mode so that we output more detail on the error.
-                    optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
-                    optimize_ir0.ConfigurationKnobs.verbose = True
-                    optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
-                    optimized_header = optimize_ir0.optimize_header(non_optimized_header, identifier_generator)
+                    ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
+                    ir0_optimization.ConfigurationKnobs.verbose = True
+                    ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = -1
+                    optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator)
                     cpp_source = ir0_to_cpp.header_to_cpp(optimized_header, identifier_generator)
                     cpp_source = utils.clang_format(cpp_source)
 
-                    if optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter:
+                    if ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter:
                         raise TestFailedException('Reached max_num_remaining_loops_counter.')
 
                     raise TestFailedException(textwrap.dedent('''\
@@ -804,9 +803,9 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
             run_test_with_optional_optimization(run_test)
 
             try:
-                optimize_ir0.ConfigurationKnobs.verbose = optimize_ir0.DEFAULT_VERBOSE_SETTING
-                optimize_ir0.ConfigurationKnobs.max_num_optimization_steps = -1
-                optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
+                ir0_optimization.ConfigurationKnobs.verbose = ir0_optimization.DEFAULT_VERBOSE_SETTING
+                ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = -1
+                ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
                 module_ir2, module_ir1, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
 
                 assert expected_cpp_source[0] == '\n'
@@ -841,7 +840,7 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
                                                                                      fromfile='expected.h',
                                                                                      tofile='actual.h'))))
 
-                if optimize_ir0.ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0:
+                if ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0:
                     raise TestFailedException('The generated code was the expected one, but hit max_num_remaining_loops')
 
             except TestFailedException as e:
