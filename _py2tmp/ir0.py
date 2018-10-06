@@ -23,7 +23,7 @@ class ExprKind(Enum):
     TYPE = 3
     TEMPLATE = 4
 
-class TemplateBodyElementOrExpr:
+class TemplateBodyElementOrExprOrTemplateDefn:
     def get_referenced_identifiers(self) -> Iterable[str]:
         for expr in self.get_transitive_subexpressions():
             for identifier in expr.get_local_referenced_identifiers():
@@ -71,7 +71,7 @@ class TemplateType(ExprType):
         self.args = tuple(TemplateArgType(arg.expr_type, arg.is_variadic)
                           for arg in args)
 
-class Expr(utils.ValueType, TemplateBodyElementOrExpr):
+class Expr(utils.ValueType, TemplateBodyElementOrExprOrTemplateDefn):
     def __init__(self, expr_type: ExprType):
         self.expr_type = expr_type
 
@@ -95,7 +95,7 @@ class Expr(utils.ValueType, TemplateBodyElementOrExpr):
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence['Expr']): ...
 
-class TemplateBodyElement(TemplateBodyElementOrExpr):
+class TemplateBodyElement(TemplateBodyElementOrExprOrTemplateDefn):
     pass
 
 class StaticAssert(TemplateBodyElement):
@@ -165,7 +165,7 @@ class TemplateSpecialization:
                        for elem in body)), 'body was:\n%s' % '\n'.join(utils.ir_to_string(elem)
                                                                        for elem in body)
 
-class TemplateDefn(TemplateBodyElement):
+class TemplateDefn(TemplateBodyElementOrExprOrTemplateDefn):
     def __init__(self,
                  main_definition: Optional[TemplateSpecialization],
                  specializations: Sequence[TemplateSpecialization],

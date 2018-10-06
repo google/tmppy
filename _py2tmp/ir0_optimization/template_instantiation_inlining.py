@@ -11,15 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import lru_cache
+
 from typing import Dict, Iterator, Set, List, Union
-from _py2tmp import ir0, transform_ir0, ir0_builtins, ir0_to_cpp, ir0_builtin_literals
+from _py2tmp import ir0, transform_ir0, ir0_builtins, ir0_builtin_literals
 from _py2tmp.ir0_optimization import unify_ir0
 from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
 from _py2tmp.ir0_optimization.configuration_knobs import ConfigurationKnobs
-from _py2tmp.ir0_optimization.local_optimizations import perform_local_optimizations_on_toplevel_elems, perform_local_optimizations_on_template_defn
-from _py2tmp.ir0_optimization.optimization_execution import apply_optimization, apply_toplevel_elems_optimization,  template_defn_to_cpp
-from _py2tmp.ir0_optimization.replace_var_with_expr import replace_var_with_expr_in_template_body_elements, VariadicVarReplacementNotPossibleException, replace_var_with_expr_in_expr
+from _py2tmp.ir0_optimization.local_optimizations import perform_local_optimizations_on_toplevel_elems, \
+    perform_local_optimizations_on_template_defn
+from _py2tmp.ir0_optimization.optimization_execution import apply_optimization, apply_toplevel_elems_optimization, \
+    template_defn_to_cpp
+from _py2tmp.ir0_optimization.replace_var_with_expr import replace_var_with_expr_in_template_body_elements, \
+    VariadicVarReplacementNotPossibleException, replace_var_with_expr_in_expr
 
 _select1st_type_and_name = [
     (ir0.BoolType(), 'Bool'),
