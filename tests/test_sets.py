@@ -493,5 +493,51 @@ def test_custom_type_containing_set_equality_error():
 def test_set_of_lists_ok():
     assert {[1, 2], [3, 4]} != {[1, 2]}
 
+@assert_compilation_succeeds()
+def test_bool_set_in_empty():
+    from tmppy import empty_set
+    assert not (False in empty_set(bool))
+
+@assert_compilation_succeeds()
+def test_int_set_in_empty():
+    from tmppy import empty_set
+    assert not (1 in empty_set(int))
+
+@assert_compilation_succeeds()
+def test_type_set_in_empty():
+    from tmppy import Type, empty_set
+    assert not (Type('int') in empty_set(Type))
+
+@assert_compilation_succeeds()
+def test_bool_set_in_not_present():
+    assert not (False in {True})
+
+@assert_compilation_succeeds()
+def test_int_set_in_not_present():
+    assert not (1 in {2})
+
+@assert_compilation_succeeds()
+def test_type_set_in_not_present():
+    from tmppy import Type
+    assert not (Type('int') in {Type('float')})
+
+@assert_compilation_succeeds()
+def test_bool_set_in_present():
+    assert False in {False}
+
+@assert_compilation_succeeds()
+def test_int_set_in_present():
+    assert 5 in {5}
+
+@assert_compilation_succeeds()
+def test_type_set_in_present():
+    from tmppy import Type
+    assert Type('int') in {Type('int')}
+
+@assert_conversion_fails
+def test_set_in_type_mismatch():
+    def f(b: bool):
+        return 1 in {True}  # error: Type mismatch in in: int vs Set\[bool\]
+
 if __name__== '__main__':
     main(__file__)

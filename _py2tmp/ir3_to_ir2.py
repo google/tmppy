@@ -253,6 +253,8 @@ def expr_to_ir2(expr: ir3.Expr, writer: StmtWriter) -> ir2.VarReference:
         return function_call_to_ir2(expr, writer)
     elif isinstance(expr, ir3.EqualityComparison):
         return equality_comparison_to_ir2(expr, writer)
+    elif isinstance(expr, ir3.InExpr):
+        return in_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.AttributeAccessExpr):
         return attribute_access_expr_to_ir2(expr, writer)
     elif isinstance(expr, ir3.AndExpr):
@@ -455,6 +457,10 @@ def equality_comparison_to_ir2(comparison_expr: ir3.EqualityComparison, writer: 
     else:
         return writer.new_var_for_expr(ir2.EqualityComparison(lhs=expr_to_ir2(comparison_expr.lhs, writer),
                                                               rhs=expr_to_ir2(comparison_expr.rhs, writer)))
+
+def in_expr_to_ir2(expr: ir3.InExpr, writer: StmtWriter):
+    return writer.new_var_for_expr(ir2.IsInListExpr(lhs=expr_to_ir2(expr.lhs, writer),
+                                                    rhs=expr_to_ir2(expr.rhs, writer)))
 
 def attribute_access_expr_to_ir2(attribute_access_expr: ir3.AttributeAccessExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir2.AttributeAccessExpr(var=expr_to_ir2(attribute_access_expr.expr, writer),

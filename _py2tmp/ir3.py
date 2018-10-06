@@ -380,6 +380,20 @@ class EqualityComparison(Expr):
             for var in expr.get_free_variables():
                 yield var
 
+class InExpr(Expr):
+    def __init__(self, lhs: Expr, rhs: Expr):
+        super().__init__(expr_type=BoolType())
+        assert isinstance(rhs.expr_type, (ListType, SetType))
+        assert lhs.expr_type == rhs.expr_type.elem_type
+        assert not isinstance(lhs.expr_type, FunctionType)
+        self.lhs = lhs
+        self.rhs = rhs
+
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
 class AttributeAccessExpr(Expr):
     def __init__(self, expr: Expr, attribute_name: str, expr_type: ExprType):
         super().__init__(expr_type=expr_type)

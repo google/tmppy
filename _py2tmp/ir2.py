@@ -723,6 +723,25 @@ class SetEqualityComparison(Expr):
     def describe_other_fields(self):
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
+class IsInListExpr(Expr):
+    def __init__(self, lhs: VarReference, rhs: VarReference):
+        super().__init__(expr_type=BoolType())
+        assert isinstance(rhs.expr_type, ListType)
+        assert lhs.expr_type == rhs.expr_type.elem_type
+        self.lhs = lhs
+        self.rhs = rhs
+
+    def get_free_variables(self):
+        for expr in (self.lhs, self.rhs):
+            for var in expr.get_free_variables():
+                yield var
+
+    def __str__(self):
+        return '%s in %s' % (self.lhs.name, self.rhs.name)
+
+    def describe_other_fields(self):
+        return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
+
 class AttributeAccessExpr(Expr):
     def __init__(self, var: VarReference, attribute_name: str, expr_type: ExprType):
         super().__init__(expr_type=expr_type)

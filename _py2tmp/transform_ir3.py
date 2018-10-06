@@ -113,6 +113,8 @@ class Transformation:
             return self.transform_attribute_access_expr(expr)
         elif isinstance(expr, ir3.EqualityComparison):
             return self.transform_equality_comparison(expr)
+        elif isinstance(expr, ir3.InExpr):
+            return self.transform_in_expr(expr)
         elif isinstance(expr, ir3.FunctionCall):
             return self.transform_function_call(expr)
         elif isinstance(expr, ir3.BoolSetAnyExpr):
@@ -207,6 +209,10 @@ class Transformation:
     def transform_equality_comparison(self, expr: ir3.EqualityComparison) -> ir3.EqualityComparison:
         return ir3.EqualityComparison(lhs=self.transform_expr(expr.lhs),
                                       rhs=self.transform_expr(expr.rhs))
+
+    def transform_in_expr(self, expr: ir3.InExpr) -> ir3.InExpr:
+        return ir3.InExpr(lhs=self.transform_expr(expr.lhs),
+                          rhs=self.transform_expr(expr.rhs))
 
     def transform_function_call(self, expr: ir3.FunctionCall) -> ir3.FunctionCall:
         return ir3.FunctionCall(fun_expr=self.transform_expr(expr.fun_expr),

@@ -203,20 +203,20 @@ class GlobalLiterals:
                                                                  is_metafunction_that_may_return_error=False,
                                                                  may_be_alias=False)
 
-    IS_IN_BOOL_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInBoolSet',
-                                                                 args=[_type_arg_type(), _bool_arg_type()],
-                                                                 is_metafunction_that_may_return_error=False,
-                                                                 may_be_alias=False)
-
-    IS_IN_INT64_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInInt64Set',
-                                                                  args=[_type_arg_type(), _int64_arg_type()],
+    IS_IN_BOOL_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInBoolList',
+                                                                  args=[_bool_arg_type(), _type_arg_type()],
                                                                   is_metafunction_that_may_return_error=False,
                                                                   may_be_alias=False)
 
-    IS_IN_TYPE_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInTypeSet',
-                                                                 args=[_type_arg_type(), _type_arg_type()],
-                                                                 is_metafunction_that_may_return_error=False,
-                                                                 may_be_alias=False)
+    IS_IN_INT64_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInInt64List',
+                                                                   args=[_int64_arg_type(), _type_arg_type()],
+                                                                   is_metafunction_that_may_return_error=False,
+                                                                   may_be_alias=False)
+
+    IS_IN_TYPE_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInTypeList',
+                                                                  args=[_type_arg_type(), _type_arg_type()],
+                                                                  is_metafunction_that_may_return_error=False,
+                                                                  may_be_alias=False)
 
 GLOBAL_LITERALS_BY_NAME = {x.cpp_type: x
                            for x in GlobalLiterals.__dict__.values()
@@ -346,23 +346,23 @@ def _always_false_from_type(t: ir0.Expr):
                               member_name='value',
                               member_type=ir0.BoolType())
 
-def _is_in_bool_set(s: ir0.Expr, b: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.IS_IN_BOOL_SET,
-                              args=[s, b],
+def _is_in_bool_set(b: ir0.Expr, s: ir0.Expr):
+    return _metafunction_call(template_expr=GlobalLiterals.IS_IN_BOOL_LIST,
+                              args=[b, s],
                               instantiation_might_trigger_static_asserts=False,
                               member_type=ir0.BoolType(),
                               member_name='value')
 
-def _is_in_int64_set(s: ir0.Expr, n: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.IS_IN_INT64_SET,
-                              args=[s, n],
+def _is_in_int64_set(n: ir0.Expr, s: ir0.Expr):
+    return _metafunction_call(template_expr=GlobalLiterals.IS_IN_INT64_LIST,
+                              args=[n, s],
                               instantiation_might_trigger_static_asserts=False,
                               member_type=ir0.BoolType(),
                               member_name='value')
 
-def _is_in_type_set(s: ir0.Expr, t: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.IS_IN_TYPE_SET,
-                              args=[s, t],
+def _is_in_type_set(t: ir0.Expr, s: ir0.Expr):
+    return _metafunction_call(template_expr=GlobalLiterals.IS_IN_TYPE_LIST,
+                              args=[t, s],
                               instantiation_might_trigger_static_asserts=False,
                               member_type=ir0.BoolType(),
                               member_name='value')
@@ -781,23 +781,23 @@ _define_template_with_single_specialization(name='AddToTypeSet',
                                                                               _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
                                                                               _local_type('T')))
 
-# template <typename S, bool b>
-# struct IsInBoolSet;
+# template <bool b, typename L>
+# struct IsInBoolList;
 #
-# template <bool... bs, bool b>
-# struct IsInBoolSet<BoolList<bs...>, b> {
+# template <bool b, bool... bs>
+# struct IsInBoolList<b, BoolList<bs...>> {
 #   static constexpr bool value = !std::is_same<BoolList<(bs == b)...>,
 #                                               BoolList<(bs && false)...>
 #                                               >::value;
 # };
 
-_define_template_with_single_specialization(name='IsInBoolSet',
-                                            main_definition_args=[_type_arg_decl('S'),
-                                                                  _bool_arg_decl('b')],
-                                            specialization_args=[_variadic_bool_arg_decl('bs'),
-                                                                 _bool_arg_decl('b')],
-                                            patterns=[_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))),
-                                                      _local_bool('b')],
+_define_template_with_single_specialization(name='IsInBoolList',
+                                            main_definition_args=[_bool_arg_decl('b'),
+                                                                  _type_arg_decl('L')],
+                                            specialization_args=[_bool_arg_decl('b'),
+                                                                 _variadic_bool_arg_decl('bs')],
+                                            patterns=[_local_bool('b'),
+                                                      _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs')))],
                                             value_expr=ir0.NotExpr(_is_same(_bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(lhs=_local_variadic_bool('bs'),
                                                                                                                                        rhs=_local_bool('b'),
                                                                                                                                        op='=='))),
@@ -811,8 +811,8 @@ _define_template_with_single_specialization(name='IsInBoolSet',
 # template <bool... bs1, bool... bs2>
 # struct BoolSetEquals<BoolList<bs1...>, BoolList<bs2...>> {
 #   static constexpr bool value =
-#       std::is_same<BoolList<IsInBoolSet<BoolList<bs1...>, bs2>::value...,
-#                             IsInBoolSet<BoolList<bs2...>, bs1>::value...>,
+#       std::is_same<BoolList<IsInBoolList<bs2, BoolList<bs1...>>::value...,
+#                             IsInBoolList<bs1, BoolList<bs2...>>::value...>,
 #                    BoolList<(bs2 || true)...,
 #                             (bs1 || true)...>
 #                    >::value;
@@ -823,10 +823,10 @@ _define_template_with_single_specialization(name='BoolSetEquals',
                                                                  _variadic_bool_arg_decl('bs2')],
                                             patterns=[_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs1'))),
                                                       _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs2')))],
-                                            value_expr=_is_same(lhs=_bool_list_of(ir0.VariadicTypeExpansion(_is_in_bool_set(_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs1'))),
-                                                                                                                            _local_variadic_bool('bs2'))),
-                                                                                  ir0.VariadicTypeExpansion(_is_in_bool_set(_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs2'))),
-                                                                                                                            _local_variadic_bool('bs1')))),
+                                            value_expr=_is_same(lhs=_bool_list_of(ir0.VariadicTypeExpansion(_is_in_bool_set(_local_variadic_bool('bs2'),
+                                                                                                                            _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs1'))))),
+                                                                                  ir0.VariadicTypeExpansion(_is_in_bool_set(_local_variadic_bool('bs1'),
+                                                                                                                            _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs2')))))),
                                                                 rhs=_bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(_local_variadic_bool('bs2'),
                                                                                                                                  ir0.Literal(True),
                                                                                                                                  op='||')),
@@ -834,23 +834,23 @@ _define_template_with_single_specialization(name='BoolSetEquals',
                                                                                                                                  ir0.Literal(True),
                                                                                                                                  op='||')))))
 
-# template <typename S, int64_t n>
-# struct IsInInt64Set;
+# template <int64_t n, typename L>
+# struct IsInInt64List;
 #
-# template <int64_t... ns, int64_t n>
-# struct IsInInt64Set<Int64List<ns...>, n> {
+# template <int64_t n, int64_t... ns>
+# struct IsInInt64List<n, Int64List<ns...>> {
 #   static constexpr bool value = !std::is_same<BoolList<(ns == n)...>,
 #                                               BoolList<(ns != ns)...>
 #                                               >::value;
 # };
 
-_define_template_with_single_specialization(name='IsInInt64Set',
-                                            main_definition_args=[_type_arg_decl('S'),
-                                                                  _int64_arg_decl('n')],
-                                            specialization_args=[_variadic_int64_arg_decl('ns'),
-                                                                 _int64_arg_decl('n')],
-                                            patterns=[_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns'))),
-                                                      _local_int('n')],
+_define_template_with_single_specialization(name='IsInInt64List',
+                                            main_definition_args=[_int64_arg_decl('n'),
+                                                                  _type_arg_decl('L')],
+                                            specialization_args=[_int64_arg_decl('n'),
+                                                                 _variadic_int64_arg_decl('ns')],
+                                            patterns=[_local_int('n'),
+                                                      _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns')))],
                                             value_expr=ir0.NotExpr(_is_same(_bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(lhs=_local_variadic_int('ns'),
                                                                                                                                        rhs=_local_int('n'),
                                                                                                                                        op='=='))),
@@ -864,8 +864,8 @@ _define_template_with_single_specialization(name='IsInInt64Set',
 # template <int64_t... ns1, int64_t... ns2>
 # struct Int64SetEquals<Int64List<ns1...>, Int64List<ns2...>> {
 #   static constexpr bool value =
-#       std::is_same<BoolList<IsInInt64Set<Int64List<ns1...>, ns2>::value...,
-#                             IsInInt64Set<Int64List<ns2...>, ns1>::value...>,
+#       std::is_same<BoolList<IsInInt64List<ns2, Int64List<ns1...>>::value...,
+#                             IsInInt64List<ns1, Int64List<ns2...>>::value...>,
 #                    BoolList<(ns2 == ns2)...,
 #                             (ns1 == ns1)...>
 #                    >::value;
@@ -876,10 +876,10 @@ _define_template_with_single_specialization(name='Int64SetEquals',
                                                                  _variadic_int64_arg_decl('ns2')],
                                             patterns=[_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns1'))),
                                                       _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns2')))],
-                                            value_expr=_is_same(lhs=_bool_list_of(ir0.VariadicTypeExpansion(_is_in_int64_set(_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns1'))),
-                                                                                                                             _local_variadic_int('ns2'))),
-                                                                                  ir0.VariadicTypeExpansion(_is_in_int64_set(_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns2'))),
-                                                                                                                             _local_variadic_int('ns1')))),
+                                            value_expr=_is_same(lhs=_bool_list_of(ir0.VariadicTypeExpansion(_is_in_int64_set(_local_variadic_int('ns2'),
+                                                                                                                             _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns1'))))),
+                                                                                  ir0.VariadicTypeExpansion(_is_in_int64_set(_local_variadic_int('ns1'),
+                                                                                                                             _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns2')))))),
                                                                 rhs=_bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(_local_variadic_int('ns2'),
                                                                                                                                _local_variadic_int('ns2'),
                                                                                                                                op='==')),
@@ -887,22 +887,22 @@ _define_template_with_single_specialization(name='Int64SetEquals',
                                                                                                                                _local_variadic_int('ns1'),
                                                                                                                                op='==')))))
 
-# template <typename S, typename T>
-# struct IsInTypeSet;
+# template <typename T, typename L>
+# struct IsInTypeList;
 #
-# template <typename... Ts, typename T>
-# struct IsInTypeSet<List<Ts...>, T> {
+# template <typename T, typename... Ts>
+# struct IsInTypeList<T, List<Ts...>> {
 #   static constexpr bool value = !std::is_same<BoolList<std::is_same<Ts, T>::value...>,
 #                                               BoolList<AlwaysFalseFromType<Ts>::value...>
 #                                               >::value;
 # };
-_define_template_with_single_specialization(name='IsInTypeSet',
-                                            main_definition_args=[_type_arg_decl('S'),
-                                                                  _type_arg_decl('T')],
-                                            specialization_args=[_variadic_type_arg_decl('Ts'),
-                                                                 _type_arg_decl('T')],
-                                            patterns=[_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
-                                                      _local_type('T')],
+_define_template_with_single_specialization(name='IsInTypeList',
+                                            main_definition_args=[_type_arg_decl('T'),
+                                                                  _type_arg_decl('L')],
+                                            specialization_args=[_type_arg_decl('T'),
+                                                                 _variadic_type_arg_decl('Ts')],
+                                            patterns=[_local_type('T'),
+                                                      _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts')))],
                                             value_expr=ir0.NotExpr(_is_same(_bool_list_of(ir0.VariadicTypeExpansion(_is_same(_local_variadic_type('Ts'),
                                                                                                                              _local_type('T')))),
                                                                             _bool_list_of(ir0.VariadicTypeExpansion(_always_false_from_type(_local_variadic_type('Ts')))))))
@@ -914,8 +914,8 @@ _define_template_with_single_specialization(name='IsInTypeSet',
 # template <typename... Ts, typename... Us>
 # struct TypeSetEquals<List<Ts...>, List<Us...>> {
 #   static constexpr bool value =
-#       std::is_same<BoolList<IsInTypeSet<List<Ts...>, Us>::value...,
-#                             IsInTypeSet<List<Us...>, Ts>::value...>,
+#       std::is_same<BoolList<IsInTypeList<Us, List<Ts...>>::value...,
+#                             IsInTypeList<Ts, List<Us...>>::value...>,
 #                    BoolList<AlwaysTrueFromType<Us>::value...,
 #                             AlwaysTrueFromType<Ts>::value...>
 #                    >::value;
@@ -926,10 +926,10 @@ _define_template_with_single_specialization(name='TypeSetEquals',
                                                                  _variadic_type_arg_decl('Us')],
                                             patterns=[_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
                                                       _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Us')))],
-                                            value_expr=_is_same(lhs=_bool_list_of(ir0.VariadicTypeExpansion(_is_in_type_set(_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
-                                                                                                                            _local_variadic_type('Us'))),
-                                                                                  ir0.VariadicTypeExpansion(_is_in_type_set(_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Us'))),
-                                                                                                                            _local_variadic_type('Ts')))),
+                                            value_expr=_is_same(lhs=_bool_list_of(ir0.VariadicTypeExpansion(_is_in_type_set(_local_variadic_type('Us'),
+                                                                                                                            _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))),
+                                                                                  ir0.VariadicTypeExpansion(_is_in_type_set(_local_variadic_type('Ts'),
+                                                                                                                            _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Us')))))),
                                                                 rhs=_bool_list_of(ir0.VariadicTypeExpansion(_always_true_from_type(_local_variadic_type('Us'))),
                                                                                   ir0.VariadicTypeExpansion(_always_true_from_type(_local_variadic_type('Ts'))))))
 

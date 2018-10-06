@@ -940,6 +940,8 @@ def compare_ast_to_ir3(ast_node: ast.Compare,
         return eq_ast_to_ir3(lhs, rhs, compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(op, ast.NotEq):
         return not_eq_ast_to_ir3(lhs, rhs, compilation_context, in_match_pattern, check_var_reference)
+    elif isinstance(op, ast.In):
+        return in_ast_to_ir3(lhs, rhs, compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(op, ast.Lt):
         return int_comparison_ast_to_ir3(lhs, rhs, '<', compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(op, ast.LtE):
@@ -1735,6 +1737,31 @@ def not_eq_ast_to_ir3(lhs_node: ast.AST,
     if not _is_equality_check_supported_for_type(lhs.expr_type):
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.expr_type))
     return ir3.NotExpr(expr=ir3.EqualityComparison(lhs=lhs, rhs=rhs))
+
+def in_ast_to_ir3(lhs_node: ast.AST,
+                  rhs_node: ast.AST,
+                  compilation_context: CompilationContext,
+                  in_match_pattern: bool,
+                  check_var_reference: Callable[[ast.Name], None]):
+    assert not in_match_pattern
+
+    lhs = expression_ast_to_ir3(lhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    rhs = expression_ast_to_ir3(rhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+
+    if isinstance(rhs.expr_type, ir3.ListType):
+        rhs_elem_type = rhs.expr_type.elem_type
+    elif isinstance(rhs.expr_type, ir3.SetType):
+        rhs_elem_type = rhs.expr_type.elem_type
+    else:
+        raise CompilationError(compilation_context, rhs_node,
+                               'The object on the RHS of "in" must be a list or a set, but found type: ' + str(rhs.expr_type))
+
+    if lhs.expr_type != rhs_elem_type:
+        raise CompilationError(compilation_context, lhs_node, 'Type mismatch in in: %s vs %s' % (
+            str(lhs.expr_type), str(rhs.expr_type)))
+    if not _is_equality_check_supported_for_type(lhs.expr_type):
+        raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison (for the "in" operator): ' + str(lhs.expr_type))
+    return ir3.InExpr(lhs=lhs, rhs=rhs)
 
 def _construct_note_diagnostic_for_function_signature(function_lookup_result: SymbolLookupResult):
     if isinstance(function_lookup_result.ast_node, ast.ClassDef):

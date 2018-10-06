@@ -689,5 +689,51 @@ def test_list_unpacking_as_list_wrong_number_of_elements_error():
         return b
     assert g(True) == 20
 
+@assert_compilation_succeeds()
+def test_bool_list_in_empty():
+    from tmppy import empty_list
+    assert not (False in empty_list(bool))
+
+@assert_compilation_succeeds()
+def test_int_list_in_empty():
+    from tmppy import empty_list
+    assert not (1 in empty_list(int))
+
+@assert_compilation_succeeds()
+def test_type_list_in_empty():
+    from tmppy import Type, empty_list
+    assert not (Type('int') in empty_list(Type))
+
+@assert_compilation_succeeds()
+def test_bool_list_in_not_present():
+    assert not (False in [True])
+
+@assert_compilation_succeeds()
+def test_int_list_in_not_present():
+    assert not (1 in [2])
+
+@assert_compilation_succeeds()
+def test_type_list_in_not_present():
+    from tmppy import Type
+    assert not (Type('int') in [Type('float')])
+
+@assert_compilation_succeeds()
+def test_bool_list_in_present():
+    assert False in [False]
+
+@assert_compilation_succeeds()
+def test_int_list_in_present():
+    assert 5 in [5]
+
+@assert_compilation_succeeds()
+def test_type_list_in_present():
+    from tmppy import Type
+    assert Type('int') in [Type('int')]
+
+@assert_conversion_fails
+def test_list_in_type_mismatch():
+    def f(b: bool):
+        return 1 in [True]  # error: Type mismatch in in: int vs List\[bool\]
+
 if __name__== '__main__':
     main(__file__)

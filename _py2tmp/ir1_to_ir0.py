@@ -168,6 +168,8 @@ def expr_to_ir0(expr: ir1.Expr, writer: Writer) -> Tuple[Optional[ir0.Expr], Opt
         return function_call_to_ir0(expr, writer)
     elif isinstance(expr, ir1.EqualityComparison):
         return equality_comparison_to_ir0(expr, writer)
+    elif isinstance(expr, ir1.IsInListExpr):
+        return is_in_list_expr_to_ir0(expr, writer)
     elif isinstance(expr, ir1.AttributeAccessExpr):
         return attribute_access_expr_to_ir0(expr)
     elif isinstance(expr, ir1.NotExpr):
@@ -552,6 +554,19 @@ def equality_comparison_to_ir0(comparison_expr: ir1.EqualityComparison, writer: 
         comparison_expr = ir0.ComparisonExpr(lhs=lhs, rhs=rhs, op='==')
         comparison_error_expr = None
     return comparison_expr, comparison_error_expr
+
+def is_in_list_expr_to_ir0(expr: ir1.IsInListExpr, writer: Writer):
+    lhs = var_reference_to_ir0(expr.lhs)
+    rhs = var_reference_to_ir0(expr.rhs)
+    template_expr = {
+        ir0.ExprKind.BOOL: ir0_builtins.GlobalLiterals.IS_IN_BOOL_LIST,
+        ir0.ExprKind.INT64: ir0_builtins.GlobalLiterals.IS_IN_INT64_LIST,
+        ir0.ExprKind.TYPE: ir0_builtins.GlobalLiterals.IS_IN_TYPE_LIST,
+    }[lhs.expr_type.kind]
+    return _create_metafunction_call(template_expr=template_expr,
+                                     args=[lhs, rhs],
+                                     member_type=ir0.BoolType(),
+                                     writer=writer)
 
 def attribute_access_expr_to_ir0(attribute_access_expr: ir1.AttributeAccessExpr):
     class_expr = var_reference_to_ir0(attribute_access_expr.var)

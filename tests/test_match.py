@@ -711,6 +711,16 @@ def test_match_expr_containing_inequality_comparison():
             3 != 3:  # error: Comparisons are not allowed in match patterns
                 x,
         })
+
+@assert_conversion_fails
+def test_match_expr_containing_in_error():
+    from tmppy import Type, match
+    def f(x: Type):
+        return match(x)(lambda: {
+            1 in [1]:  # error: Comparisons are not allowed in match patterns
+                x,
+        })
+
 @assert_conversion_fails
 def test_match_expr_containing_function_call():
     from tmppy import Type, match

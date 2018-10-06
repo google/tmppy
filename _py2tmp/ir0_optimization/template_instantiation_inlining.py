@@ -274,7 +274,8 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
         except VariadicVarReplacementNotPossibleException as e:
             [message] = e.args
             # We thought we could perform the inlining but we actually can't.
-            print('VariadicVarReplacementNotPossibleException raised for template %s (reason: %s), we can\'t inline that.' % (template_instantiation.template_expr.cpp_type, message))
+            if ConfigurationKnobs.verbose:
+                print('VariadicVarReplacementNotPossibleException raised for template %s (reason: %s), we can\'t inline that.' % (template_instantiation.template_expr.cpp_type, message))
             return class_member_access
 
         result_expr = _ensure_remains_variadic_if_it_was(original_expr=class_member_access,

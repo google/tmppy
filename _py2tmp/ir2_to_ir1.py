@@ -103,6 +103,8 @@ def expr_to_ir1(expr: Union[ir2.Expr, ir2.PatternExpr]) -> ir1.Expr:
         return function_call_to_ir1(expr)
     elif isinstance(expr, ir2.EqualityComparison):
         return equality_comparison_to_ir1(expr)
+    elif isinstance(expr, ir2.IsInListExpr):
+        return is_in_list_expr_to_ir1(expr)
     elif isinstance(expr, ir2.AttributeAccessExpr):
         return attribute_access_expr_to_ir1(expr)
     elif isinstance(expr, ir2.NotExpr):
@@ -254,6 +256,10 @@ def function_call_to_ir1(call_expr: ir2.FunctionCall):
 def equality_comparison_to_ir1(comparison_expr: ir2.EqualityComparison):
     return ir1.EqualityComparison(lhs=var_reference_to_ir1(comparison_expr.lhs),
                                   rhs=var_reference_to_ir1(comparison_expr.rhs))
+
+def is_in_list_expr_to_ir1(expr: ir2.IsInListExpr):
+    return ir1.IsInListExpr(lhs=var_reference_to_ir1(expr.lhs),
+                            rhs=var_reference_to_ir1(expr.rhs))
 
 def attribute_access_expr_to_ir1(attribute_access_expr: ir2.AttributeAccessExpr):
     return ir1.AttributeAccessExpr(var=var_reference_to_ir1(attribute_access_expr.var),

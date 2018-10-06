@@ -157,7 +157,7 @@ class CommandFailedException(Exception):
 
 def run_command(executable, args=[]):
     command = [executable] + args
-    print('Executing command:', pretty_print_command(command))
+    # print('Executing command:', pretty_print_command(command))
     try:
         p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         (stdout, stderr) = p.communicate()
@@ -165,13 +165,13 @@ def run_command(executable, args=[]):
         raise Exception("While executing: %s" % command)
     if p.returncode != 0:
         raise CommandFailedException(command, stdout, stderr, p.returncode)
-    print('Execution successful.')
-    print('stdout:')
-    print(stdout)
-    print('')
-    print('stderr:')
-    print(stderr)
-    print('')
+    # print('Execution successful.')
+    # print('stdout:')
+    # print(stdout)
+    # print('')
+    # print('stderr:')
+    # print(stderr)
+    # print('')
     return (stdout, stderr)
 
 def run_compiled_executable(executable):

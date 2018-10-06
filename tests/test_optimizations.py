@@ -595,5 +595,269 @@ def test_optimization_multiple_list_comprehensions():
     assert f([Type('int'), Type('float')]) == [Type.const(Type.pointer(Type('int'))),
                                                Type.const(Type.pointer(Type('float')))]
 
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename AllFalseListIfNotPresent, typename AllFalseList, typename S,
+          bool b>
+struct AddToBoolSetHelper {
+  using type = S;
+};
+template <typename AllFalseList, bool... bs, bool b>
+struct AddToBoolSetHelper<AllFalseList, AllFalseList, BoolList<(bs)...>, b> {
+  using type = BoolList<(bs)..., b>;
+};
+template <typename TmppyInternal_19> struct CheckIfError { using type = void; };
+template <bool TmppyInternal_5, bool TmppyInternal_6> struct set_of {
+  using type = typename AddToBoolSetHelper<
+      BoolList<(TmppyInternal_5) == (TmppyInternal_6)>, BoolList<false>,
+      BoolList<TmppyInternal_5>, TmppyInternal_6>::type;
+  using error = void;
+};
+''')
+def test_optimization_set_with_two_bools():
+    def set_of(x: bool, y: bool):
+        return {x, y}
+    assert set_of(True, False) == {True, False}
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename AllFalseListIfNotPresent, typename AllFalseList, typename S,
+          int64_t n>
+struct AddToInt64SetHelper {
+  using type = S;
+};
+template <typename AllFalseList, int64_t... ns, int64_t n>
+struct AddToInt64SetHelper<AllFalseList, AllFalseList, Int64List<(ns)...>, n> {
+  using type = Int64List<(ns)..., n>;
+};
+template <typename TmppyInternal_19> struct CheckIfError { using type = void; };
+template <int64_t TmppyInternal_5, int64_t TmppyInternal_6> struct set_of {
+  using type = typename AddToInt64SetHelper<
+      BoolList<(TmppyInternal_5) == (TmppyInternal_6)>, BoolList<false>,
+      Int64List<TmppyInternal_5>, TmppyInternal_6>::type;
+  using error = void;
+};
+''')
+def test_optimization_set_with_two_ints():
+    def set_of(x: int, y: int):
+        return {x, y}
+    assert set_of(3, 4) == {3, 4}
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename AllFalseListIfNotPresent, typename AllFalseList, typename S,
+          typename T>
+struct AddToTypeSetHelper {
+  using type = S;
+};
+template <typename AllFalseList, typename... Ts, typename T>
+struct AddToTypeSetHelper<AllFalseList, AllFalseList, List<Ts...>, T> {
+  using type = List<Ts..., T>;
+};
+template <typename TmppyInternal_19> struct CheckIfError { using type = void; };
+template <typename TmppyInternal_5, typename TmppyInternal_6> struct set_of {
+  using type = typename AddToTypeSetHelper<
+      BoolList<std::is_same<TmppyInternal_5, TmppyInternal_6>::value>,
+      BoolList<false>, List<TmppyInternal_5>, TmppyInternal_6>::type;
+  using error = void;
+};
+''')
+def test_optimization_set_with_two_types():
+    from tmppy import Type
+    def set_of(x: Type, y: Type):
+        return {x, y}
+    assert set_of(Type('int'), Type('float')) == {Type('int'), Type('float')}
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_15> struct CheckIfError { using type = void; };
+template <bool TmppyInternal_5, typename TmppyInternal_6>
+struct TmppyInternal_19;
+// Split that generates value of:
+template <bool TmppyInternal_5, bool... TmppyInternal_16>
+struct TmppyInternal_19<TmppyInternal_5, BoolList<(TmppyInternal_16)...>> {
+  static constexpr bool value =
+      !(std::is_same<BoolList<((TmppyInternal_16) == (TmppyInternal_5))...>,
+                     BoolList<((TmppyInternal_16) && (false))...>>::value);
+};
+template <bool TmppyInternal_5, typename TmppyInternal_6> struct is_in_set {
+  using error = void;
+  static constexpr bool value =
+      TmppyInternal_19<TmppyInternal_5, TmppyInternal_6>::value;
+};
+''')
+def test_optimization_is_in_bool_set():
+    from typing import Set
+    def is_in_set(x: bool, y: Set[bool]):
+        return x in y
+    assert is_in_set(True, {False}) == False
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_15> struct CheckIfError { using type = void; };
+template <int64_t TmppyInternal_5, typename TmppyInternal_6>
+struct TmppyInternal_19;
+// Split that generates value of:
+template <int64_t TmppyInternal_5, int64_t... TmppyInternal_16>
+struct TmppyInternal_19<TmppyInternal_5, Int64List<(TmppyInternal_16)...>> {
+  static constexpr bool value =
+      !(std::is_same<
+          BoolList<((TmppyInternal_16) == (TmppyInternal_5))...>,
+          BoolList<((TmppyInternal_16) != (TmppyInternal_16))...>>::value);
+};
+template <int64_t TmppyInternal_5, typename TmppyInternal_6> struct is_in_set {
+  using error = void;
+  static constexpr bool value =
+      TmppyInternal_19<TmppyInternal_5, TmppyInternal_6>::value;
+};
+''')
+def test_optimization_is_in_int_set():
+    from typing import Set
+    def is_in_set(x: int, y: Set[int]):
+        return x in y
+    assert is_in_set(3, {5}) == False
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename TmppyInternal_15> struct CheckIfError { using type = void; };
+template <typename TmppyInternal_5, typename TmppyInternal_6>
+struct TmppyInternal_19;
+// Split that generates value of:
+template <typename TmppyInternal_5, typename... TmppyInternal_16>
+struct TmppyInternal_19<TmppyInternal_5, List<TmppyInternal_16...>> {
+  static constexpr bool value =
+      !(std::is_same<
+          BoolList<(std::is_same<TmppyInternal_16, TmppyInternal_5>::value)...>,
+          BoolList<(Select1stBoolType<false, TmppyInternal_16>::value)...>>::
+            value);
+};
+template <typename TmppyInternal_5, typename TmppyInternal_6> struct is_in_set {
+  using error = void;
+  static constexpr bool value =
+      TmppyInternal_19<TmppyInternal_5, TmppyInternal_6>::value;
+};
+''')
+def test_optimization_is_in_type_set():
+    from tmppy import Type
+    from typing import Set
+    def is_in_set(x: Type, y: Set[Type]):
+        return x in y
+    assert is_in_set(Type('int'), {Type('float')}) == False
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <bool b, typename L> struct IsInBoolList;
+template <bool b, bool... bs> struct IsInBoolList<b, BoolList<(bs)...>> {
+  static constexpr bool value =
+      !(std::is_same<BoolList<((bs) == (b))...>,
+                     BoolList<((bs) && (false))...>>::value);
+};
+template <typename TmppyInternal_17> struct CheckIfError { using type = void; };
+template <typename TmppyInternal_5, typename TmppyInternal_6>
+struct TmppyInternal_22;
+// Split that generates value of:
+template <bool... TmppyInternal_18, bool... TmppyInternal_19>
+struct TmppyInternal_22<BoolList<(TmppyInternal_18)...>,
+                        BoolList<(TmppyInternal_19)...>> {
+  static constexpr bool value = std::is_same<
+      BoolList<(IsInBoolList<TmppyInternal_19,
+                             BoolList<(TmppyInternal_18)...>>::value)...,
+               (IsInBoolList<TmppyInternal_18,
+                             BoolList<(TmppyInternal_19)...>>::value)...>,
+      BoolList<((TmppyInternal_19) || (true))...,
+               ((TmppyInternal_18) || (true))...>>::value;
+};
+template <typename TmppyInternal_5, typename TmppyInternal_6> struct eq {
+  using error = void;
+  static constexpr bool value =
+      TmppyInternal_22<TmppyInternal_5, TmppyInternal_6>::value;
+};
+''')
+def test_optimization_bool_set_equals():
+    from typing import Set
+    def eq(x: Set[bool], y: Set[bool]):
+        return x == y
+    assert eq({True}, {False}) == False
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <int64_t n, typename L> struct IsInInt64List;
+template <int64_t n, int64_t... ns>
+struct IsInInt64List<n, Int64List<(ns)...>> {
+  static constexpr bool value =
+      !(std::is_same<BoolList<((ns) == (n))...>,
+                     BoolList<((ns) != (ns))...>>::value);
+};
+template <typename TmppyInternal_17> struct CheckIfError { using type = void; };
+template <typename TmppyInternal_5, typename TmppyInternal_6>
+struct TmppyInternal_22;
+// Split that generates value of:
+template <int64_t... TmppyInternal_18, int64_t... TmppyInternal_19>
+struct TmppyInternal_22<Int64List<(TmppyInternal_18)...>,
+                        Int64List<(TmppyInternal_19)...>> {
+  static constexpr bool value = std::is_same<
+      BoolList<(IsInInt64List<TmppyInternal_19,
+                              Int64List<(TmppyInternal_18)...>>::value)...,
+               (IsInInt64List<TmppyInternal_18,
+                              Int64List<(TmppyInternal_19)...>>::value)...>,
+      BoolList<((TmppyInternal_19) == (TmppyInternal_19))...,
+               ((TmppyInternal_18) == (TmppyInternal_18))...>>::value;
+};
+template <typename TmppyInternal_5, typename TmppyInternal_6> struct eq {
+  using error = void;
+  static constexpr bool value =
+      TmppyInternal_22<TmppyInternal_5, TmppyInternal_6>::value;
+};
+''')
+def test_optimization_int_set_equals():
+    from typing import Set
+    def eq(x: Set[int], y: Set[int]):
+        return x == y
+    assert eq({3}, {5}) == False
+
+@assert_code_optimizes_to(r'''
+#include <tmppy/tmppy.h>
+#include <type_traits>
+template <typename T, typename L> struct IsInTypeList;
+template <typename T, typename... Ts> struct IsInTypeList<T, List<Ts...>> {
+  static constexpr bool value = !(
+      std::is_same<BoolList<(std::is_same<Ts, T>::value)...>,
+                   BoolList<(Select1stBoolType<false, Ts>::value)...>>::value);
+};
+template <typename TmppyInternal_17> struct CheckIfError { using type = void; };
+template <typename TmppyInternal_5, typename TmppyInternal_6>
+struct TmppyInternal_22;
+// Split that generates value of:
+template <typename... TmppyInternal_18, typename... TmppyInternal_19>
+struct TmppyInternal_22<List<TmppyInternal_18...>, List<TmppyInternal_19...>> {
+  static constexpr bool value = std::is_same<
+      BoolList<
+          (IsInTypeList<TmppyInternal_19, List<TmppyInternal_18...>>::value)...,
+          (IsInTypeList<TmppyInternal_18,
+                        List<TmppyInternal_19...>>::value)...>,
+      BoolList<(Select1stBoolType<true, TmppyInternal_19>::value)...,
+               (Select1stBoolType<true, TmppyInternal_18>::value)...>>::value;
+};
+template <typename TmppyInternal_5, typename TmppyInternal_6> struct eq {
+  using error = void;
+  static constexpr bool value =
+      TmppyInternal_22<TmppyInternal_5, TmppyInternal_6>::value;
+};
+''')
+def test_optimization_type_set_equals():
+    from tmppy import Type
+    from typing import Set
+    def eq(x: Set[Type], y: Set[Type]):
+        return x == y
+    assert eq({Type('int')}, {Type('float')}) == False
+
 if __name__== '__main__':
     main(__file__)

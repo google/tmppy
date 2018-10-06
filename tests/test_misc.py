@@ -44,5 +44,10 @@ def test_add_pointer_multiple_example():
     assert add_pointer_multiple(Type('int'), 2) == Type.pointer(Type.pointer(Type('int')))
     assert add_pointer_multiple(Type.pointer(Type('int')), 2) == Type.pointer(Type.pointer(Type.pointer(Type('int'))))
 
+@assert_conversion_fails
+def test_in_expr_not_list_nor_set():
+    def f(b: bool):
+        return 1 in 2  # error: The object on the RHS of "in" must be a list or a set, but found type: int
+
 if __name__== '__main__':
     main(__file__)
