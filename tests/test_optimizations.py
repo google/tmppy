@@ -529,8 +529,7 @@ template <bool TmppyInternal_5, bool TmppyInternal_6> struct set_of {
   using error = void;
   using type = typename TmppyInternalBuiltin_247<
       BoolList<TmppyInternal_5>, TmppyInternal_6,
-      !(std::is_same<BoolList<(TmppyInternal_6) == (TmppyInternal_5)>,
-                     BoolList<false>>::value)>::type;
+      (TmppyInternal_6) == (TmppyInternal_5)>::type;
 };
 ''')
 def test_optimization_set_with_two_bools():
@@ -544,8 +543,7 @@ template <int64_t TmppyInternal_5, int64_t TmppyInternal_6> struct set_of {
   using error = void;
   using type = typename TmppyInternalBuiltin_251<
       Int64List<TmppyInternal_5>, TmppyInternal_6,
-      !(std::is_same<BoolList<(TmppyInternal_6) == (TmppyInternal_5)>,
-                     BoolList<false>>::value)>::type;
+      (TmppyInternal_6) == (TmppyInternal_5)>::type;
 };
 ''')
 def test_optimization_set_with_two_ints():
@@ -559,9 +557,7 @@ template <typename TmppyInternal_5, typename TmppyInternal_6> struct set_of {
   using error = void;
   using type = typename TmppyInternalBuiltin_255<
       List<TmppyInternal_5>, TmppyInternal_6,
-      !(std::is_same<
-          BoolList<std::is_same<TmppyInternal_6, TmppyInternal_5>::value>,
-          BoolList<false>>::value)>::type;
+      std::is_same<TmppyInternal_6, TmppyInternal_5>::value>::type;
 };
 ''')
 def test_optimization_set_with_two_types():

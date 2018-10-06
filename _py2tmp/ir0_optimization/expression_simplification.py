@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from typing import List, Union
-from _py2tmp import ir0, transform_ir0, ir0_builtin_literals
+from _py2tmp import ir0, transform_ir0, ir0_builtin_literals, ir0_to_cpp
 from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import expr_can_trigger_static_asserts
 
 class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
@@ -223,6 +223,17 @@ class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
                     '!=': ir0.Literal(False),
                 }[op]
 
+        if op in ('==', '!=') and isinstance(rhs, ir0.Literal) and rhs.expr_type == ir0.BoolType():
+            rhs, lhs = lhs, rhs
+
+        if op in ('==', '!=') and isinstance(lhs, ir0.Literal) and lhs.expr_type == ir0.BoolType():
+            return {
+                ('==', True): lambda: rhs,
+                ('==', False): lambda: self.transform_expr(ir0.NotExpr(rhs), writer),
+                ('!=', True): lambda: self.transform_expr(ir0.NotExpr(rhs), writer),
+                ('!=', False): lambda: rhs,
+            }[(op, lhs.value)]()
+
         return ir0.ComparisonExpr(lhs, rhs, op)
 
     def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
@@ -234,11 +245,11 @@ class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
         writer.write(ir0.StaticAssert(expr=expr,
                                       message=static_assert.message))
 
-    def _is_syntactically_equal(self, lhs, rhs):
+    def _is_syntactically_equal(self, lhs: ir0.Expr, rhs: ir0.Expr):
         if not lhs.is_same_expr_excluding_subexpressions(rhs):
             return False
-        lhs_exprs = lhs.get_direct_subelements()
-        rhs_exprs = rhs.get_direct_subelements()
+        lhs_exprs = list(lhs.get_direct_subexpressions())
+        rhs_exprs = list(rhs.get_direct_subexpressions())
         if len(lhs_exprs) != len(rhs_exprs):
             return False
         return all(self._is_syntactically_equal(lhs_expr, rhs_expr)
@@ -254,16 +265,23 @@ class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
         if (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
             and isinstance(class_member_access.expr.template_expr, ir0.AtomicTypeLiteral)):
+
             if class_member_access.expr.template_expr.cpp_type == 'GetFirstError':
                 args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
                 return self.transform_get_first_error(args)
+            if class_member_access.expr.template_expr.cpp_type == 'std::is_same':
+                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
+                return self.transform_is_same(args, writer)
 
         return super().transform_class_member_access(class_member_access, writer)
 
     def _can_remove_subexpression(self, expr: ir0.Expr):
         # If we're in a variadic type expr, we can't remove variadic sub-exprs (not in general at least).
         # E.g. BoolList<(F<Ts>::value || true)...> can't be optimized to BoolList<true>
-        return not self.in_variadic_type_expansion or not transform_ir0.is_expr_variadic(expr)
+        if self.in_variadic_type_expansion and transform_ir0.is_expr_variadic(expr):
+            return False
+
+        return True
 
     def transform_get_first_error(self, args: List[ir0.Expr]):
         new_args = []
@@ -287,6 +305,55 @@ class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
                                                                                instantiation_might_trigger_static_asserts=False),
                                      member_type=ir0.TypeType(),
                                      member_name='type')
+
+    def transform_is_same(self, args: List[ir0.Expr], writer: transform_ir0.Writer):
+        assert len(args) == 2
+        lhs, rhs = args
+        list_template_names = {'List', 'BoolList', 'Int64List'}
+        if (isinstance(lhs, ir0.TemplateInstantiation) and isinstance(lhs.template_expr, ir0.AtomicTypeLiteral) and lhs.template_expr.cpp_type in list_template_names
+                and isinstance(rhs, ir0.TemplateInstantiation) and isinstance(rhs.template_expr, ir0.AtomicTypeLiteral) and rhs.template_expr.cpp_type in list_template_names
+                and lhs.template_expr.cpp_type == rhs.template_expr.cpp_type
+                and not any(isinstance(arg, ir0.VariadicTypeExpansion) for arg in lhs.args)
+                and not any(isinstance(arg, ir0.VariadicTypeExpansion) for arg in rhs.args)
+                and len(lhs.args) == len(rhs.args)
+                and lhs.args):
+
+            # std::is_same<List<X1, X2, X3>, List<Y1, Y2, Y3>>::value
+            # -> std::is_same<X1, Y1>::value && std::is_same<X2, Y2>::value && std::is_same<X3, Y3>::value
+            if lhs.template_expr.cpp_type == 'List':
+                result = None
+                for lhs_arg, rhs_arg in zip(lhs.args, rhs.args):
+                    if result:
+                        result = ir0.BoolBinaryOpExpr(lhs=result,
+                                                      rhs=self._create_is_same_expr(lhs_arg, rhs_arg),
+                                                      op='&&')
+                    else:
+                        result = self._create_is_same_expr(lhs_arg, rhs_arg)
+                return self.transform_expr(result, writer)
+
+            # std::is_same<IntList<n1, n2, n3>, IntList<m1, m2, m3>>::value
+            # -> (n1 == m1) && (n2 == m2) && (n3 == m3)
+            # (and same for BoolList)
+            result = None
+            for lhs_arg, rhs_arg in zip(lhs.args, rhs.args):
+                if result:
+                    result = ir0.BoolBinaryOpExpr(lhs=result,
+                                                  rhs=ir0.ComparisonExpr(lhs_arg, rhs_arg, op='=='),
+                                                  op='&&')
+                else:
+                    result = ir0.ComparisonExpr(lhs_arg, rhs_arg, op='==')
+            return self.transform_expr(result, writer)
+
+        return self._create_is_same_expr(lhs, rhs)
+
+    def _create_is_same_expr(self, lhs, rhs):
+        return ir0.ClassMemberAccess(
+            class_type_expr=ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.STD_IS_SAME,
+                                                      args=[lhs, rhs],
+                                                      instantiation_might_trigger_static_asserts=False),
+            member_type=ir0.BoolType(),
+            member_name='value')
+
 
 def perform_expression_simplification(template_defn: ir0.TemplateDefn):
     writer = transform_ir0.ToplevelWriter(iter([]), allow_toplevel_elems=False)
