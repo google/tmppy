@@ -217,6 +217,20 @@ class GlobalLiterals:
                                                                   is_metafunction_that_may_return_error=False,
                                                                   may_be_alias=False)
 
+def select1st_literal(lhs_type: ir0.ExprType, rhs_type: ir0.ExprType):
+    kind_to_string = {
+        ir0.ExprKind.BOOL: 'Bool',
+        ir0.ExprKind.INT64: 'Int64',
+        ir0.ExprKind.TYPE: 'Type',
+    }
+    return ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Select1st%s%s' % (kind_to_string[lhs_type.kind],
+                                                                                   kind_to_string[rhs_type.kind]),
+                                                       args=[ir0.TemplateArgType(expr_type=lhs_type, is_variadic=False),
+                                                             ir0.TemplateArgType(expr_type=rhs_type, is_variadic=False)],
+                                                       is_metafunction_that_may_return_error=False,
+                                                       may_be_alias=False)
+
+
 GLOBAL_LITERALS_BY_NAME = {x.cpp_type: x
                            for x in GlobalLiterals.__dict__.values()
                            if isinstance(x, ir0.AtomicTypeLiteral)}

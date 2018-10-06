@@ -573,11 +573,10 @@ struct TmppyInternal_21;
 // Split that generates value of: is_in_set
 template <bool TmppyInternal_5, bool... TmppyInternal_16>
 struct TmppyInternal_21<TmppyInternal_5, BoolList<(TmppyInternal_16)...>> {
-  static constexpr bool value = !(
-      std::is_same<BoolList<((TmppyInternal_5) == (TmppyInternal_16))...>,
-                   BoolList<(Select1stBoolBool<false, (TmppyInternal_5) ==
-                                                          (TmppyInternal_16)>::
-                                 value)...>>::value);
+  static constexpr bool value =
+      !(std::is_same<BoolList<((TmppyInternal_5) == (TmppyInternal_16))...>,
+                     BoolList<(Select1stBoolBool<
+                               false, TmppyInternal_16>::value)...>>::value);
 };
 template <bool TmppyInternal_5, typename TmppyInternal_6> struct is_in_set {
   using error = void;
@@ -598,11 +597,10 @@ struct TmppyInternal_21;
 // Split that generates value of: is_in_set
 template <int64_t TmppyInternal_5, int64_t... TmppyInternal_16>
 struct TmppyInternal_21<TmppyInternal_5, Int64List<(TmppyInternal_16)...>> {
-  static constexpr bool value = !(
-      std::is_same<BoolList<((TmppyInternal_5) == (TmppyInternal_16))...>,
-                   BoolList<(Select1stBoolBool<false, (TmppyInternal_5) ==
-                                                          (TmppyInternal_16)>::
-                                 value)...>>::value);
+  static constexpr bool value =
+      !(std::is_same<BoolList<((TmppyInternal_5) == (TmppyInternal_16))...>,
+                     BoolList<(Select1stBoolInt64<
+                               false, TmppyInternal_16>::value)...>>::value);
 };
 template <int64_t TmppyInternal_5, typename TmppyInternal_6> struct is_in_set {
   using error = void;
@@ -626,9 +624,8 @@ struct TmppyInternal_21<TmppyInternal_5, List<TmppyInternal_16...>> {
   static constexpr bool value =
       !(std::is_same<
           BoolList<(std::is_same<TmppyInternal_5, TmppyInternal_16>::value)...>,
-          BoolList<(Select1stBoolBool<
-                    false, std::is_same<TmppyInternal_5, TmppyInternal_16>::
-                               value>::value)...>>::value);
+          BoolList<(Select1stBoolType<false, TmppyInternal_16>::value)...>>::
+            value);
 };
 template <typename TmppyInternal_5, typename TmppyInternal_6> struct is_in_set {
   using error = void;
@@ -656,10 +653,8 @@ struct TmppyInternal_24<BoolList<(TmppyInternal_18)...>,
       std::is_same<
           BoolList<(TmppyInternalBuiltin_259<BoolList<(TmppyInternal_19)...>,
                                              TmppyInternal_18>::value)...>,
-          BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_259<
-                                                BoolList<(TmppyInternal_19)...>,
-                                                TmppyInternal_18>::value>::
-                        value)...>>::value>::value;
+          BoolList<(Select1stBoolBool<true, TmppyInternal_18>::value)...>>::
+          value>::value;
 };
 template <typename TmppyInternal_5, typename TmppyInternal_6> struct eq {
   using error = void;
@@ -686,11 +681,8 @@ struct TmppyInternal_24<Int64List<(TmppyInternal_18)...>,
       std::is_same<
           BoolList<(TmppyInternalBuiltin_285<Int64List<(TmppyInternal_19)...>,
                                              TmppyInternal_18>::value)...>,
-          BoolList<(Select1stBoolBool<
-                    true, TmppyInternalBuiltin_285<
-                              Int64List<(TmppyInternal_19)...>,
-                              TmppyInternal_18>::value>::value)...>>::value>::
-      value;
+          BoolList<(Select1stBoolInt64<true, TmppyInternal_18>::value)...>>::
+          value>::value;
 };
 template <typename TmppyInternal_5, typename TmppyInternal_6> struct eq {
   using error = void;
@@ -716,10 +708,8 @@ struct TmppyInternal_24<List<TmppyInternal_18...>, List<TmppyInternal_19...>> {
       std::is_same<
           BoolList<(TmppyInternalBuiltin_311<List<TmppyInternal_19...>,
                                              TmppyInternal_18>::value)...>,
-          BoolList<(Select1stBoolBool<
-                    true, TmppyInternalBuiltin_311<List<TmppyInternal_19...>,
-                                                   TmppyInternal_18>::value>::
-                        value)...>>::value>::value;
+          BoolList<(Select1stBoolType<true, TmppyInternal_18>::value)...>>::
+          value>::value;
 };
 template <typename TmppyInternal_5, typename TmppyInternal_6> struct eq {
   using error = void;

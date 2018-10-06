@@ -14,6 +14,7 @@
 
 from typing import List, Union
 from _py2tmp import ir0, transform_ir0, ir0_builtin_literals, ir0_to_cpp
+from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
 from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import expr_can_trigger_static_asserts
 
 class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
@@ -272,6 +273,9 @@ class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
             if class_member_access.expr.template_expr.cpp_type == 'std::is_same':
                 args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
                 return self.transform_is_same(args, writer)
+            if class_member_access.expr.template_expr.cpp_type.startswith('Select1st'):
+                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
+                return self.transform_select1st(args, writer)
 
         return super().transform_class_member_access(class_member_access, writer)
 
@@ -353,6 +357,34 @@ class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
                                                       instantiation_might_trigger_static_asserts=False),
             member_type=ir0.BoolType(),
             member_name='value')
+
+    def transform_select1st(self, args: List[ir0.Expr], writer: transform_ir0.Writer):
+        lhs, rhs = args
+
+        best_var = None
+        # First preference to non-expanded variadic vars, to keep the Select1st* expression variadic if it is now.
+        for var_name in compute_non_expanded_variadic_vars(rhs):
+            [best_var] = (var
+                          for var in rhs.get_free_vars()
+                          if var.cpp_type == var_name)
+            break
+
+        # If there are none, then any non-variadic var is also ok.
+        if not best_var:
+            for var in rhs.get_free_vars():
+                if not var.is_variadic and isinstance(var.expr_type, (ir0.BoolType, ir0.Int64Type, ir0.TypeType)):
+                    best_var = var
+                    break
+
+        if best_var:
+            rhs = best_var
+
+        select1st_literal = ir0_builtin_literals.select1st_literal(lhs.expr_type, rhs.expr_type)
+        return ir0.ClassMemberAccess(class_type_expr=ir0.TemplateInstantiation(template_expr=select1st_literal,
+                                                                               args=[lhs, rhs],
+                                                                               instantiation_might_trigger_static_asserts=False),
+                                     member_type=lhs.expr_type,
+                                     member_name='value')
 
 
 def perform_expression_simplification(template_defn: ir0.TemplateDefn):

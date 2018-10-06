@@ -13,7 +13,7 @@
 # limitations under the License.
 from functools import lru_cache
 from typing import Dict, Iterator, Set, List, Union
-from _py2tmp import ir0, transform_ir0, ir0_builtins, ir0_to_cpp
+from _py2tmp import ir0, transform_ir0, ir0_builtins, ir0_to_cpp, ir0_builtin_literals
 from _py2tmp.ir0_optimization import unify_ir0
 from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
 from _py2tmp.ir0_optimization.configuration_knobs import ConfigurationKnobs
@@ -313,16 +313,7 @@ def _ensure_remains_variadic_if_it_was(original_expr: ir0.Expr, transformed_expr
 
     variadic_var = next(iter(non_expanded_vars_in_original.values()))
 
-    kind_to_string = {
-        ir0.ExprKind.BOOL: 'Bool',
-        ir0.ExprKind.INT64: 'Int64',
-        ir0.ExprKind.TYPE: 'Type',
-    }
-    select1st_literal = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Select1st%s%s' % (kind_to_string[transformed_expr.expr_type.kind], kind_to_string[variadic_var.expr_type.kind]),
-                                                                    args=[ir0.TemplateArgType(expr_type=transformed_expr.expr_type, is_variadic=False),
-                                                                          ir0.TemplateArgType(expr_type=variadic_var.expr_type, is_variadic=False)],
-                                                                    is_metafunction_that_may_return_error=False,
-                                                                    may_be_alias=False)
+    select1st_literal = ir0_builtin_literals.select1st_literal(transformed_expr.expr_type, variadic_var.expr_type)
     return ir0.ClassMemberAccess(class_type_expr=ir0.TemplateInstantiation(template_expr=select1st_literal,
                                                                            args=[transformed_expr, variadic_var],
                                                                            instantiation_might_trigger_static_asserts=False),
