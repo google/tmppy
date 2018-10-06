@@ -194,15 +194,20 @@ class TemplateDefn(TemplateBodyElementOrExprOrTemplateDefn):
         self.description = description
         self.result_element_names = tuple(sorted(result_element_names))
 
+    def get_all_definitions(self):
+        if self.main_definition:
+            yield self.main_definition
+        for specialization in self.specializations:
+            yield specialization
+
     def get_direct_subelements(self):
-        for specialization in itertools.chain((self.main_definition,), self.specializations):
-            if specialization:
-                for elem in specialization.body:
-                    yield elem
+        for specialization in self.get_all_definitions():
+            for elem in specialization.body:
+                yield elem
 
     def get_direct_subexpressions(self):
-        for specialization in itertools.chain((self.main_definition,), self.specializations):
-            if specialization and specialization.patterns:
+        for specialization in self.get_all_definitions():
+            if specialization.patterns:
                 for expr in specialization.patterns:
                     yield expr
 

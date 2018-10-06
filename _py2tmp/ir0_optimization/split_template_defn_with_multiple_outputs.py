@@ -22,13 +22,12 @@ def split_template_defn_with_multiple_outputs(template_defn: ir0.TemplateDefn,
                                               split_template_name_by_old_name_and_result_element_name: MutableMapping[Tuple[str, str], str],
                                               identifier_generator: Iterator[str]) -> Tuple[List[ir0.TemplateDefn], bool]:
     type_by_result_elem_name = {elem.name: elem.expr.expr_type
-                                for specialization in itertools.chain([template_defn.main_definition] if template_defn.main_definition else [],
-                                                                      template_defn.specializations)
+                                for specialization in template_defn.get_all_definitions()
                                 for elem in specialization.body
                                 if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.name in template_defn.result_element_names}
     actual_result_elem_names = list(sorted(type_by_result_elem_name.keys()))
     if len(type_by_result_elem_name) <= 1 or any(not specialization.is_metafunction
-                                                 for specialization in itertools.chain([template_defn.main_definition] if template_defn.main_definition else [], template_defn.specializations)):
+                                                 for specialization in template_defn.get_all_definitions()):
         return [template_defn], False
 
     new_template_defns = []
