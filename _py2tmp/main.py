@@ -22,7 +22,7 @@ from _py2tmp import (
     ir1_to_ir0,
     ir0_to_cpp,
     utils,
-)
+    ir0_builtins)
 
 from _py2tmp import ir0_optimization, ir3_optimization
 import argparse
@@ -72,12 +72,11 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
         print()
 
     result = ir0_to_cpp.header_to_cpp(header_ir0, identifier_generator)
-    result = utils.clang_format(result)
 
     if verbose:
         print('Conversion result:')
         print(result)
-    return result
+    return ir0_builtins.get_builtins_cpp_code() + result
 
 def main():
     parser = argparse.ArgumentParser(description='Converts python source code into C++ metafunctions.')

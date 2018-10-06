@@ -11,9 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib.util as importlib_util
+import itertools
+from functools import lru_cache
 from typing import List, Optional, Sequence
 
-from _py2tmp import ir0
+import typed_ast.ast3 as ast
+
+from _py2tmp import ir0, ir0_builtin_literals
+from _py2tmp.ir0_optimization import configuration_knobs
+
 
 def _type_arg_decl(name: str):
     return ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name=name, is_variadic=False)
@@ -57,171 +64,6 @@ def _variadic_int64_arg_type():
 def _template_template_arg_type(*args: ir0.TemplateArgType):
     return ir0.TemplateArgType(expr_type=ir0.TemplateType(args), is_variadic=False)
 
-class GlobalLiterals:
-    VOID = ir0.AtomicTypeLiteral.for_nonlocal_type('void', may_be_alias=False)
-    CHAR = ir0.AtomicTypeLiteral.for_nonlocal_type('char', may_be_alias=False)
-    SHORT = ir0.AtomicTypeLiteral.for_nonlocal_type('short', may_be_alias=False)
-    INT = ir0.AtomicTypeLiteral.for_nonlocal_type('int', may_be_alias=False)
-    UNSIGNED = ir0.AtomicTypeLiteral.for_nonlocal_type('unsigned', may_be_alias=False)
-    INT32_T = ir0.AtomicTypeLiteral.for_nonlocal_type('int32_t', may_be_alias=False)
-    INT64_T = ir0.AtomicTypeLiteral.for_nonlocal_type('int64_t', may_be_alias=False)
-    UINT32_T = ir0.AtomicTypeLiteral.for_nonlocal_type('uint32_t', may_be_alias=False)
-    UINT64_T = ir0.AtomicTypeLiteral.for_nonlocal_type('uint64_t', may_be_alias=False)
-    LONG = ir0.AtomicTypeLiteral.for_nonlocal_type('long', may_be_alias=False)
-    FLOAT = ir0.AtomicTypeLiteral.for_nonlocal_type('float', may_be_alias=False)
-    DOUBLE = ir0.AtomicTypeLiteral.for_nonlocal_type('double', may_be_alias=False)
-
-    BOOL_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='BoolList',
-                                                            args=[_variadic_bool_arg_type()],
-                                                            is_metafunction_that_may_return_error=False,
-                                                            may_be_alias=False)
-
-    INT_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Int64List',
-                                                           args=[_variadic_int64_arg_type()],
-                                                           is_metafunction_that_may_return_error=False,
-                                                           may_be_alias=False)
-
-    LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='List',
-                                                       args=[_variadic_type_arg_type()],
-                                                       is_metafunction_that_may_return_error=False,
-                                                       may_be_alias=False)
-
-    CHECK_IF_ERROR = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='CheckIfError',
-                                                                 args=[_type_arg_type()],
-                                                                 is_metafunction_that_may_return_error=False,
-                                                                 may_be_alias=False)
-
-    GET_FIRST_ERROR = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='GetFirstError',
-                                                                  args=[_variadic_type_arg_type()],
-                                                                  is_metafunction_that_may_return_error=False,
-                                                                  may_be_alias=False)
-
-    ALWAYS_TRUE_FROM_TYPE = ir0.AtomicTypeLiteral.for_nonlocal_template('AlwaysTrueFromType',
-                                                                        args=[_type_arg_type()],
-                                                                        is_metafunction_that_may_return_error=False,
-                                                                        may_be_alias=False)
-
-    ALWAYS_FALSE_FROM_TYPE = ir0.AtomicTypeLiteral.for_nonlocal_template('AlwaysFalseFromType',
-                                                                         args=[_type_arg_type()],
-                                                                         is_metafunction_that_may_return_error=False,
-                                                                         may_be_alias=False)
-
-    STD_IS_SAME = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::is_same',
-                                                              is_metafunction_that_may_return_error=False,
-                                                              args=[_type_arg_type(),
-                                                                    _type_arg_type()],
-                                                              may_be_alias=False)
-
-    STD_PAIR = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::pair',
-                                                           is_metafunction_that_may_return_error=False,
-                                                           args=[_type_arg_type(), _type_arg_type()],
-                                                           may_be_alias=False)
-
-    STD_TUPLE = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='std::tuple',
-                                                            is_metafunction_that_may_return_error=False,
-                                                            args=[_variadic_type_arg_type()],
-                                                            may_be_alias=False)
-
-    BOOL_LIST_TO_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='BoolListToSet',
-                                                                   args=[_type_arg_type()],
-                                                                   is_metafunction_that_may_return_error=False,
-                                                                   may_be_alias=False)
-    INT64_LIST_TO_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Int64ListToSet',
-                                                                    args=[_type_arg_type()],
-                                                                    is_metafunction_that_may_return_error=False,
-                                                                    may_be_alias=False)
-    TYPE_LIST_TO_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='TypeListToSet',
-                                                                   args=[_type_arg_type()],
-                                                                   is_metafunction_that_may_return_error=False,
-                                                                   may_be_alias=False)
-
-    ADD_TO_BOOL_SET_HELPER = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='AddToBoolSetHelper',
-                                                                         args=[_type_arg_type(),
-                                                                               _type_arg_type(),
-                                                                               _type_arg_type(),
-                                                                               _bool_arg_type()],
-                                                                         is_metafunction_that_may_return_error=False,
-                                                                         may_be_alias=False)
-
-    ADD_TO_INT64_SET_HELPER = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='AddToInt64SetHelper',
-                                                                          args=[_type_arg_type(),
-                                                                                _type_arg_type(),
-                                                                                _type_arg_type(),
-                                                                                _int64_arg_type()],
-                                                                          is_metafunction_that_may_return_error=False,
-                                                                          may_be_alias=False)
-
-    ADD_TO_TYPE_SET_HELPER = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='AddToTypeSetHelper',
-                                                                         args=[_type_arg_type(),
-                                                                               _type_arg_type(),
-                                                                               _type_arg_type(),
-                                                                               _type_arg_type()],
-                                                                         is_metafunction_that_may_return_error=False,
-                                                                         may_be_alias=False)
-
-    ADD_TO_BOOL_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='AddToBoolSet',
-                                                                  args=[_type_arg_type(), _bool_arg_type()],
-                                                                  is_metafunction_that_may_return_error=False,
-                                                                  may_be_alias=False)
-
-    ADD_TO_INT64_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='AddToInt64Set',
-                                                                   args=[_type_arg_type(), _int64_arg_type()],
-                                                                   is_metafunction_that_may_return_error=False,
-                                                                   may_be_alias=False)
-
-    ADD_TO_TYPE_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='AddToTypeSet',
-                                                                  args=[_type_arg_type(), _type_arg_type()],
-                                                                  is_metafunction_that_may_return_error=False,
-                                                                  may_be_alias=False)
-
-    FOLD_BOOLS_TO_TYPE = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='FoldBoolsToType',
-                                                                     args=[_type_arg_type(),
-                                                                           _template_template_arg_type(_type_arg_type(),
-                                                                                                       _bool_arg_type()),
-                                                                           _variadic_bool_arg_type()],
-                                                                     is_metafunction_that_may_return_error=True,
-                                                                     may_be_alias=False)
-
-    FOLD_INT64S_TO_TYPE = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='FoldInt64sToType',
-                                                                      args=[_type_arg_type(),
-                                                                            _template_template_arg_type(_type_arg_type(),
-                                                                                                        _int64_arg_type()),
-                                                                            _variadic_int64_arg_type()],
-                                                                      is_metafunction_that_may_return_error=True,
-                                                                      may_be_alias=False)
-
-    FOLD_TYPES_TO_TYPE = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='FoldTypesToType',
-                                                                     args=[_type_arg_type(),
-                                                                           _template_template_arg_type(_type_arg_type(),
-                                                                                                       _type_arg_type()),
-                                                                           _variadic_type_arg_type()],
-                                                                     is_metafunction_that_may_return_error=True,
-                                                                     may_be_alias=False)
-
-    INT64_LIST_SUM = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Int64ListSum',
-                                                                 args=[_type_arg_type()],
-                                                                 is_metafunction_that_may_return_error=False,
-                                                                 may_be_alias=False)
-
-    IS_IN_BOOL_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInBoolList',
-                                                                  args=[_bool_arg_type(), _type_arg_type()],
-                                                                  is_metafunction_that_may_return_error=False,
-                                                                  may_be_alias=False)
-
-    IS_IN_INT64_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInInt64List',
-                                                                   args=[_int64_arg_type(), _type_arg_type()],
-                                                                   is_metafunction_that_may_return_error=False,
-                                                                   may_be_alias=False)
-
-    IS_IN_TYPE_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInTypeList',
-                                                                  args=[_type_arg_type(), _type_arg_type()],
-                                                                  is_metafunction_that_may_return_error=False,
-                                                                  may_be_alias=False)
-
-GLOBAL_LITERALS_BY_NAME = {x.cpp_type: x
-                           for x in GlobalLiterals.__dict__.values()
-                           if isinstance(x, ir0.AtomicTypeLiteral)}
-
 def _metafunction_call(template_expr: ir0.Expr,
                        args: Sequence[ir0.Expr],
                        instantiation_might_trigger_static_asserts: bool,
@@ -246,43 +88,43 @@ def _local_metafunction_call(template_var_name: str,
                               member_type=member_type)
 
 def _bool_list_of(*args: ir0.Expr):
-    return ir0.TemplateInstantiation(template_expr=GlobalLiterals.BOOL_LIST,
+    return ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.BOOL_LIST,
                                      args=args,
                                      instantiation_might_trigger_static_asserts=False)
 
 def _int_list_of(*args: ir0.Expr):
-    return ir0.TemplateInstantiation(template_expr=GlobalLiterals.INT_LIST,
+    return ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.INT_LIST,
                                      args=args,
                                      instantiation_might_trigger_static_asserts=False)
 
 def _type_list_of(*args: ir0.Expr):
-    return ir0.TemplateInstantiation(template_expr=GlobalLiterals.LIST,
+    return ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.LIST,
                                      args=args,
                                      instantiation_might_trigger_static_asserts=False)
 
 def _get_first_error(*args: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.GET_FIRST_ERROR,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.GET_FIRST_ERROR,
                               args=args,
                               instantiation_might_trigger_static_asserts=False,
                               member_name='type',
                               member_type=ir0.TypeType())
 
 def _is_same(lhs: ir0.Expr, rhs: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.STD_IS_SAME,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.STD_IS_SAME,
                               args=[lhs, rhs],
                               instantiation_might_trigger_static_asserts=False,
                               member_name='value',
                               member_type=ir0.BoolType())
 
 def _int64_list_sum(l: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.INT64_LIST_SUM,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.INT64_LIST_SUM,
                               args=[l],
                               instantiation_might_trigger_static_asserts=False,
                               member_name='value',
                               member_type=ir0.Int64Type())
 
 def _add_to_bool_set_helper(all_false_list_if_not_present: ir0.Expr, all_false_list: ir0.Expr, s: ir0.Expr, b: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.ADD_TO_BOOL_SET_HELPER,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.ADD_TO_BOOL_SET_HELPER,
                               args=[all_false_list_if_not_present,
                                     all_false_list,
                                     s,
@@ -292,7 +134,7 @@ def _add_to_bool_set_helper(all_false_list_if_not_present: ir0.Expr, all_false_l
                               member_type=ir0.TypeType())
 
 def _add_to_int64_set_helper(all_false_list_if_not_present: ir0.Expr, all_false_list: ir0.Expr, s: ir0.Expr, n: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.ADD_TO_INT64_SET_HELPER,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.ADD_TO_INT64_SET_HELPER,
                               args=[all_false_list_if_not_present,
                                     all_false_list,
                                     s,
@@ -302,7 +144,7 @@ def _add_to_int64_set_helper(all_false_list_if_not_present: ir0.Expr, all_false_
                               member_type=ir0.TypeType())
 
 def _add_to_type_set_helper(all_false_list_if_not_present: ir0.Expr, all_false_list: ir0.Expr, s: ir0.Expr, t: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.ADD_TO_TYPE_SET_HELPER,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.ADD_TO_TYPE_SET_HELPER,
                               args=[all_false_list_if_not_present,
                                     all_false_list,
                                     s,
@@ -312,56 +154,56 @@ def _add_to_type_set_helper(all_false_list_if_not_present: ir0.Expr, all_false_l
                               member_type=ir0.TypeType())
 
 def _fold_bools_to_type(acc: ir0.Expr, f: ir0.Expr, bs: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.FOLD_BOOLS_TO_TYPE,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.FOLD_BOOLS_TO_TYPE,
                               args=[acc, f, bs],
                               instantiation_might_trigger_static_asserts=True,
                               member_name='type',
                               member_type=ir0.TypeType())
 
 def _fold_int64s_to_type(acc: ir0.Expr, f: ir0.Expr, ns: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.FOLD_INT64S_TO_TYPE,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.FOLD_INT64S_TO_TYPE,
                               args=[acc, f, ns],
                               instantiation_might_trigger_static_asserts=True,
                               member_name='type',
                               member_type=ir0.TypeType())
 
 def _fold_types_to_type(acc: ir0.Expr, f: ir0.Expr, ts: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.FOLD_TYPES_TO_TYPE,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.FOLD_TYPES_TO_TYPE,
                               args=[acc, f, ts],
                               instantiation_might_trigger_static_asserts=True,
                               member_name='type',
                               member_type=ir0.TypeType())
 
 def _always_true_from_type(t: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.ALWAYS_TRUE_FROM_TYPE,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.ALWAYS_TRUE_FROM_TYPE,
                               args=[t],
                               instantiation_might_trigger_static_asserts=False,
                               member_name='value',
                               member_type=ir0.BoolType())
 
 def _always_false_from_type(t: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.ALWAYS_FALSE_FROM_TYPE,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.ALWAYS_FALSE_FROM_TYPE,
                               args=[t],
                               instantiation_might_trigger_static_asserts=False,
                               member_name='value',
                               member_type=ir0.BoolType())
 
 def _is_in_bool_set(b: ir0.Expr, s: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.IS_IN_BOOL_LIST,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.IS_IN_BOOL_LIST,
                               args=[b, s],
                               instantiation_might_trigger_static_asserts=False,
                               member_type=ir0.BoolType(),
                               member_name='value')
 
 def _is_in_int64_set(n: ir0.Expr, s: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.IS_IN_INT64_LIST,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.IS_IN_INT64_LIST,
                               args=[n, s],
                               instantiation_might_trigger_static_asserts=False,
                               member_type=ir0.BoolType(),
                               member_name='value')
 
 def _is_in_type_set(t: ir0.Expr, s: ir0.Expr):
-    return _metafunction_call(template_expr=GlobalLiterals.IS_IN_TYPE_LIST,
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.IS_IN_TYPE_LIST,
                               args=[t, s],
                               instantiation_might_trigger_static_asserts=False,
                               member_type=ir0.BoolType(),
@@ -410,7 +252,12 @@ def _specialization(args: List[ir0.TemplateArgDecl],
                                                                           expr=type_expr)],
                                           is_metafunction=True)
 
-BUILTIN_TEMPLATES: List[ir0.TemplateDefn] = []
+class _BuiltinTemplatesHolder:
+    initialized = False
+    initializing = False
+    BUILTIN_TEMPLATES: List[ir0.TemplateDefn] = []
+    identifier_generator = None
+    split_template_name_by_old_name_and_result_element_name = dict()
 
 def _define_template(main_definition: Optional[ir0.TemplateSpecialization],
                      specializations: Sequence[ir0.TemplateSpecialization],
@@ -418,12 +265,12 @@ def _define_template(main_definition: Optional[ir0.TemplateSpecialization],
                      result_element_name: str,
                      args: Optional[Sequence[ir0.TemplateArgDecl]] = None,
                      has_error: bool = False):
-    BUILTIN_TEMPLATES.append(ir0.TemplateDefn(main_definition=main_definition,
-                                              specializations=specializations,
-                                              name=name,
-                                              description='',
-                                              result_element_names=[result_element_name] + (['error'] if has_error else []),
-                                              args=args))
+    _BuiltinTemplatesHolder.BUILTIN_TEMPLATES.append(ir0.TemplateDefn(main_definition=main_definition,
+                                                                      specializations=specializations,
+                                                                      name=name,
+                                                                      description='',
+                                                                      result_element_names=[result_element_name] + (['error'] if has_error else []),
+                                                                      args=args))
 
 def _define_template_with_no_specializations(name: str,
                                              args: List[ir0.TemplateArgDecl],
@@ -484,14 +331,6 @@ def _define_template_with_single_specialization(name: str,
                          name=name,
                          result_element_name='type',
                          has_error=(error_expr is not None))
-
-# template <typename>
-# struct AlwaysFalseFromType {
-#   static constexpr bool value = false;
-# };
-_define_template_with_no_specializations(name='AlwaysFalseFromType',
-                                         args=[_type_arg_decl('T')],
-                                         value_expr=ir0.Literal(False))
 
 # template <typename L1, typename L2>
 # struct TypeListConcat;
@@ -564,39 +403,6 @@ _define_template(name='Int64ListSum',
                                                                                    rhs=_int64_list_sum(_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns')))),
                                                                                    op='+'))])
 
-# template <typename L>
-# struct BoolListAll;
-#
-# template <bool... bs>
-# struct BoolListAll<BoolList<bs...>> {
-#   static constexpr bool value = std::is_same<BoolList<bs...>, BoolList<(bs || true)...>>::value;
-# };
-_define_template_with_single_specialization(name='BoolListAll',
-                                            main_definition_args=[_type_arg_decl('L')],
-                                            specialization_args=[_variadic_bool_arg_decl('bs')],
-                                            patterns=[_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs')))],
-                                            value_expr=_is_same(_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))),
-                                                                _bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(_local_variadic_bool('bs'),
-                                                                                                                             ir0.Literal(True),
-                                                                                                                             op='||')))))
-
-# template <typename L>
-# struct BoolListAny;
-#
-# template <bool... bs>
-# struct BoolListAny<BoolList<bs...>> {
-#   static constexpr bool value = !std::is_same<BoolList<bs...>, BoolList<(bs && false)...>>::value;
-# };
-_define_template_with_single_specialization(name='BoolListAny',
-                                            main_definition_args=[_type_arg_decl('L')],
-                                            specialization_args=[_variadic_bool_arg_decl('bs')],
-                                            patterns=[_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs')))],
-                                            value_expr=ir0.NotExpr(_is_same(_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))),
-                                                                            _bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(_local_variadic_bool('bs'),
-                                                                                                                                         ir0.Literal(False),
-                                                                                                                                         op='&&'))))))
-
-
 
 # template <typename... Ts>
 # struct GetFirstError {
@@ -615,9 +421,9 @@ _define_template_with_single_specialization(name='BoolListAny',
 _define_template(name='GetFirstError',
                  result_element_name='type',
                  main_definition=_specialization(args=[_variadic_type_arg_decl('Ts')],
-                                                 type_expr=GlobalLiterals.VOID),
+                                                 type_expr=ir0_builtin_literals.GlobalLiterals.VOID),
                  specializations=[_specialization(args=[_variadic_type_arg_decl('Ts')],
-                                                  patterns=[GlobalLiterals.VOID,
+                                                  patterns=[ir0_builtin_literals.GlobalLiterals.VOID,
                                                             ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))],
                                                   type_expr=_get_first_error(ir0.VariadicTypeExpansion(_local_variadic_type('Ts')))),
                                   _specialization(args=[_type_arg_decl('T'),
@@ -625,314 +431,6 @@ _define_template(name='GetFirstError',
                                                   patterns=[_local_type('T'),
                                                             ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))],
                                                   type_expr=_local_type('T'))])
-
-# template <typename AllFalseListIfNotPresent, typename AllFalseList, typename S, bool b>
-# struct AddToBoolSetHelper {
-#   using type = S;
-# };
-#
-# template <typename AllFalseList, bool... bs, bool b>
-# struct AddToBoolSetHelper<AllFalseList, AllFalseList, BoolList<bs...>, b> {
-#   using type = BoolList<bs..., b>;
-# };
-_define_template(name='AddToBoolSetHelper',
-                 result_element_name='type',
-                 main_definition=_specialization(args=[_type_arg_decl('AllFalseListIfNotPresent'),
-                                                       _type_arg_decl('AllFalseList'),
-                                                       _type_arg_decl('S'),
-                                                       _bool_arg_decl('b')],
-                                                 type_expr=_local_type('S')),
-                 specializations=[_specialization(args=[_type_arg_decl('AllFalseList'),
-                                                        _variadic_bool_arg_decl('bs'),
-                                                        _bool_arg_decl('b')],
-                                                  patterns=[_local_type('AllFalseList'),
-                                                            _local_type('AllFalseList'),
-                                                            _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))),
-                                                            _local_bool('b')],
-                                                  type_expr=_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs')),
-                                                                          _local_bool('b')))])
-
-# template <typename S, bool b>
-# struct AddToBoolSet;
-#
-# template <bool... bs, bool b>
-# struct AddToBoolSet<BoolList<bs...>, b> {
-#   using type = typename AddToBoolSetHelper<BoolList<(bs == b)...>,
-#                                            BoolList<(bs && false)...>,
-#                                            BoolList<bs...>,
-#                                            b>::type;
-# };
-_define_template_with_single_specialization(name='AddToBoolSet',
-                                            main_definition_args=[_type_arg_decl('S'),
-                                                                  _bool_arg_decl('b')],
-                                            specialization_args=[_variadic_bool_arg_decl('bs'),
-                                                                 _bool_arg_decl('b')],
-                                            patterns=[_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))),
-                                                      _local_bool('b')],
-                                            type_expr=_add_to_bool_set_helper(_bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(lhs=_local_variadic_bool('bs'),
-                                                                                                                                         rhs=_local_bool('b'),
-                                                                                                                                         op='=='))),
-                                                                              _bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(lhs=_local_variadic_bool('bs'),
-                                                                                                                                           rhs=ir0.Literal(False),
-                                                                                                                                           op='&&'))),
-                                                                              _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))),
-                                                                              _local_bool('b')))
-
-
-# template <typename AllFalseListIfNotPresent, typename AllFalseList, typename S, int64_t n>
-# struct AddToInt64SetHelper {
-#   using type = S;
-# };
-# template <typename AllFalseList, int64_t... ns, int64_t n>
-# struct AddToInt64SetHelper<AllFalseList, AllFalseList, Int64List<ns...>, n> {
-#   using type = Int64List<ns..., n>;
-# };
-#
-_define_template(name='AddToInt64SetHelper',
-                 result_element_name='type',
-                 main_definition=_specialization(args=[_type_arg_decl('AllFalseListIfNotPresent'),
-                                                       _type_arg_decl('AllFalseList'),
-                                                       _type_arg_decl('S'),
-                                                       _int64_arg_decl('n')],
-                                                 type_expr=_local_type('S')),
-                 specializations=[_specialization(args=[_type_arg_decl('AllFalseList'),
-                                                        _variadic_int64_arg_decl('ns'),
-                                                        _int64_arg_decl('n')],
-                                                  patterns=[_local_type('AllFalseList'),
-                                                            _local_type('AllFalseList'),
-                                                            _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns'))),
-                                                            _local_int('n')],
-                                                  type_expr=_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns')),
-                                                                         _local_int('n')))])
-
-# template <typename S, int64_t n>
-# struct AddToInt64Set;
-#
-# template <int64_t... ns, int64_t n>
-# struct AddToInt64Set<Int64List<ns...>, n> {
-#   using type = typename AddToInt64SetHelper<BoolList<(ns == n)...>,
-#                                             BoolList<(ns != ns)...>,
-#                                             Int64List<ns...>,
-#                                             n>::type;
-# };
-_define_template_with_single_specialization(name='AddToInt64Set',
-                                            main_definition_args=[_type_arg_decl('S'),
-                                                                  _int64_arg_decl('n')],
-                                            specialization_args=[_variadic_int64_arg_decl('ns'),
-                                                                 _int64_arg_decl('n')],
-                                            patterns=[_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns'))),
-                                                      _local_int('n')],
-                                            type_expr=_add_to_int64_set_helper(_bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(lhs=_local_variadic_int('ns'),
-                                                                                                                                          rhs=_local_int('n'),
-                                                                                                                                          op='=='))),
-                                                                               _bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(lhs=_local_variadic_int('ns'),
-                                                                                                                                          rhs=_local_variadic_int('ns'),
-                                                                                                                                          op='!='))),
-                                                                               _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns'))),
-                                                                               _local_int('n')))
-
-# template <typename AllFalseListIfNotPresent, typename AllFalseList, typename S, typename T>
-# struct AddToTypeSetHelper {
-#   using type = S;
-# };
-#
-# template <typename AllFalseList, typename... Ts, typename T>
-# struct AddToTypeSetHelper<AllFalseList, AllFalseList, List<Ts...>, T> {
-#   using type = List<Ts..., T>;
-# };
-_define_template(name='AddToTypeSetHelper',
-                 result_element_name='type',
-                 main_definition=_specialization(args=[_type_arg_decl('AllFalseListIfNotPresent'),
-                                                       _type_arg_decl('AllFalseList'),
-                                                       _type_arg_decl('S'),
-                                                       _type_arg_decl('T')],
-                                                 type_expr=_local_type('S')),
-                 specializations=[_specialization(args=[_type_arg_decl('AllFalseList'),
-                                                        _variadic_type_arg_decl('Ts'),
-                                                        _type_arg_decl('T')],
-                                                  patterns=[_local_type('AllFalseList'),
-                                                            _local_type('AllFalseList'),
-                                                            _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
-                                                            _local_type('T')],
-                                                  type_expr=_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts')),
-                                                                          _local_type('T')))])
-
-
-# template <typename S, typename T>
-# struct AddToTypeSet;
-#
-# template <typename... Ts, typename T>
-# struct AddToTypeSet<List<Ts...>, T> {
-#   using type = typename AddToTypeSetHelper<BoolList<std::is_same<Ts, T>::value...>,
-#                                            BoolList<AlwaysFalseFromType<Ts>::value...>,
-#                                            List<Ts...>,
-#                                            T>::type;
-# };
-_define_template_with_single_specialization(name='AddToTypeSet',
-                                            main_definition_args=[_type_arg_decl('S'),
-                                                                  _type_arg_decl('T')],
-                                            specialization_args=[_variadic_type_arg_decl('Ts'),
-                                                                 _type_arg_decl('T')],
-                                            patterns=[_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
-                                                      _local_type('T')],
-                                            type_expr=_add_to_type_set_helper(_bool_list_of(ir0.VariadicTypeExpansion(_is_same(_local_variadic_type('Ts'),
-                                                                                                                               _local_type('T')))),
-                                                                              _bool_list_of(ir0.VariadicTypeExpansion(_always_false_from_type(_local_variadic_type('Ts')))),
-                                                                              _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
-                                                                              _local_type('T')))
-
-# template <bool b, typename L>
-# struct IsInBoolList;
-#
-# template <bool b, bool... bs>
-# struct IsInBoolList<b, BoolList<bs...>> {
-#   static constexpr bool value = !std::is_same<BoolList<(bs == b)...>,
-#                                               BoolList<(bs && false)...>
-#                                               >::value;
-# };
-
-_define_template_with_single_specialization(name='IsInBoolList',
-                                            main_definition_args=[_bool_arg_decl('b'),
-                                                                  _type_arg_decl('L')],
-                                            specialization_args=[_bool_arg_decl('b'),
-                                                                 _variadic_bool_arg_decl('bs')],
-                                            patterns=[_local_bool('b'),
-                                                      _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs')))],
-                                            value_expr=ir0.NotExpr(_is_same(_bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(lhs=_local_variadic_bool('bs'),
-                                                                                                                                       rhs=_local_bool('b'),
-                                                                                                                                       op='=='))),
-                                                                            _bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(lhs=_local_variadic_bool('bs'),
-                                                                                                                                         rhs=ir0.Literal(False),
-                                                                                                                                         op='&&'))))))
-
-# template <typename S1, typename S2>
-# struct BoolSetEquals;
-#
-# template <bool... bs1, bool... bs2>
-# struct BoolSetEquals<BoolList<bs1...>, BoolList<bs2...>> {
-#   static constexpr bool value =
-#       std::is_same<BoolList<IsInBoolList<bs2, BoolList<bs1...>>::value...,
-#                             IsInBoolList<bs1, BoolList<bs2...>>::value...>,
-#                    BoolList<(bs2 || true)...,
-#                             (bs1 || true)...>
-#                    >::value;
-# };
-_define_template_with_single_specialization(name='BoolSetEquals',
-                                            main_definition_args=[_type_arg_decl('S1'), _type_arg_decl('S2')],
-                                            specialization_args=[_variadic_bool_arg_decl('bs1'),
-                                                                 _variadic_bool_arg_decl('bs2')],
-                                            patterns=[_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs1'))),
-                                                      _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs2')))],
-                                            value_expr=_is_same(lhs=_bool_list_of(ir0.VariadicTypeExpansion(_is_in_bool_set(_local_variadic_bool('bs2'),
-                                                                                                                            _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs1'))))),
-                                                                                  ir0.VariadicTypeExpansion(_is_in_bool_set(_local_variadic_bool('bs1'),
-                                                                                                                            _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs2')))))),
-                                                                rhs=_bool_list_of(ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(_local_variadic_bool('bs2'),
-                                                                                                                                 ir0.Literal(True),
-                                                                                                                                 op='||')),
-                                                                                  ir0.VariadicTypeExpansion(ir0.BoolBinaryOpExpr(_local_variadic_bool('bs1'),
-                                                                                                                                 ir0.Literal(True),
-                                                                                                                                 op='||')))))
-
-# template <int64_t n, typename L>
-# struct IsInInt64List;
-#
-# template <int64_t n, int64_t... ns>
-# struct IsInInt64List<n, Int64List<ns...>> {
-#   static constexpr bool value = !std::is_same<BoolList<(ns == n)...>,
-#                                               BoolList<(ns != ns)...>
-#                                               >::value;
-# };
-
-_define_template_with_single_specialization(name='IsInInt64List',
-                                            main_definition_args=[_int64_arg_decl('n'),
-                                                                  _type_arg_decl('L')],
-                                            specialization_args=[_int64_arg_decl('n'),
-                                                                 _variadic_int64_arg_decl('ns')],
-                                            patterns=[_local_int('n'),
-                                                      _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns')))],
-                                            value_expr=ir0.NotExpr(_is_same(_bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(lhs=_local_variadic_int('ns'),
-                                                                                                                                       rhs=_local_int('n'),
-                                                                                                                                       op='=='))),
-                                                                            _bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(lhs=_local_variadic_int('ns'),
-                                                                                                                                       rhs=_local_variadic_int('ns'),
-                                                                                                                                       op='!='))))))
-
-# template <typename S1, typename S2>
-# struct Int64SetEquals;
-#
-# template <int64_t... ns1, int64_t... ns2>
-# struct Int64SetEquals<Int64List<ns1...>, Int64List<ns2...>> {
-#   static constexpr bool value =
-#       std::is_same<BoolList<IsInInt64List<ns2, Int64List<ns1...>>::value...,
-#                             IsInInt64List<ns1, Int64List<ns2...>>::value...>,
-#                    BoolList<(ns2 == ns2)...,
-#                             (ns1 == ns1)...>
-#                    >::value;
-# };
-_define_template_with_single_specialization(name='Int64SetEquals',
-                                            main_definition_args=[_type_arg_decl('S1'), _type_arg_decl('S2')],
-                                            specialization_args=[_variadic_int64_arg_decl('ns1'),
-                                                                 _variadic_int64_arg_decl('ns2')],
-                                            patterns=[_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns1'))),
-                                                      _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns2')))],
-                                            value_expr=_is_same(lhs=_bool_list_of(ir0.VariadicTypeExpansion(_is_in_int64_set(_local_variadic_int('ns2'),
-                                                                                                                             _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns1'))))),
-                                                                                  ir0.VariadicTypeExpansion(_is_in_int64_set(_local_variadic_int('ns1'),
-                                                                                                                             _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns2')))))),
-                                                                rhs=_bool_list_of(ir0.VariadicTypeExpansion(ir0.ComparisonExpr(_local_variadic_int('ns2'),
-                                                                                                                               _local_variadic_int('ns2'),
-                                                                                                                               op='==')),
-                                                                                  ir0.VariadicTypeExpansion(ir0.ComparisonExpr(_local_variadic_int('ns1'),
-                                                                                                                               _local_variadic_int('ns1'),
-                                                                                                                               op='==')))))
-
-# template <typename T, typename L>
-# struct IsInTypeList;
-#
-# template <typename T, typename... Ts>
-# struct IsInTypeList<T, List<Ts...>> {
-#   static constexpr bool value = !std::is_same<BoolList<std::is_same<Ts, T>::value...>,
-#                                               BoolList<AlwaysFalseFromType<Ts>::value...>
-#                                               >::value;
-# };
-_define_template_with_single_specialization(name='IsInTypeList',
-                                            main_definition_args=[_type_arg_decl('T'),
-                                                                  _type_arg_decl('L')],
-                                            specialization_args=[_type_arg_decl('T'),
-                                                                 _variadic_type_arg_decl('Ts')],
-                                            patterns=[_local_type('T'),
-                                                      _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts')))],
-                                            value_expr=ir0.NotExpr(_is_same(_bool_list_of(ir0.VariadicTypeExpansion(_is_same(_local_variadic_type('Ts'),
-                                                                                                                             _local_type('T')))),
-                                                                            _bool_list_of(ir0.VariadicTypeExpansion(_always_false_from_type(_local_variadic_type('Ts')))))))
-
-
-# template <typename S1, typename S2>
-# struct TypeSetEquals;
-#
-# template <typename... Ts, typename... Us>
-# struct TypeSetEquals<List<Ts...>, List<Us...>> {
-#   static constexpr bool value =
-#       std::is_same<BoolList<IsInTypeList<Us, List<Ts...>>::value...,
-#                             IsInTypeList<Ts, List<Us...>>::value...>,
-#                    BoolList<AlwaysTrueFromType<Us>::value...,
-#                             AlwaysTrueFromType<Ts>::value...>
-#                    >::value;
-# };
-_define_template_with_single_specialization(name='TypeSetEquals',
-                                            main_definition_args=[_type_arg_decl('S1'), _type_arg_decl('S2')],
-                                            specialization_args=[_variadic_type_arg_decl('Ts'),
-                                                                 _variadic_type_arg_decl('Us')],
-                                            patterns=[_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
-                                                      _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Us')))],
-                                            value_expr=_is_same(lhs=_bool_list_of(ir0.VariadicTypeExpansion(_is_in_type_set(_local_variadic_type('Us'),
-                                                                                                                            _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))),
-                                                                                  ir0.VariadicTypeExpansion(_is_in_type_set(_local_variadic_type('Ts'),
-                                                                                                                            _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Us')))))),
-                                                                rhs=_bool_list_of(ir0.VariadicTypeExpansion(_always_true_from_type(_local_variadic_type('Us'))),
-                                                                                  ir0.VariadicTypeExpansion(_always_true_from_type(_local_variadic_type('Ts'))))))
-
 
 # template <typename Acc, template <typename Acc1, bool b1> class F, bool... bs>
 # struct FoldBoolsToType {
@@ -966,7 +464,7 @@ _define_template(name='FoldBoolsToType',
                                                                                                          instantiation_might_trigger_static_asserts=True,
                                                                                                          member_name='type',
                                                                                                          member_type=ir0.TypeType()),
-                                                                                _local_type('F'),
+                                                                                ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _bool_arg_type()]), is_variadic=False),
                                                                                 ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))))])
 
 
@@ -983,7 +481,7 @@ _define_template_with_single_specialization(name='BoolListToSet',
                                             specialization_args=[_variadic_bool_arg_decl('bs')],
                                             patterns=[_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs')))],
                                             type_expr=_fold_bools_to_type(_bool_list_of(),
-                                                                          GlobalLiterals.ADD_TO_BOOL_SET,
+                                                                          ir0_builtin_literals.GlobalLiterals.ADD_TO_BOOL_SET,
                                                                           ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))))
 
 
@@ -1019,7 +517,7 @@ _define_template(name='FoldInt64sToType',
                                                                                                           instantiation_might_trigger_static_asserts=True,
                                                                                                           member_name='type',
                                                                                                           member_type=ir0.TypeType()),
-                                                                                 _local_type('F'),
+                                                                                 ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _int64_arg_type()]), is_variadic=False),
                                                                                  ir0.VariadicTypeExpansion(_local_variadic_int('ns'))))])
 
 # template <typename L>
@@ -1034,7 +532,7 @@ _define_template_with_single_specialization(name='Int64ListToSet',
                                             specialization_args=[_variadic_int64_arg_decl('ns')],
                                             patterns=[_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns')))],
                                             type_expr=_fold_int64s_to_type(_int_list_of(),
-                                                                           GlobalLiterals.ADD_TO_INT64_SET,
+                                                                           ir0_builtin_literals.GlobalLiterals.ADD_TO_INT64_SET,
                                                                            ir0.VariadicTypeExpansion(_local_variadic_int('ns'))))
 
 
@@ -1071,7 +569,7 @@ _define_template(name='FoldTypesToType',
                                                                                                          instantiation_might_trigger_static_asserts=True,
                                                                                                          member_name='type',
                                                                                                          member_type=ir0.TypeType()),
-                                                                                _local_type('F'),
+                                                                                ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _type_arg_type()]), is_variadic=False),
                                                                                 ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))])
 
 # template <typename L>
@@ -1086,5 +584,72 @@ _define_template_with_single_specialization(name='TypeListToSet',
                                             specialization_args=[_variadic_type_arg_decl('Ts')],
                                             patterns=[_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts')))],
                                             type_expr=_fold_types_to_type(_type_list_of(),
-                                                                          GlobalLiterals.ADD_TO_TYPE_SET,
+                                                                          ir0_builtin_literals.GlobalLiterals.ADD_TO_TYPE_SET,
                                                                           ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))
+
+def get_builtin_templates():
+    from _py2tmp import ast_to_ir3, ir3_optimization, ir3_to_ir2, ir2_to_ir1, ir1_to_ir0, ir0_optimization
+
+    if _BuiltinTemplatesHolder.initialized or _BuiltinTemplatesHolder.initializing:
+        return _BuiltinTemplatesHolder.BUILTIN_TEMPLATES
+    _BuiltinTemplatesHolder.initializing = True
+
+    tmppy_builtins_file_name = importlib_util.find_spec('_py2tmp.tmppy_builtins').origin
+    with open(tmppy_builtins_file_name) as tmppy_builtins_file:
+        _builtins_source = tmppy_builtins_file.read()
+    builtins_ast = ast.parse(_builtins_source, filename=tmppy_builtins_file_name)
+
+    def identifier_generator_fun():
+        for i in itertools.count():
+            yield 'TmppyInternalBuiltin_%s' % i
+
+    identifier_generator = iter(identifier_generator_fun())
+    _BuiltinTemplatesHolder.identifier_generator = identifier_generator
+    compilation_context = ast_to_ir3.CompilationContext(ast_to_ir3.SymbolTable(),
+                                                        ast_to_ir3.SymbolTable(),
+                                                        'tmppy_builtins.py',
+                                                        _builtins_source.splitlines(),
+                                                        identifier_generator)
+    module_ir3 = ast_to_ir3.module_ast_to_ir3_internal(builtins_ast, compilation_context)
+    module_ir3 = ir3_optimization.optimize_module(module_ir3)
+    module_ir2 = ir3_to_ir2.module_to_ir2(module_ir3, identifier_generator)
+    module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2)
+    non_optimized_header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
+    old_max_num_optimization_steps = configuration_knobs.ConfigurationKnobs.max_num_optimization_steps
+    configuration_knobs.ConfigurationKnobs.max_num_optimization_steps = -1
+    optimized_header, split_template_name_by_old_name_and_result_element_name = ir0_optimization.optimize_builtin_header(non_optimized_header, identifier_generator)
+    configuration_knobs.ConfigurationKnobs.max_num_optimization_steps = old_max_num_optimization_steps
+    assert not optimized_header.toplevel_content
+
+    _BuiltinTemplatesHolder.initialized = True
+    _BuiltinTemplatesHolder.initializing = False
+    _BuiltinTemplatesHolder.BUILTIN_TEMPLATES += [template_defn
+                                                  for template_defn in optimized_header.template_defns
+                                                  # The right CheckIfError will be generated based on the user code,
+                                                  # where there can be custom types.
+                                                  if template_defn.name != 'CheckIfError']
+    _BuiltinTemplatesHolder.split_template_name_by_old_name_and_result_element_name = split_template_name_by_old_name_and_result_element_name
+
+    return _BuiltinTemplatesHolder.BUILTIN_TEMPLATES
+
+def get_split_template_name_by_old_name_and_result_element_name():
+    get_builtin_templates()
+    return _BuiltinTemplatesHolder.split_template_name_by_old_name_and_result_element_name
+
+@lru_cache()
+def get_builtins_cpp_code():
+    from _py2tmp import ir0_to_cpp, utils
+
+    template_defns = get_builtin_templates()
+    writer = ir0_to_cpp.ToplevelWriter(_BuiltinTemplatesHolder.identifier_generator)
+    writer.write_toplevel_elem('''\
+        #include <tmppy/tmppy.h>
+        #include <type_traits>
+        ''')
+    ir0_to_cpp.template_defns_to_cpp(template_defns, writer)
+    result = utils.clang_format(''.join(writer.strings))
+
+    # TODO: remove
+    #print('Builtins C++ code:\n' + result)
+
+    return result

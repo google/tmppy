@@ -11,9 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from functools import lru_cache
 from typing import Dict, Iterator, Set, List, Union
-from _py2tmp import ir0, transform_ir0, ir0_to_cpp
+from _py2tmp import ir0, transform_ir0, ir0_builtins, ir0_to_cpp
 from _py2tmp.ir0_optimization import unify_ir0
 from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
 from _py2tmp.ir0_optimization.configuration_knobs import ConfigurationKnobs
@@ -27,7 +27,7 @@ _select1st_type_and_name = [
     (ir0.TypeType(), 'Type'),
 ]
 
-_GLOBAL_INLINEABLE_TEMPLATES = [
+TEMPLATE_DEFNS_DEFINED_AS_IR0 = [
     ir0.TemplateDefn(name='std::is_same',
                      description='',
                      result_element_names=['value'],
@@ -133,9 +133,10 @@ _GLOBAL_INLINEABLE_TEMPLATES = [
      for type2, name2 in _select1st_type_and_name
 ]
 
-_GLOBAL_INLINEABLE_TEMPLATES_BY_NAME = {template_defn.name: template_defn
-                                        for template_defn in _GLOBAL_INLINEABLE_TEMPLATES}
-
+def _getGloballyInlineableTemplatesByName():
+    template_defns = TEMPLATE_DEFNS_DEFINED_AS_IR0 + ir0_builtins.get_builtin_templates()
+    return {template_defn.name: template_defn
+            for template_defn in template_defns}
 
 class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
     def __init__(self, inlineable_templates_by_name: Dict[str, ir0.TemplateDefn]):
@@ -186,9 +187,9 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
             template_defn_to_inline = self.inlineable_templates_by_name[template_instantiation.template_expr.cpp_type]
         elif (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
               and isinstance(class_member_access.expr.template_expr, ir0.AtomicTypeLiteral)
-              and class_member_access.expr.template_expr.cpp_type in _GLOBAL_INLINEABLE_TEMPLATES_BY_NAME):
+              and class_member_access.expr.template_expr.cpp_type in _getGloballyInlineableTemplatesByName()):
             template_instantiation = class_member_access.expr
-            template_defn_to_inline = _GLOBAL_INLINEABLE_TEMPLATES_BY_NAME[template_instantiation.template_expr.cpp_type]
+            template_defn_to_inline = _getGloballyInlineableTemplatesByName()[template_instantiation.template_expr.cpp_type]
         else:
             return class_member_access
 

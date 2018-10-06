@@ -22,7 +22,7 @@ from _py2tmp.ir0_optimization.configuration_knobs import ConfigurationKnobs
 from _py2tmp.ir0_optimization.local_optimizations import perform_local_optimizations_on_template_defn, perform_local_optimizations_on_toplevel_elems
 from _py2tmp.ir0_optimization.optimization_execution import apply_optimization
 from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import recalculate_template_instantiation_can_trigger_static_asserts_info
-from _py2tmp.ir0_optimization.split_template_defn_with_specializations_and_multiple_outputs import split_template_defn_with_specializations_and_multiple_outputs, replace_metafunction_calls_with_split_template_calls
+from _py2tmp.ir0_optimization.split_template_defn_with_multiple_outputs import split_template_defn_with_multiple_outputs, replace_metafunction_calls_with_split_template_calls
 from _py2tmp.ir0_optimization.template_dependency_graph import compute_template_dependency_graph
 from _py2tmp.ir0_optimization.template_instantiation_inlining import perform_template_inlining, perform_template_inlining_on_toplevel_elems
 
@@ -30,17 +30,19 @@ from _py2tmp.ir0_optimization.template_instantiation_inlining import perform_tem
 def _calculate_max_num_optimization_loops(num_templates_in_connected_component):
     # This is just a heuristic. We want to make enough loops to fully optimize the code but without looping forever
     # when there are mutually-recursive functions.
-    return num_templates_in_connected_component * 10 + 10
+    return num_templates_in_connected_component * 20 + 20
 
 def _optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str]):
-    split_template_name_by_old_name_and_result_element_name = dict()
+    from _py2tmp import ir0_builtins
+    split_template_name_by_old_name_and_result_element_name = ir0_builtins.get_split_template_name_by_old_name_and_result_element_name().copy()
+
     new_template_defns = []
     for template_defn in header.template_defns:
         results, needs_another_loop = apply_optimization(template_defn,
                                                          identifier_generator,
-                                                         optimization=lambda: split_template_defn_with_specializations_and_multiple_outputs(template_defn,
-                                                                                                                                            split_template_name_by_old_name_and_result_element_name,
-                                                                                                                                            identifier_generator),
+                                                         optimization=lambda: split_template_defn_with_multiple_outputs(template_defn,
+                                                                                                                        split_template_name_by_old_name_and_result_element_name,
+                                                                                                                        identifier_generator),
                                                          optimization_name='split_template_defn_with_specializations_and_multiple_outputs()')
         assert not needs_another_loop
 
@@ -48,14 +50,14 @@ def _optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterat
             new_template_defns.append(result)
 
     return replace_metafunction_calls_with_split_template_calls(header, identifier_generator, new_template_defns,
-                                                                split_template_name_by_old_name_and_result_element_name)
+                                                                split_template_name_by_old_name_and_result_element_name), split_template_name_by_old_name_and_result_element_name
 
 
 def _optimize_header_second_pass(header: ir0.Header, identifier_generator: Iterator[str]):
     new_template_defns = {elem.name: elem
                           for elem in header.template_defns}
 
-    template_dependency_graph = compute_template_dependency_graph(header, new_template_defns)
+    template_dependency_graph = compute_template_dependency_graph(header.template_defns, new_template_defns)
 
     template_dependency_graph_transitive_closure = nx.transitive_closure(template_dependency_graph)
     assert isinstance(template_dependency_graph_transitive_closure, nx.DiGraph)
@@ -180,7 +182,19 @@ def _optimize_header_third_pass(header: ir0.Header):
 
 def optimize_header(header: ir0.Header, identifier_generator: Iterator[str]):
     header = recalculate_template_instantiation_can_trigger_static_asserts_info(header)
-    header = _optimize_header_first_pass(header, identifier_generator)
+    header, _ = _optimize_header_first_pass(header, identifier_generator)
     header = _optimize_header_second_pass(header, identifier_generator)
     header = _optimize_header_third_pass(header)
     return header
+
+def optimize_builtin_header(header: ir0.Header, identifier_generator: Iterator[str]):
+    header = recalculate_template_instantiation_can_trigger_static_asserts_info(header)
+    header, split_template_name_by_old_name_and_result_element_name = _optimize_header_first_pass(header, identifier_generator)
+    header = ir0.Header(template_defns=header.template_defns,
+                        toplevel_content=header.toplevel_content,
+                        # The client code can depend on the splits directly, so we must make sure not to optimize them
+                        # out even if they're not used here.
+                        public_names=header.public_names.union(split_template_name_by_old_name_and_result_element_name.values()))
+    header = _optimize_header_second_pass(header, identifier_generator)
+    header = _optimize_header_third_pass(header)
+    return header, split_template_name_by_old_name_and_result_element_name

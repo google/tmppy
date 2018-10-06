@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from typing import List, Union
-from _py2tmp import ir0, transform_ir0, ir0_builtins
+from _py2tmp import ir0, transform_ir0, ir0_builtin_literals
 from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import expr_can_trigger_static_asserts
 
 class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
@@ -282,7 +282,7 @@ class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
                 pass
             else:
                 new_args.append(arg)
-        return ir0.ClassMemberAccess(class_type_expr=ir0.TemplateInstantiation(template_expr=ir0_builtins.GlobalLiterals.GET_FIRST_ERROR,
+        return ir0.ClassMemberAccess(class_type_expr=ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.GET_FIRST_ERROR,
                                                                                args=new_args,
                                                                                instantiation_might_trigger_static_asserts=False),
                                      member_type=ir0.TypeType(),

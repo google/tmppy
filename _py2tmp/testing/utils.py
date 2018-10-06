@@ -40,7 +40,7 @@ from _py2tmp import (
     ir0_to_cpp,
     ir0,
     utils,
-)
+    ir0_builtins)
 from _py2tmp import ir3_optimization, ir0_optimization
 
 CHECK_TESTS_WERE_FULLY_OPTIMIZED = True
@@ -77,7 +77,7 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
             ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = -1
             ir0_optimization.ConfigurationKnobs.optimization_step_counter = 0
             ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
-            optimized_cpp_source = run(allow_toplevel_static_asserts_after_optimization=True)
+            run(allow_toplevel_static_asserts_after_optimization=True)
         except (TestFailedException, AttributeError, AssertionError) as e:
             e2 = e
 
@@ -86,6 +86,8 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
 
         if not e1 and not e2:
             if ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0 and not allow_reaching_max_optimization_loops:
+                ir0_optimization.ConfigurationKnobs.verbose = True
+                optimized_cpp_source = run(allow_toplevel_static_asserts_after_optimization=True)
                 raise TestFailedException('The test passed, but hit max_num_remaining_loops.\nOptimized C++ code:\n%s' % optimized_cpp_source)
             if CHECK_TESTS_WERE_FULLY_OPTIMIZED:
                 run(allow_toplevel_static_asserts_after_optimization=False)
@@ -282,7 +284,9 @@ def try_remove_temporary_file(filename):
         pass
 
 def expect_cpp_code_compile_error_helper(check_error_fun, tmppy_source, module_ir2, module_ir1, cxx_source):
-    source_file_name = _create_temporary_file(cxx_source, file_name_suffix='.cpp')
+    cxx_source_with_builtins = ir0_builtins.get_builtins_cpp_code() + cxx_source
+
+    source_file_name = _create_temporary_file(cxx_source_with_builtins, file_name_suffix='.cpp')
 
     try:
         compiler.compile_discarding_output(
@@ -597,13 +601,15 @@ def expect_cpp_code_success(tmppy_source, module_ir2, module_ir1, cxx_source):
     :param source_code: The C++ source code. This will be dedented.
     """
 
-    if 'main(' not in cxx_source:
-        cxx_source += textwrap.dedent('''
+    cxx_source_with_builtins = ir0_builtins.get_builtins_cpp_code() + cxx_source
+
+    if 'main(' not in cxx_source_with_builtins:
+        cxx_source_with_builtins += textwrap.dedent('''
             int main() {
             }
             ''')
 
-    source_file_name = _create_temporary_file(cxx_source, file_name_suffix='.cpp')
+    source_file_name = _create_temporary_file(cxx_source_with_builtins, file_name_suffix='.cpp')
     executable_suffix = {'posix': '', 'nt': '.exe'}[os.name]
     output_file_name = _create_temporary_file('', executable_suffix)
 
@@ -719,7 +725,6 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
         non_optimized_header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
         optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator)
         cpp_source = ir0_to_cpp.header_to_cpp(optimized_header, identifier_generator)
-        cpp_source = utils.clang_format(cpp_source)
 
         if not allow_toplevel_static_asserts_after_optimization:
             for elem in optimized_header.toplevel_content:
@@ -730,7 +735,6 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
                     ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = -1
                     optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator)
                     cpp_source = ir0_to_cpp.header_to_cpp(optimized_header, identifier_generator)
-                    cpp_source = utils.clang_format(cpp_source)
 
                     if ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter:
                         raise TestFailedException('Reached max_num_remaining_loops_counter.')

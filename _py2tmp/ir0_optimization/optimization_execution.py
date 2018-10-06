@@ -70,13 +70,12 @@ def _template_body_elems_to_cpp(elems: List[ir0.TemplateBodyElement],
         if not isinstance(elem, ir0.TemplateDefn):
             assert isinstance(elem, (ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef))
             elems_except_template_defns.append(elem)
-    result = ir0_to_cpp.header_to_cpp(ir0.Header(template_defns=[elem
-                                                                 for elem in elems
-                                                                 if isinstance(elem, ir0.TemplateDefn)],
-                                                 toplevel_content=elems_except_template_defns,
-                                                 public_names=set()),
-                                      identifier_generator)
-    return utils.clang_format(result)
+    return ir0_to_cpp.header_to_cpp(ir0.Header(template_defns=[elem
+                                                               for elem in elems
+                                                               if isinstance(elem, ir0.TemplateDefn)],
+                                               toplevel_content=elems_except_template_defns,
+                                               public_names=set()),
+                                    identifier_generator)
 
 def _expr_to_cpp(expr: ir0.Expr):
     writer = ir0_to_cpp.ToplevelWriter(identifier_generator=iter([]))

@@ -35,7 +35,11 @@ def _unpack_if_variable(expr: ir0.Expr,
         # We keep track of the expr so that we can re-pack this later.
         # If there are multiple they must be the same.
         if expr.cpp_type in literal_expr_by_unique_name:
-            assert expr == literal_expr_by_unique_name[expr.cpp_type]
+            assert expr == literal_expr_by_unique_name[expr.cpp_type], '%s vs %s. Detailed:\n%s\n-- vs --\n%s' % (
+                ir0_to_cpp.expr_to_cpp_simple(expr),
+                ir0_to_cpp.expr_to_cpp_simple(literal_expr_by_unique_name[expr.cpp_type]),
+                utils.ir_to_string(expr),
+                utils.ir_to_string(literal_expr_by_unique_name[expr.cpp_type]))
         else:
             literal_expr_by_unique_name[expr.cpp_type] = expr
 

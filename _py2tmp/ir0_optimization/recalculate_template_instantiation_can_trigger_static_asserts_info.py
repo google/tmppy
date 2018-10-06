@@ -87,7 +87,7 @@ def recalculate_template_instantiation_can_trigger_static_asserts_info(header: i
 
     template_defn_by_name = {template_defn.name: template_defn
                              for template_defn in header.template_defns}
-    template_defn_dependency_graph = compute_template_dependency_graph(header, template_defn_by_name)
+    template_defn_dependency_graph = compute_template_dependency_graph(header.template_defns, template_defn_by_name)
 
     condensed_graph = nx.condensation(template_defn_dependency_graph)
     assert isinstance(condensed_graph, nx.DiGraph)

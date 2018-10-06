@@ -16,18 +16,19 @@ import itertools
 from typing import List, Tuple, Iterator, MutableMapping, Dict
 from _py2tmp import ir0, transform_ir0
 
-# Splits template instantiations with specializations so that there's only 1 result elem.
+# Splits template instantiations with multiple outputs so that there's only 1 result elem.
 # This allows the following inlining passes to inline in more cases.
-def split_template_defn_with_specializations_and_multiple_outputs(template_defn: ir0.TemplateDefn,
-                                                                  split_template_name_by_old_name_and_result_element_name: MutableMapping[Tuple[str, str], str],
-                                                                  identifier_generator: Iterator[str]) -> Tuple[List[ir0.TemplateDefn], bool]:
+def split_template_defn_with_multiple_outputs(template_defn: ir0.TemplateDefn,
+                                              split_template_name_by_old_name_and_result_element_name: MutableMapping[Tuple[str, str], str],
+                                              identifier_generator: Iterator[str]) -> Tuple[List[ir0.TemplateDefn], bool]:
     type_by_result_elem_name = {elem.name: elem.expr.expr_type
                                 for specialization in itertools.chain([template_defn.main_definition] if template_defn.main_definition else [],
                                                                       template_defn.specializations)
                                 for elem in specialization.body
                                 if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.name in template_defn.result_element_names}
     actual_result_elem_names = list(sorted(type_by_result_elem_name.keys()))
-    if not template_defn.specializations or len(type_by_result_elem_name) <= 1:
+    if len(type_by_result_elem_name) <= 1 or any(not specialization.is_metafunction
+                                                 for specialization in itertools.chain([template_defn.main_definition] if template_defn.main_definition else [], template_defn.specializations)):
         return [template_defn], False
 
     new_template_defns = []
@@ -39,7 +40,7 @@ def split_template_defn_with_specializations_and_multiple_outputs(template_defn:
                                                                        specializations=template_defn.specializations,
                                                                        name=split_template_name_by_old_name_and_result_element_name.setdefault((template_defn.name, result_elem),
                                                                                                                                                next(identifier_generator)),
-                                                                       description='Split that generates %s of: %s' % (result_elem, template_defn.description),
+                                                                           description='Split that generates %s of: %s' % (result_elem, template_defn.description or template_defn.name),
                                                                        result_element_names=[result_elem],
                                                                        args=args)
                                          for result_elem in actual_result_elem_names}

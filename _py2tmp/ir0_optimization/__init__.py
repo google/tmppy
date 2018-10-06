@@ -12,5 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _py2tmp.ir0_optimization.optimize_ir0 import optimize_header
+from _py2tmp.ir0_optimization.optimize_ir0 import optimize_header, optimize_builtin_header
 from _py2tmp.ir0_optimization.configuration_knobs import ConfigurationKnobs, DEFAULT_VERBOSE_SETTING

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import itertools
 import re
 import textwrap
 from _py2tmp import ir3
@@ -201,13 +202,18 @@ class CompilationError(Exception):
                         line=compilation_context.source_lines[first_line_number - 1],
                         error_marker=error_marker)
 
-def module_ast_to_ir3(module_ast_node: ast.Module, filename: str, source_lines: List[str], identifier_generator: Iterator[str]):
+def module_ast_to_ir3(module_ast_node: ast.Module,
+                      filename: str,
+                      source_lines: List[str],
+                      identifier_generator: Iterator[str]):
     compilation_context = CompilationContext(SymbolTable(),
                                              SymbolTable(),
                                              filename,
                                              source_lines,
                                              identifier_generator)
+    return module_ast_to_ir3_internal(module_ast_node, compilation_context)
 
+def module_ast_to_ir3_internal(module_ast_node: ast.Module, compilation_context: CompilationContext):
     function_defns = []
     toplevel_assertions = []
     custom_types = []

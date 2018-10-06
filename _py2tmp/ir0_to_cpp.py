@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from typing import List, Iterator, Tuple, Union, Callable
-from _py2tmp import ir0, transform_ir0, utils
+from _py2tmp import ir0, transform_ir0, utils, ir0_builtins
 from _py2tmp.ir0_optimization import optimize_ir0
 
 class Writer:
@@ -372,7 +372,7 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
                                   omit_typename=False):
     args = instantiation_expr.args
 
-    if instantiation_expr.instantiation_might_trigger_static_asserts and enclosing_function_defn_args:
+    if instantiation_expr.instantiation_might_trigger_static_asserts and enclosing_function_defn_args and args:
         bound_variables = {arg_decl.name
                            for arg_decl in enclosing_function_defn_args}
         assert bound_variables
@@ -620,88 +620,88 @@ def compute_template_defns_that_must_come_before(template_defn: ir0.TemplateDefn
             for specialization in specializations
             for template_name in compute_template_defns_that_must_come_before_specialization(specialization)}
 
-def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
-    writer = ToplevelWriter(identifier_generator)
-    writer.write_toplevel_elem('''\
-        #include <tmppy/tmppy.h>
-        #include <type_traits>
-        ''')
+def template_defns_to_cpp(template_defns: List[ir0.TemplateDefn], writer: ToplevelWriter):
+    template_defn_by_template_name = {elem.name: elem
+                                      for elem in template_defns}
 
-    if header.template_defns:
-        template_defn_by_template_name = {elem.name: elem
-                                          for elem in header.template_defns}
-
-        template_dependency_graph = optimize_ir0.compute_template_dependency_graph(header, template_defn_by_template_name)
+    template_dependency_graph = optimize_ir0.compute_template_dependency_graph(template_defns, template_defn_by_template_name)
+    if template_dependency_graph.number_of_nodes():
         template_dependency_graph_condensed = utils.compute_condensation_in_topological_order(template_dependency_graph)
+    else:
+        template_dependency_graph_condensed = []
 
-        for connected_component_names in reversed(list(template_dependency_graph_condensed)):
-            connected_component = sorted([template_defn_by_template_name[template_name]
-                                          for template_name in connected_component_names],
-                                         key=lambda template_defn: template_defn.name)
+    for connected_component_names in reversed(list(template_dependency_graph_condensed)):
+        connected_component = sorted([template_defn_by_template_name[template_name]
+                                      for template_name in connected_component_names],
+                                     key=lambda template_defn: template_defn.name)
 
-            if len(connected_component) > 1:
-                # There's a dependency loop with >1 templates, we first need to emit all forward decls.
-                for template_defn in connected_component:
-                    template_defn_to_cpp_forward_decl(template_defn,
-                                                      enclosing_function_defn_args=[],
-                                                      writer=writer)
-            else:
-                [template_defn] = connected_component
-                if not template_defn.main_definition:
-                    # There's no loop here, but this template has only specializations and no main definition, so we need the
-                    # forward declaration anyway.
-                    template_defn_to_cpp_forward_decl(template_defn,
-                                                      enclosing_function_defn_args=[],
-                                                      writer=writer)
-
-            template_defns_that_must_be_last = set()
+        if len(connected_component) > 1:
+            # There's a dependency loop with >1 templates, we first need to emit all forward decls.
             for template_defn in connected_component:
-                template_order_dependencies = compute_template_defns_that_must_come_before(template_defn)
-                if any(template_name in connected_component_names
-                       for template_name in template_order_dependencies):
-                    # This doesn't only need to be before the ones it immediately references, it really needs to be last
-                    # since these templates instantiate each other in a cycle.
-                    template_defns_that_must_be_last.add(template_defn.name)
+                template_defn_to_cpp_forward_decl(template_defn,
+                                                  enclosing_function_defn_args=[],
+                                                  writer=writer)
+        else:
+            [template_defn] = connected_component
+            if not template_defn.main_definition:
+                # There's no loop here, but this template has only specializations and no main definition, so we need the
+                # forward declaration anyway.
+                template_defn_to_cpp_forward_decl(template_defn,
+                                                  enclosing_function_defn_args=[],
+                                                  writer=writer)
 
-            assert len(template_defns_that_must_be_last) <= 1, 'Found multiple template defns that must appear before each other: ' + ', '.join(template_defns_that_must_be_last)
+        template_defns_that_must_be_last = set()
+        for template_defn in connected_component:
+            template_order_dependencies = compute_template_defns_that_must_come_before(template_defn)
+            if any(template_name in connected_component_names
+                   for template_name in template_order_dependencies):
+                # This doesn't only need to be before the ones it immediately references, it really needs to be last
+                # since these templates instantiate each other in a cycle.
+                template_defns_that_must_be_last.add(template_defn.name)
 
-            for template_defn in connected_component:
-                if template_defn.name not in template_defns_that_must_be_last:
-                    template_defn_to_cpp(template_defn,
-                                         enclosing_function_defn_args=[],
-                                         writer=writer)
+        assert len(template_defns_that_must_be_last) <= 1, 'Found multiple template defns that must appear before each other: ' + ', '.join(template_defns_that_must_be_last)
 
-            for template_defn in connected_component:
-                if template_defn.name in template_defns_that_must_be_last:
-                    specializations = list(template_defn.specializations or tuple())
-                    if template_defn.main_definition:
-                        specializations.append(template_defn.main_definition)
+        for template_defn in connected_component:
+            if template_defn.name not in template_defns_that_must_be_last:
+                template_defn_to_cpp(template_defn,
+                                     enclosing_function_defn_args=[],
+                                     writer=writer)
 
-                    last_specialization: ir0.TemplateSpecialization = None
-                    for specialization in specializations:
-                        if any(template_name in connected_component_names
-                               for template_name in compute_template_defns_that_must_come_before_specialization(specialization)):
-                            assert last_specialization is None, 'Found multiple specializations of ' + template_defn.name + ' that must appear before each other: ' + ', '.join(template_defns_that_must_be_last)
-                            last_specialization = specialization
-                        else:
-                            if template_defn.description:
-                                writer.write_toplevel_elem('// %s\n' % template_defn.description)
-                            template_specialization_to_cpp(specialization,
-                                                           cxx_name=template_defn.name,
-                                                           enclosing_function_defn_args=[],
-                                                           writer=writer)
+        for template_defn in connected_component:
+            if template_defn.name in template_defns_that_must_be_last:
+                specializations = list(template_defn.specializations or tuple())
+                if template_defn.main_definition:
+                    specializations.append(template_defn.main_definition)
 
-                    if last_specialization:
+                last_specialization: ir0.TemplateSpecialization = None
+                for specialization in specializations:
+                    if any(template_name in connected_component_names
+                           for template_name in compute_template_defns_that_must_come_before_specialization(specialization)):
+                        assert last_specialization is None, 'Found multiple specializations of ' + template_defn.name + ' that must appear before each other: ' + ', '.join(template_defns_that_must_be_last)
+                        last_specialization = specialization
+                    else:
                         if template_defn.description:
                             writer.write_toplevel_elem('// %s\n' % template_defn.description)
-                        template_specialization_to_cpp(last_specialization,
+                        template_specialization_to_cpp(specialization,
                                                        cxx_name=template_defn.name,
                                                        enclosing_function_defn_args=[],
                                                        writer=writer)
 
+                if last_specialization:
+                    if template_defn.description:
+                        writer.write_toplevel_elem('// %s\n' % template_defn.description)
+                    template_specialization_to_cpp(last_specialization,
+                                                   cxx_name=template_defn.name,
+                                                   enclosing_function_defn_args=[],
+                                                   writer=writer)
+
+def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
+    writer = ToplevelWriter(identifier_generator)
+    template_defns_to_cpp(header.template_defns, writer)
+
     for elem in header.toplevel_content:
         toplevel_elem_to_cpp(elem, writer)
-    return ''.join(writer.strings)
+    return utils.clang_format(''.join(writer.strings))
 
 def type_expr_to_cpp(expr: ir0.Expr,
                      enclosing_function_defn_args: List[ir0.TemplateArgDecl],
