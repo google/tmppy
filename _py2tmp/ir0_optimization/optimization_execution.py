@@ -17,11 +17,31 @@ from typing import Iterator, Callable, Tuple, List, Union
 from _py2tmp import ir0, ir0_to_cpp, utils
 from _py2tmp.ir0_optimization.configuration_knobs import ConfigurationKnobs
 
-def apply_optimization(template_defn: ir0.TemplateDefn,
-                       identifier_generator: Iterator[str],
-                       optimization: Callable[[], Tuple[List[ir0.TemplateDefn], bool]],
-                       optimization_name: str,
-                       other_context: Callable[[], str] = lambda: ''):
+def apply_header_optimization(header: ir0.Header,
+                              identifier_generator: Iterator[str],
+                              optimization: Callable[[], Tuple[ir0.Header, bool]],
+                              optimization_name: str,
+                              other_context: Callable[[], str] = lambda: ''):
+    if ConfigurationKnobs.max_num_optimization_steps == 0:
+        return header, False
+    ConfigurationKnobs.optimization_step_counter += 1
+    if ConfigurationKnobs.max_num_optimization_steps > 0:
+        ConfigurationKnobs.max_num_optimization_steps -= 1
+
+    new_header, needs_another_loop = optimization()
+
+    if ConfigurationKnobs.verbose:
+        original_cpp = header_to_cpp(header, identifier_generator)
+        optimized_cpp = header_to_cpp(new_header, identifier_generator)
+        _compare_optimized_cpp_to_original(original_cpp, optimized_cpp, optimization_name=optimization_name, other_context=other_context())
+
+    return new_header, needs_another_loop
+
+def apply_template_defn_optimization(template_defn: ir0.TemplateDefn,
+                                     identifier_generator: Iterator[str],
+                                     optimization: Callable[[], Tuple[List[ir0.TemplateDefn], bool]],
+                                     optimization_name: str,
+                                     other_context: Callable[[], str] = lambda: ''):
     if ConfigurationKnobs.max_num_optimization_steps == 0:
         return [template_defn], False
     ConfigurationKnobs.optimization_step_counter += 1
@@ -58,6 +78,9 @@ def apply_toplevel_elems_optimization(toplevel_elems: List[Union[ir0.StaticAsser
 
     return new_toplevel_elems, needs_another_loop
 
+def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
+    return ir0_to_cpp.header_to_cpp(header, identifier_generator)
+
 def template_defn_to_cpp(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
     writer = ir0_to_cpp.ToplevelWriter(identifier_generator)
     ir0_to_cpp.template_defn_to_cpp(template_defn, enclosing_function_defn_args=[], writer=writer)
@@ -73,9 +96,9 @@ def _template_body_elems_to_cpp(elems: List[ir0.TemplateBodyElement],
     return ir0_to_cpp.header_to_cpp(ir0.Header(template_defns=[elem
                                                                for elem in elems
                                                                if isinstance(elem, ir0.TemplateDefn)],
-                                               toplevel_content=elems_except_template_defns,
-                                               public_names=set(),
-                                               split_template_name_by_old_name_and_result_element_name=dict()),
+                                               toplevel_content=elems_except_template_defns, public_names=set(),
+                                               split_template_name_by_old_name_and_result_element_name=dict(),
+                                               check_if_error_specializations=[]),
                                     identifier_generator)
 
 def _expr_to_cpp(expr: ir0.Expr):

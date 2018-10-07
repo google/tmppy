@@ -11,15 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import itertools
 from typing import Dict, Iterator, Set, List, Union
-from _py2tmp import ir0, transform_ir0, ir0_builtins, ir0_builtin_literals
+from _py2tmp import ir0, transform_ir0, ir0_builtin_literals
+from _py2tmp.tmppy_object_file import ObjectFileContent
 from _py2tmp.ir0_optimization import unify_ir0
 from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
 from _py2tmp.ir0_optimization.configuration_knobs import ConfigurationKnobs
 from _py2tmp.ir0_optimization.local_optimizations import perform_local_optimizations_on_toplevel_elems, \
     perform_local_optimizations_on_template_defn
-from _py2tmp.ir0_optimization.optimization_execution import apply_optimization, apply_toplevel_elems_optimization, \
+from _py2tmp.ir0_optimization.optimization_execution import apply_template_defn_optimization, apply_toplevel_elems_optimization, \
     template_defn_to_cpp
 from _py2tmp.ir0_optimization.replace_var_with_expr import replace_var_with_expr_in_template_body_elements, \
     VariadicVarReplacementNotPossibleException, replace_var_with_expr_in_expr
@@ -136,16 +137,22 @@ TEMPLATE_DEFNS_DEFINED_AS_IR0 = [
      for type2, name2 in _select1st_type_and_name
 ]
 
-def _getGloballyInlineableTemplatesByName():
-    template_defns = TEMPLATE_DEFNS_DEFINED_AS_IR0 + ir0_builtins.get_builtin_templates()
-    return {template_defn.name: template_defn
-            for template_defn in template_defns}
+def _with_global_inlineable_templates(context_object_file_content: ObjectFileContent,
+                                      local_inlineable_templates: List[ir0.TemplateDefn]):
+    result = {template_defn.name: template_defn
+              for module_info in context_object_file_content.modules_by_name.values()
+              for template_defn in module_info.ir0_header.template_defns}
+    for template_defn in itertools.chain(local_inlineable_templates, TEMPLATE_DEFNS_DEFINED_AS_IR0):
+        result[template_defn.name] = template_defn
+    return result
 
 class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
-    def __init__(self, inlineable_templates_by_name: Dict[str, ir0.TemplateDefn]):
+    def __init__(self,
+                 local_inlineable_templates: List[ir0.TemplateDefn],
+                 context_object_file_content: ObjectFileContent):
         super().__init__()
         self.needs_another_loop = False
-        self.inlineable_templates_by_name = inlineable_templates_by_name.copy()
+        self.inlineable_templates_by_name = _with_global_inlineable_templates(context_object_file_content, local_inlineable_templates)
         self.parent_template_specialization_definitions = dict()
 
     def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: transform_ir0.Writer):
@@ -188,11 +195,6 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
                 and class_member_access.expr.template_expr.cpp_type in self.inlineable_templates_by_name):
             template_instantiation = class_member_access.expr
             template_defn_to_inline = self.inlineable_templates_by_name[template_instantiation.template_expr.cpp_type]
-        elif (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
-              and isinstance(class_member_access.expr.template_expr, ir0.AtomicTypeLiteral)
-              and class_member_access.expr.template_expr.cpp_type in _getGloballyInlineableTemplatesByName()):
-            template_instantiation = class_member_access.expr
-            template_defn_to_inline = _getGloballyInlineableTemplatesByName()[template_instantiation.template_expr.cpp_type]
         else:
             return class_member_access
 
@@ -326,7 +328,8 @@ def _ensure_remains_variadic_if_it_was(original_expr: ir0.Expr, transformed_expr
 def perform_template_inlining(template_defn: ir0.TemplateDefn,
                               inlineable_refs: Set[str],
                               template_defn_by_name: Dict[str, ir0.TemplateDefn],
-                              identifier_generator: Iterator[str]):
+                              identifier_generator: Iterator[str],
+                              context_object_file_content: ObjectFileContent):
     template_defn, needs_another_loop1 = perform_local_optimizations_on_template_defn(template_defn,
                                                                                       identifier_generator,
                                                                                       inline_template_instantiations_with_multiple_references=True)
@@ -334,26 +337,28 @@ def perform_template_inlining(template_defn: ir0.TemplateDefn,
     def perform_optimization():
         if ConfigurationKnobs.verbose:
             print('Considering inlining templates: %s in template: %s' % (inlineable_refs, template_defn.name))
-        transformation = _TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
-                                                                       for template_name in inlineable_refs})
+        transformation = _TemplateInstantiationInliningTransformation([template_defn_by_name[template_name]
+                                                                       for template_name in inlineable_refs],
+                                                                      context_object_file_content)
 
         writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
         transformation.transform_template_defn(template_defn, writer)
         return writer.template_defns, transformation.needs_another_loop
 
-    [template_defn], needs_another_loop2 = apply_optimization(template_defn,
-                                                              identifier_generator,
-                                                              optimization=perform_optimization,
-                                                              optimization_name='TemplateInstantiationInliningTransformation',
-                                                              other_context=lambda: 'Potentially inlineable template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
-                                                                                                                                      for template_name in inlineable_refs) + '\n')
+    [template_defn], needs_another_loop2 = apply_template_defn_optimization(template_defn,
+                                                                            identifier_generator,
+                                                                            optimization=perform_optimization,
+                                                                            optimization_name='TemplateInstantiationInliningTransformation',
+                                                                            other_context=lambda: 'Potentially inlineable template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
+                                                                                                                                                    for template_name in inlineable_refs) + '\n')
 
     return template_defn, needs_another_loop1 or needs_another_loop2
 
 def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
                                                 inlineable_refs: Set[str],
                                                 template_defn_by_name: Dict[str, ir0.TemplateDefn],
-                                                identifier_generator: Iterator[str]):
+                                                identifier_generator: Iterator[str],
+                                                context_object_file_content: ObjectFileContent):
     toplevel_elems, needs_another_loop1 = perform_local_optimizations_on_toplevel_elems(toplevel_elems,
                                                                                         identifier_generator,
                                                                                         inline_template_instantiations_with_multiple_references=True)
@@ -361,8 +366,9 @@ def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir0.S
     def perform_optimization():
         if ConfigurationKnobs.verbose:
             print('Considering inlining templates: %s in toplevel elems' % inlineable_refs)
-        transformation = _TemplateInstantiationInliningTransformation({template_name: template_defn_by_name[template_name]
-                                                                       for template_name in inlineable_refs})
+        transformation = _TemplateInstantiationInliningTransformation([template_defn_by_name[template_name]
+                                                                       for template_name in inlineable_refs],
+                                                                      context_object_file_content)
 
         writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False, allow_template_defns=False)
         elems = transformation.transform_template_body_elems(toplevel_elems, writer)

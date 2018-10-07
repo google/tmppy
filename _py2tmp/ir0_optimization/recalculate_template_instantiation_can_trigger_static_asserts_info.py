@@ -15,8 +15,11 @@
 from collections import defaultdict
 from typing import Dict
 import networkx as nx
-from _py2tmp import ir0, transform_ir0
+from _py2tmp import ir0, transform_ir0, ir0_builtin_literals
 from _py2tmp.ir0_optimization.template_dependency_graph import compute_template_dependency_graph
+
+def _is_global_literal_that_cannot_trigger_static_asserts(literal: ir0.AtomicTypeLiteral):
+    return literal.cpp_type in ir0_builtin_literals.GLOBAL_LITERALS_BY_NAME and literal.cpp_type != 'CheckIfError'
 
 class _CanTriggerStaticAsserts(transform_ir0.Transformation):
     def __init__(self):
@@ -29,7 +32,12 @@ class _CanTriggerStaticAsserts(transform_ir0.Transformation):
     def transform_template_instantiation(self,
                                          template_instantiation: ir0.TemplateInstantiation,
                                          writer: transform_ir0.Writer):
-        self.can_trigger_static_asserts |= template_instantiation.instantiation_might_trigger_static_asserts
+        if (isinstance(template_instantiation.template_expr, ir0.AtomicTypeLiteral)
+                and _is_global_literal_that_cannot_trigger_static_asserts(template_instantiation.template_expr)):
+            # Skip this instantiation, we'll set instantiation_might_trigger_static_asserts=False here later
+            pass
+        else:
+            self.can_trigger_static_asserts |= template_instantiation.instantiation_might_trigger_static_asserts
 
     def transform_template_specialization(self,
                                           specialization: ir0.TemplateSpecialization,
@@ -57,8 +65,11 @@ class _ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(transform_ir0.Trans
 
     def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: transform_ir0.Writer):
         if isinstance(template_instantiation.template_expr, ir0.AtomicTypeLiteral):
-            instantiation_might_trigger_static_asserts = self.template_instantiation_can_trigger_static_asserts.get(template_instantiation.template_expr.cpp_type,
-                                                                                                                    template_instantiation.instantiation_might_trigger_static_asserts)
+            if _is_global_literal_that_cannot_trigger_static_asserts(template_instantiation.template_expr):
+                instantiation_might_trigger_static_asserts = False
+            else:
+                instantiation_might_trigger_static_asserts = self.template_instantiation_can_trigger_static_asserts.get(template_instantiation.template_expr.cpp_type,
+                                                                                                                        template_instantiation.instantiation_might_trigger_static_asserts)
             return ir0.TemplateInstantiation(template_expr=self.transform_expr(template_instantiation.template_expr, writer),
                                              args=self.transform_exprs(template_instantiation.args, template_instantiation, writer),
                                              instantiation_might_trigger_static_asserts=instantiation_might_trigger_static_asserts)

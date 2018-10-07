@@ -13,11 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List
+from typing import Dict, Iterable
+
 import networkx as nx
+
 from _py2tmp import ir0
 
-def compute_template_dependency_graph(template_defns: List[ir0.TemplateDefn], template_defn_by_name: Dict[str, ir0.TemplateDefn]):
+
+def compute_template_dependency_graph(template_defns: Iterable[ir0.TemplateDefn], template_defn_by_name: Dict[str, ir0.TemplateDefn]):
     template_dependency_graph = nx.DiGraph()
     for template_defn in template_defns:
         template_dependency_graph.add_node(template_defn.name)

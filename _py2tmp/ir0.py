@@ -568,10 +568,11 @@ class VariadicTypeExpansion(UnaryExpr):
 class Header:
     def __init__(self,
                  template_defns: Sequence[TemplateDefn],
-                 toplevel_content: Sequence[Union[StaticAssert, ConstantDef, Typedef]],
-                 public_names: Set[str],
+                 check_if_error_specializations: Sequence[TemplateSpecialization],
+                 toplevel_content: Sequence[Union[StaticAssert, ConstantDef, Typedef]], public_names: Set[str],
                  split_template_name_by_old_name_and_result_element_name: Dict[Tuple[str, str], str]):
-        self.template_defns = template_defns
+        self.template_defns = tuple(template_defns)
+        self.check_if_error_specializations = tuple(check_if_error_specializations)
         self.toplevel_content = tuple(toplevel_content)
         self.public_names = public_names
         self.split_template_name_by_old_name_and_result_element_name = split_template_name_by_old_name_and_result_element_name

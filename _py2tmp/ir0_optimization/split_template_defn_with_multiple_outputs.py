@@ -105,8 +105,10 @@ def replace_metafunction_calls_with_split_template_calls(header, identifier_gene
                                                          split_template_name_by_old_name_and_result_element_name):
     transformation = ReplaceMetafunctionCallWithSplitTemplateCallTransformation(
         split_template_name_by_old_name_and_result_element_name)
-    return transformation.transform_header(ir0.Header(template_defns=new_template_defns,
-                                                      toplevel_content=header.toplevel_content,
-                                                      public_names=header.public_names,
-                                                      split_template_name_by_old_name_and_result_element_name=split_template_name_by_old_name_and_result_element_name),
-                                           identifier_generator)
+    return transformation.transform_header(
+        ir0.Header(template_defns=new_template_defns,
+                   toplevel_content=header.toplevel_content,
+                   public_names=header.public_names,
+                   split_template_name_by_old_name_and_result_element_name=split_template_name_by_old_name_and_result_element_name,
+                   check_if_error_specializations=header.check_if_error_specializations),
+        identifier_generator)

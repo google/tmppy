@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Dict
 
 from _py2tmp import ir0
 
@@ -233,4 +234,4 @@ def select1st_literal(lhs_type: ir0.ExprType, rhs_type: ir0.ExprType):
 
 GLOBAL_LITERALS_BY_NAME = {x.cpp_type: x
                            for x in GlobalLiterals.__dict__.values()
-                           if isinstance(x, ir0.AtomicTypeLiteral)}
+                           if isinstance(x, ir0.AtomicTypeLiteral)}  # type: Dict[str, ir0.AtomicTypeLiteral]

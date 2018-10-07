@@ -11,9 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from typing import List, Iterator, Tuple, Union, Callable
-from _py2tmp import ir0, transform_ir0, utils, ir0_builtins
+import itertools
+from typing import List, Iterator, Tuple, Union, Callable, Iterable
+from _py2tmp import ir0, transform_ir0, utils
 from _py2tmp.ir0_optimization import optimize_ir0
 
 class Writer:
@@ -620,7 +620,7 @@ def compute_template_defns_that_must_come_before(template_defn: ir0.TemplateDefn
             for specialization in specializations
             for template_name in compute_template_defns_that_must_come_before_specialization(specialization)}
 
-def template_defns_to_cpp(template_defns: List[ir0.TemplateDefn], writer: ToplevelWriter):
+def template_defns_to_cpp(template_defns: Iterable[ir0.TemplateDefn], writer: ToplevelWriter):
     template_defn_by_template_name = {elem.name: elem
                                       for elem in template_defns}
 
@@ -697,6 +697,10 @@ def template_defns_to_cpp(template_defns: List[ir0.TemplateDefn], writer: Toplev
 
 def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
     writer = ToplevelWriter(identifier_generator)
+    writer.write_toplevel_elem('''\
+        #include <tmppy/tmppy.h>
+        #include <type_traits>
+        ''')
     template_defns_to_cpp(header.template_defns, writer)
 
     for elem in header.toplevel_content:

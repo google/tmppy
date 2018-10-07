@@ -211,9 +211,6 @@ def module_ast_to_ir3(module_ast_node: ast.Module,
                                              filename,
                                              source_lines,
                                              identifier_generator)
-    return module_ast_to_ir3_internal(module_ast_node, compilation_context)
-
-def module_ast_to_ir3_internal(module_ast_node: ast.Module, compilation_context: CompilationContext):
     function_defns = []
     toplevel_assertions = []
     custom_types = []

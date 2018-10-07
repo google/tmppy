@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from _py2tmp import ir0, ir1, transform_ir0, ir0_builtin_literals
-from typing import Tuple, Optional, Iterator, Union, Callable, Dict, List, Sequence
+from typing import Tuple, Optional, Iterator, Union, Callable, Dict, List, Sequence, Set
 
 
 class Writer:
@@ -29,6 +29,7 @@ class ToplevelWriter(Writer):
     def __init__(self, identifier_generator: Iterator[str]):
         self.identifier_generator = identifier_generator
         self.template_defns = []  # type: List[ir0.TemplateDefn]
+        self.check_if_error_specializations = []  # type: List[ir0.TemplateSpecialization]
         self.toplevel_content = []  # type: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]]
         self.holder_template_name_for_error = dict()  # type: Dict[str, str]
         self.is_instance_template_name_for_error = dict()  # type: Dict[str, str]
@@ -42,6 +43,9 @@ class ToplevelWriter(Writer):
 
     def write_template_defn(self, template_defn: ir0.TemplateDefn):
         self.template_defns.append(template_defn)
+
+    def write_check_if_error_specialization(self, specialization: ir0.TemplateSpecialization):
+        self.check_if_error_specializations.append(specialization)
 
     def set_holder_template_name_for_error(self,
                                            error_name: str,
@@ -362,6 +366,7 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
                                              for expr in pattern_result_exprs_before_rename]
         assert not transformation_writer.template_defns
         assert not transformation_writer.toplevel_content
+        assert not transformation_writer.check_if_error_specializations
 
         specialization_patterns = forwarded_args_patterns + pattern_result_exprs_after_rename
 
@@ -1035,7 +1040,7 @@ def assignment_to_ir0(assignment: ir1.Assignment, writer: Writer):
         assert isinstance(rhs_error.expr_type, ir0.TypeType)
         writer.write_elem(ir0.Typedef(name=lhs2.cpp_type, expr=rhs_error))
 
-def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter):
+def custom_type_defn_to_ir0(custom_type: ir1.CustomType, public_names: Set[str], writer: ToplevelWriter):
     # For example, from the following custom type:
     #
     # class MyType:
@@ -1098,6 +1103,9 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, writer: ToplevelWriter)
                                        result_element_names=[arg.name
                                                              for arg in custom_type.arg_types])
     writer.write_template_defn(holder_template)
+
+    # This is referenced by CheckIfError (at least).
+    public_names.add(holder_template_id)
 
     constructor_fn_typedef = ir0.Typedef(name='type',
                                          expr=ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.from_nonlocal_template_defn(holder_template,
@@ -1507,15 +1515,6 @@ def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter
         raise e
 
 def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer: ToplevelWriter):
-    # template <typename>
-    # struct CheckIfError {
-    #   using type = void;
-    # };
-    main_definition = ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(expr_type=ir0.TypeType(), name=writer.new_id(), is_variadic=False)],
-                                                 patterns=None,
-                                                 body=[ir0.Typedef(name='type',
-                                                                   expr=ir0.AtomicTypeLiteral.for_nonlocal_type('void', may_be_alias=False))],
-                                                 is_metafunction=True)
     # template <int x, bool b, typename T>
     # struct CheckIfError<MyErrorHolder<x, b, T>> {
     #   static_assert(Select1stBoolBool<false, x>::value,
@@ -1543,11 +1542,8 @@ def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer
                                                                     expr=ir0.AtomicTypeLiteral.for_nonlocal_type('void', may_be_alias=False))],
                                                   is_metafunction=True)
                        for custom_error_type, error_message in check_if_error_defn.error_types_and_messages]
-    writer.write_template_defn(ir0.TemplateDefn(name='CheckIfError',
-                                                description='',
-                                                main_definition=main_definition,
-                                                specializations=specializations,
-                                                result_element_names=['type']))
+    for specialization in specializations:
+        writer.write_check_if_error_specialization(specialization)
 
 def check_if_error_stmt_to_ir0(stmt: ir1.CheckIfErrorStmt, writer: ToplevelWriter):
     # using x99 = CheckIfError<X>::type;
@@ -1569,15 +1565,15 @@ def module_to_ir0(module: ir1.Module, identifier_generator: Iterator[str]):
         elif isinstance(toplevel_elem, ir1.Assignment):
             assignment_to_ir0(toplevel_elem, writer)
         elif isinstance(toplevel_elem, ir1.CustomType):
-            custom_type_defn_to_ir0(toplevel_elem, writer)
+            custom_type_defn_to_ir0(toplevel_elem, public_names, writer)
         elif isinstance(toplevel_elem, ir1.CheckIfErrorDefn):
             check_if_error_defn_to_ir0(toplevel_elem, writer)
-            public_names.add('CheckIfError')
         elif isinstance(toplevel_elem, ir1.CheckIfErrorStmt):
             check_if_error_stmt_to_ir0(toplevel_elem, writer)
         else:
             raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
     return ir0.Header(template_defns=writer.template_defns,
+                      check_if_error_specializations=writer.check_if_error_specializations,
                       toplevel_content=writer.toplevel_content,
                       public_names=public_names,
                       split_template_name_by_old_name_and_result_element_name=dict())

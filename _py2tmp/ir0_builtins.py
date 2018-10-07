@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib.util as importlib_util
-import itertools
 from functools import lru_cache
 from typing import List, Optional, Sequence
 
-import typed_ast.ast3 as ast
-
 from _py2tmp import ir0, ir0_builtin_literals
+from _py2tmp.compile import compile
 from _py2tmp.ir0_optimization import configuration_knobs
+from _py2tmp.tmppy_object_file import ModuleInfo
 
 
 def _type_arg_decl(name: str):
@@ -252,12 +251,7 @@ def _specialization(args: List[ir0.TemplateArgDecl],
                                                                           expr=type_expr)],
                                           is_metafunction=True)
 
-class _BuiltinTemplatesHolder:
-    initialized = False
-    initializing = False
-    BUILTIN_TEMPLATES: List[ir0.TemplateDefn] = []
-    identifier_generator = None
-    split_template_name_by_old_name_and_result_element_name = dict()
+BUILTIN_TEMPLATES = []
 
 def _define_template(main_definition: Optional[ir0.TemplateSpecialization],
                      specializations: Sequence[ir0.TemplateSpecialization],
@@ -265,12 +259,12 @@ def _define_template(main_definition: Optional[ir0.TemplateSpecialization],
                      result_element_name: str,
                      args: Optional[Sequence[ir0.TemplateArgDecl]] = None,
                      has_error: bool = False):
-    _BuiltinTemplatesHolder.BUILTIN_TEMPLATES.append(ir0.TemplateDefn(main_definition=main_definition,
-                                                                      specializations=specializations,
-                                                                      name=name,
-                                                                      description='',
-                                                                      result_element_names=[result_element_name] + (['error'] if has_error else []),
-                                                                      args=args))
+    BUILTIN_TEMPLATES.append(ir0.TemplateDefn(main_definition=main_definition,
+                                              specializations=specializations,
+                                              name=name,
+                                              description='',
+                                              result_element_names=[result_element_name] + (['error'] if has_error else []),
+                                              args=args))
 
 def _define_template_with_no_specializations(name: str,
                                              args: List[ir0.TemplateArgDecl],
@@ -587,69 +581,25 @@ _define_template_with_single_specialization(name='TypeListToSet',
                                                                           ir0_builtin_literals.GlobalLiterals.ADD_TO_TYPE_SET,
                                                                           ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))
 
-def get_builtin_templates():
-    from _py2tmp import ast_to_ir3, ir3_optimization, ir3_to_ir2, ir2_to_ir1, ir1_to_ir0, ir0_optimization
-
-    if _BuiltinTemplatesHolder.initialized or _BuiltinTemplatesHolder.initializing:
-        return _BuiltinTemplatesHolder.BUILTIN_TEMPLATES
-    _BuiltinTemplatesHolder.initializing = True
-
-    tmppy_builtins_file_name = importlib_util.find_spec('_py2tmp.tmppy_builtins').origin
-    with open(tmppy_builtins_file_name) as tmppy_builtins_file:
-        _builtins_source = tmppy_builtins_file.read()
-    builtins_ast = ast.parse(_builtins_source, filename=tmppy_builtins_file_name)
-
-    def identifier_generator_fun():
-        for i in itertools.count():
-            yield 'TmppyInternalBuiltin_%s' % i
-
-    identifier_generator = iter(identifier_generator_fun())
-    _BuiltinTemplatesHolder.identifier_generator = identifier_generator
-    compilation_context = ast_to_ir3.CompilationContext(ast_to_ir3.SymbolTable(),
-                                                        ast_to_ir3.SymbolTable(),
-                                                        'tmppy_builtins.py',
-                                                        _builtins_source.splitlines(),
-                                                        identifier_generator)
-    module_ir3 = ast_to_ir3.module_ast_to_ir3_internal(builtins_ast, compilation_context)
-    module_ir3 = ir3_optimization.optimize_module(module_ir3)
-    module_ir2 = ir3_to_ir2.module_to_ir2(module_ir3, identifier_generator)
-    module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2)
-    non_optimized_header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
+@lru_cache()
+def get_module():
     old_max_num_optimization_steps = configuration_knobs.ConfigurationKnobs.max_num_optimization_steps
     configuration_knobs.ConfigurationKnobs.max_num_optimization_steps = -1
-    optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator, linking_final_header=False)
+
+    object_file_content = compile(module_name='_py2tmp.tmppy_builtins',
+                                  file_name=importlib_util.find_spec('_py2tmp.tmppy_builtins').origin,
+                                  context_object_files=[],
+                                  unique_identifier_prefix='TmppyInternalBuiltin_',
+                                  include_intermediate_irs_for_debugging=False)
+    [module_info] = object_file_content.modules_by_name.values()
+    assert isinstance(module_info, ModuleInfo)
+
+    module_info = ModuleInfo(ir3_module=module_info.ir3_module,
+                             ir0_header=ir0.Header(template_defns=BUILTIN_TEMPLATES + list(module_info.ir0_header.template_defns),
+                                                   check_if_error_specializations=module_info.ir0_header.check_if_error_specializations,
+                                                   toplevel_content=module_info.ir0_header.toplevel_content,
+                                                   public_names=module_info.ir0_header.public_names,
+                                                   split_template_name_by_old_name_and_result_element_name=module_info.ir0_header.split_template_name_by_old_name_and_result_element_name))
+
     configuration_knobs.ConfigurationKnobs.max_num_optimization_steps = old_max_num_optimization_steps
-    assert not optimized_header.toplevel_content
-
-    _BuiltinTemplatesHolder.initialized = True
-    _BuiltinTemplatesHolder.initializing = False
-    _BuiltinTemplatesHolder.BUILTIN_TEMPLATES += [template_defn
-                                                  for template_defn in optimized_header.template_defns
-                                                  # The right CheckIfError will be generated based on the user code,
-                                                  # where there can be custom types.
-                                                  if template_defn.name != 'CheckIfError']
-    _BuiltinTemplatesHolder.split_template_name_by_old_name_and_result_element_name = optimized_header.split_template_name_by_old_name_and_result_element_name
-
-    return _BuiltinTemplatesHolder.BUILTIN_TEMPLATES
-
-def get_split_template_name_by_old_name_and_result_element_name():
-    get_builtin_templates()
-    return _BuiltinTemplatesHolder.split_template_name_by_old_name_and_result_element_name
-
-@lru_cache()
-def get_builtins_cpp_code():
-    from _py2tmp import ir0_to_cpp, utils
-
-    template_defns = get_builtin_templates()
-    writer = ir0_to_cpp.ToplevelWriter(_BuiltinTemplatesHolder.identifier_generator)
-    writer.write_toplevel_elem('''\
-        #include <tmppy/tmppy.h>
-        #include <type_traits>
-        ''')
-    ir0_to_cpp.template_defns_to_cpp(template_defns, writer)
-    result = utils.clang_format(''.join(writer.strings))
-
-    # TODO: remove
-    #print('Builtins C++ code:\n' + result)
-
-    return result
+    return module_info

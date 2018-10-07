@@ -15,7 +15,6 @@
 from collections import defaultdict
 from _py2tmp import ir2
 from _py2tmp import ir3
-from _py2tmp import utils
 from typing import List, Iterator, Optional, Dict
 from contextlib import contextmanager
 

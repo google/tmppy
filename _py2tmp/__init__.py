@@ -13,3 +13,9 @@
 # limitations under the License.
 
 # This file was intentionally left blank.
+
+from _py2tmp.tmppy_object_file import ObjectFileContent, ModuleInfo
+from _py2tmp.compile import compile, compile_source_code
+from _py2tmp.link import link, compute_merged_header_for_linking
+from _py2tmp.ast_to_ir3 import CompilationError
+from _py2tmp.ir0_optimization import ConfigurationKnobs, DEFAULT_VERBOSE_SETTING

@@ -99,6 +99,9 @@ def clang_format(cxx_source: str, code_style='LLVM') -> str:
         return stdout
 
 def compute_condensation_in_topological_order(dependency_graph: nx.DiGraph, sort_by = lambda x: x):
+    if not dependency_graph.number_of_nodes():
+        return
+
     condensed_graph = nx.condensation(dependency_graph)
     assert isinstance(condensed_graph, nx.DiGraph)
 
