@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import Sequence, Set, Optional, Iterable, Union
+from typing import Sequence, Set, Optional, Iterable, Union, Tuple, Dict
 from enum import Enum
 import re
 from _py2tmp import utils
@@ -569,7 +569,9 @@ class Header:
     def __init__(self,
                  template_defns: Sequence[TemplateDefn],
                  toplevel_content: Sequence[Union[StaticAssert, ConstantDef, Typedef]],
-                 public_names: Set[str]):
+                 public_names: Set[str],
+                 split_template_name_by_old_name_and_result_element_name: Dict[Tuple[str, str], str]):
         self.template_defns = template_defns
         self.toplevel_content = tuple(toplevel_content)
         self.public_names = public_names
+        self.split_template_name_by_old_name_and_result_element_name = split_template_name_by_old_name_and_result_element_name

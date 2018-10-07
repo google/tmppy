@@ -33,6 +33,8 @@ def _calculate_max_num_optimization_loops(num_templates_in_connected_component):
     return num_templates_in_connected_component * 20 + 20
 
 def _optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterator[str]):
+    assert not header.split_template_name_by_old_name_and_result_element_name
+
     from _py2tmp import ir0_builtins
     split_template_name_by_old_name_and_result_element_name = ir0_builtins.get_split_template_name_by_old_name_and_result_element_name().copy()
 
@@ -49,9 +51,10 @@ def _optimize_header_first_pass(header: ir0.Header, identifier_generator: Iterat
         for result in results:
             new_template_defns.append(result)
 
-    return replace_metafunction_calls_with_split_template_calls(header, identifier_generator, new_template_defns,
-                                                                split_template_name_by_old_name_and_result_element_name), split_template_name_by_old_name_and_result_element_name
-
+    return replace_metafunction_calls_with_split_template_calls(header,
+                                                                identifier_generator,
+                                                                new_template_defns,
+                                                                split_template_name_by_old_name_and_result_element_name)
 
 def _optimize_header_second_pass(header: ir0.Header, identifier_generator: Iterator[str]):
     new_template_defns = {elem.name: elem
@@ -148,11 +151,16 @@ def _optimize_header_second_pass(header: ir0.Header, identifier_generator: Itera
     return ir0.Header(template_defns=[new_template_defns[template_defn.name]
                                       for template_defn in header.template_defns] + additional_toplevel_template_defns,
                       toplevel_content=new_toplevel_content,
-                      public_names=header.public_names)
+                      public_names=header.public_names,
+                      split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name)
 
-def _optimize_header_third_pass(header: ir0.Header):
+def _optimize_header_third_pass(header: ir0.Header, linking_final_header: bool):
     template_defns_by_name = {elem.name: elem
                               for elem in header.template_defns}
+
+    public_names = header.public_names
+    if not linking_final_header:
+        public_names = public_names.union(header.split_template_name_by_old_name_and_result_element_name.values())
 
     template_dependency_graph = nx.DiGraph()
     for elem in itertools.chain(header.template_defns, header.toplevel_content):
@@ -164,7 +172,7 @@ def _optimize_header_third_pass(header: ir0.Header):
 
         template_dependency_graph.add_node(elem_name)
 
-        if elem_name in header.public_names:
+        if elem_name in public_names:
             # We also add an edge from the node '' to all public template defns, so that we can use '' as a source below.
             template_dependency_graph.add_edge('', elem_name)
 
@@ -178,23 +186,12 @@ def _optimize_header_third_pass(header: ir0.Header):
                                       for template_defn in header.template_defns
                                       if template_defn.name in used_templates],
                       toplevel_content=header.toplevel_content,
-                      public_names=header.public_names)
+                      public_names=public_names,
+                      split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name)
 
-def optimize_header(header: ir0.Header, identifier_generator: Iterator[str]):
+def optimize_header(header: ir0.Header, identifier_generator: Iterator[str], linking_final_header: bool):
     header = recalculate_template_instantiation_can_trigger_static_asserts_info(header)
-    header, _ = _optimize_header_first_pass(header, identifier_generator)
+    header = _optimize_header_first_pass(header, identifier_generator)
     header = _optimize_header_second_pass(header, identifier_generator)
-    header = _optimize_header_third_pass(header)
+    header = _optimize_header_third_pass(header, linking_final_header)
     return header
-
-def optimize_builtin_header(header: ir0.Header, identifier_generator: Iterator[str]):
-    header = recalculate_template_instantiation_can_trigger_static_asserts_info(header)
-    header, split_template_name_by_old_name_and_result_element_name = _optimize_header_first_pass(header, identifier_generator)
-    header = ir0.Header(template_defns=header.template_defns,
-                        toplevel_content=header.toplevel_content,
-                        # The client code can depend on the splits directly, so we must make sure not to optimize them
-                        # out even if they're not used here.
-                        public_names=header.public_names.union(split_template_name_by_old_name_and_result_element_name.values()))
-    header = _optimize_header_second_pass(header, identifier_generator)
-    header = _optimize_header_third_pass(header)
-    return header, split_template_name_by_old_name_and_result_element_name

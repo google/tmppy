@@ -617,7 +617,7 @@ def get_builtin_templates():
     non_optimized_header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
     old_max_num_optimization_steps = configuration_knobs.ConfigurationKnobs.max_num_optimization_steps
     configuration_knobs.ConfigurationKnobs.max_num_optimization_steps = -1
-    optimized_header, split_template_name_by_old_name_and_result_element_name = ir0_optimization.optimize_builtin_header(non_optimized_header, identifier_generator)
+    optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator, linking_final_header=False)
     configuration_knobs.ConfigurationKnobs.max_num_optimization_steps = old_max_num_optimization_steps
     assert not optimized_header.toplevel_content
 
@@ -628,7 +628,7 @@ def get_builtin_templates():
                                                   # The right CheckIfError will be generated based on the user code,
                                                   # where there can be custom types.
                                                   if template_defn.name != 'CheckIfError']
-    _BuiltinTemplatesHolder.split_template_name_by_old_name_and_result_element_name = split_template_name_by_old_name_and_result_element_name
+    _BuiltinTemplatesHolder.split_template_name_by_old_name_and_result_element_name = optimized_header.split_template_name_by_old_name_and_result_element_name
 
     return _BuiltinTemplatesHolder.BUILTIN_TEMPLATES
 

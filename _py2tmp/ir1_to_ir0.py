@@ -1579,4 +1579,5 @@ def module_to_ir0(module: ir1.Module, identifier_generator: Iterator[str]):
             raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
     return ir0.Header(template_defns=writer.template_defns,
                       toplevel_content=writer.toplevel_content,
-                      public_names=public_names)
+                      public_names=public_names,
+                      split_template_name_by_old_name_and_result_element_name=dict())

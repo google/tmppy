@@ -65,7 +65,7 @@ def convert_to_cpp(python_source, filename='<unknown>', verbose=False):
         print(utils.ir_to_string(header_ir0))
         print()
 
-    header_ir0 = ir0_optimization.optimize_header(header_ir0, identifier_generator)
+    header_ir0 = ir0_optimization.optimize_header(header_ir0, identifier_generator, linking_final_header=True)
     if verbose:
         print('TMPPy IR0 after optimization:')
         print(utils.ir_to_string(header_ir0))

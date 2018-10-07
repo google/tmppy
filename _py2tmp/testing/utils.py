@@ -723,7 +723,7 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
 
     try:
         non_optimized_header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
-        optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator)
+        optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator, linking_final_header=True)
         cpp_source = ir0_to_cpp.header_to_cpp(optimized_header, identifier_generator)
 
         if not allow_toplevel_static_asserts_after_optimization:
@@ -733,7 +733,7 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
                     ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
                     ir0_optimization.ConfigurationKnobs.verbose = True
                     ir0_optimization.ConfigurationKnobs.max_num_optimization_steps = -1
-                    optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator)
+                    optimized_header = ir0_optimization.optimize_header(non_optimized_header, identifier_generator, linking_final_header=True)
                     cpp_source = ir0_to_cpp.header_to_cpp(optimized_header, identifier_generator)
 
                     if ir0_optimization.ConfigurationKnobs.reached_max_num_remaining_loops_counter:

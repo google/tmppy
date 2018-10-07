@@ -89,7 +89,8 @@ class Transformation:
         if self.generates_transformed_ir:
             return ir0.Header(template_defns=writer.template_defns,
                               toplevel_content=writer.toplevel_elems,
-                              public_names=header.public_names)
+                              public_names=header.public_names,
+                              split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name)
 
     def transform_toplevel_elem(self, elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef], writer: Writer):
         if isinstance(elem, ir0.StaticAssert):

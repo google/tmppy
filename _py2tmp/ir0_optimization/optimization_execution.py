@@ -74,7 +74,8 @@ def _template_body_elems_to_cpp(elems: List[ir0.TemplateBodyElement],
                                                                for elem in elems
                                                                if isinstance(elem, ir0.TemplateDefn)],
                                                toplevel_content=elems_except_template_defns,
-                                               public_names=set()),
+                                               public_names=set(),
+                                               split_template_name_by_old_name_and_result_element_name=dict()),
                                     identifier_generator)
 
 def _expr_to_cpp(expr: ir0.Expr):
