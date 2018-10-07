@@ -18,6 +18,7 @@ import inspect
 import itertools
 import json
 import os
+import pickle
 import re
 import subprocess
 import sys
@@ -698,7 +699,7 @@ def _compile(python_source):
                                        unique_identifier_prefix='TmppyInternal_',
                                        include_intermediate_irs_for_debugging=True)
 
-def _link(object_file_content: _py2tmp.ObjectFileContent):
+def _link(object_file_content: str):
     return _py2tmp.link(main_module_name=TEST_MODULE_NAME,
                         object_file_content=object_file_content,
                         unique_identifier_prefix='TmppyInternal2_')

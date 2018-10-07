@@ -13,22 +13,25 @@
 # limitations under the License.
 
 import argparse
+import pickle
 
-from _py2tmp import (
-    utils)
+from _py2tmp import utils
 from _py2tmp.compile import compile
 from _py2tmp.link import link
 
-def convert_to_cpp(module_name: str, filename='<unknown>', verbose=False):
 
+def _module_name_from_filename(file_name: str):
+    return file_name.replace('/', '.')
+
+def _compile(module_name: str, filename: str, verbose):
     object_file_content = compile(module_name=module_name,
                                   file_name=filename,
                                   context_object_files=[],
                                   unique_identifier_prefix='TmppyInternal_',
                                   include_intermediate_irs_for_debugging=verbose)
-    main_module = object_file_content.modules_by_name[module_name]
 
     if verbose:
+        main_module = object_file_content.modules_by_name[module_name]
         print('TMPPy IR3:')
         print(utils.ir_to_string(main_module.ir3_module))
         print()
@@ -42,6 +45,11 @@ def convert_to_cpp(module_name: str, filename='<unknown>', verbose=False):
         print(utils.ir_to_string(main_module.ir0_header))
         print()
 
+    return object_file_content
+
+def _compile_and_link(module_name, filename: str, verbose):
+    object_file_content = _compile(module_name, filename, verbose)
+
     result = link(module_name,
                   object_file_content,
                   unique_identifier_prefix='TmppyInternal2_')
@@ -53,19 +61,34 @@ def convert_to_cpp(module_name: str, filename='<unknown>', verbose=False):
 
 def main():
     parser = argparse.ArgumentParser(description='Converts python source code into C++ metafunctions.')
-    parser.add_argument('sources', nargs='+', help='The python source files to convert')
-    parser.add_argument('--output-dir', help='Output dir for the generated files')
     parser.add_argument('--verbose', help='If "true", prints verbose messages during the conversion')
+    parser.add_argument('-o', required=True, metavar='output_file', help='Output file (.tmppyc or .h).')
+    parser.add_argument('source', help='The python source file to convert')
+    parser.add_argument('object_files', nargs='*', help='.tmppyc object files for the modules (directly) imported in this source file')
 
     args = parser.parse_args()
 
-    for source_file_name in args.sources:
-        suffix = '.py'
-        if not source_file_name.endswith(suffix):
-            raise Exception('An input file name does not end with .py: ' + source_file_name)
-        output_file_name = source_file_name[:-len(suffix)] + '.h'
-        with open(output_file_name, 'w') as output_file:
-            output_file.write(convert_to_cpp(source_file_name, verbose=(args.verbose == 'true')))
+    for object_file in args.object_files:
+        if not object_file.endswith('.tmppyc'):
+            raise Exception('The specified object file %s does not have a .tmppyc extension.')
+
+    suffix = '.py'
+    if not args.source.endswith(suffix):
+        raise Exception('The input file name does not end with .py: ' + args.source)
+
+    module_name = _module_name_from_filename(args.source)
+
+    verbose = (args.verbose == 'true')
+    if args.o.endswith('.h'):
+        result = _compile_and_link(module_name, args.source, verbose)
+        with open(args.o, 'w') as output_file:
+            output_file.write(result)
+    elif args.o.endswith('.tmppyc'):
+        result = pickle.dumps(_compile(module_name, args.source, verbose))
+        with open(args.o, 'wb') as output_file:
+            output_file.write(result)
+    else:
+        raise Exception('The output file name does not end with .h or .tmppyc: ' + args.o)
 
 if __name__ == '__main__':
     main()

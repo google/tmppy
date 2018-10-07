@@ -13,10 +13,10 @@
 # limitations under the License.
 from typing import Dict, List, Optional
 
-from _py2tmp import utils, ir3, ir0, ir2, ir1
+from _py2tmp import ir3, ir0, ir2, ir1
+from _py2tmp.value_type import ValueType
 
-
-class ModuleInfo(utils.ValueType):
+class ModuleInfo(ValueType):
     def __init__(self,
                  ir3_module: ir3.Module,
                  ir0_header: ir0.Header,
@@ -29,12 +29,7 @@ class ModuleInfo(utils.ValueType):
         self.ir0_header_before_optimization = ir0_header_before_optimization
         self.ir0_header = ir0_header
 
-    @staticmethod
-    def from_json(json_str: str):
-        # TODO
-        return None
-
-class ObjectFileContent(utils.ValueType):
+class ObjectFileContent(ValueType):
     def __init__(self, modules_by_name: Dict[str, ModuleInfo]):
         self.modules_by_name = modules_by_name
 

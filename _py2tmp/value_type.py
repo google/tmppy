@@ -12,4 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _py2tmp.main import main
+class ValueType:
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self._key() == other._key()
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def _key(self):
+        return tuple(sorted(self.__dict__.items()))
+
+    def __str__(self):
+        return '%s(%s)' % (self.__class__.__name__, self._key())
+
+    def __repr__(self):
+        return self.__str__()

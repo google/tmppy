@@ -12,36 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
+import pickle
 from typing import List, Optional
 import typed_ast.ast3 as ast
 
 from _py2tmp import ast_to_ir3, ir3_optimization, ir3_to_ir2, ir2_to_ir1, ir1_to_ir0, ir0_optimization
-from _py2tmp.tmppy_object_file import ObjectFileContent, ModuleInfo
+from _py2tmp.tmppy_object_file import ObjectFileContent, ModuleInfo, merge_object_files
 
-def _module_name_from_filename(file_name: str):
-    return file_name.replace('/', '.')
 
 def compile(file_name: str,
             context_object_files: List[str],
             unique_identifier_prefix: str,
             include_intermediate_irs_for_debugging: bool,
-            module_name: Optional[str] = None):
-    if not module_name:
-        module_name = _module_name_from_filename(file_name)
+            module_name: str):
     with open(file_name) as file:
         tmppy_source_code = file.read()
 
-    context_modules_by_name = dict()
+    object_file_contents = []
     for context_module_file_name in context_object_files:
-        with open(context_module_file_name) as file:
-            context_modules_by_name[_module_name_from_filename(context_module_file_name)] = ModuleInfo.from_json(file.read())
+        with open(context_module_file_name, 'rb') as file:
+            object_file_contents.append(pickle.loads(file.read()))
 
     return compile_source_code(module_name=module_name,
                                file_name=file_name,
                                source_code=tmppy_source_code,
                                unique_identifier_prefix=unique_identifier_prefix,
                                include_intermediate_irs_for_debugging=include_intermediate_irs_for_debugging,
-                               context_object_file_content=ObjectFileContent(context_modules_by_name))
+                               context_object_file_content=merge_object_files(object_file_contents))
 
 def compile_source_code(module_name: str,
                         source_code: str,
@@ -80,4 +77,7 @@ def compile_source_code(module_name: str,
         module_info = ModuleInfo(ir0_header=optimized_header,
                                  ir3_module=module_ir3)
 
-    return ObjectFileContent({module_name: module_info})
+    modules_by_name = context_object_file_content.modules_by_name.copy()
+    modules_by_name[module_name] = module_info
+
+    return ObjectFileContent(modules_by_name)

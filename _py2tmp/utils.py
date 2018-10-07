@@ -11,28 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import subprocess
 from enum import Enum
 
 import networkx as nx
 import typed_ast.ast3 as ast
 
-class ValueType:
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and self._key() == other._key()
-
-    def __hash__(self):
-        return hash(self._key())
-
-    def _key(self):
-        return tuple(sorted(self.__dict__.items()))
-
-    def __str__(self):
-        return '%s(%s)' % (self.__class__.__name__, self._key())
-
-    def __repr__(self):
-        return self.__str__()
 
 def ast_to_string(ast_node, line_indent=''):
     next_line_indent = line_indent + '  '

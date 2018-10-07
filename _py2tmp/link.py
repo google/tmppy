@@ -17,6 +17,7 @@ from typing import Iterator
 from _py2tmp import ir0, ir0_optimization, ir0_builtins, ir0_to_cpp
 from _py2tmp.tmppy_object_file import ObjectFileContent
 
+
 def compute_merged_header_for_linking(main_module_name: str,
                                       object_file_content: ObjectFileContent,
                                       identifier_generator: Iterator[str]):
@@ -66,7 +67,7 @@ def compute_merged_header_for_linking(main_module_name: str,
                                             linking_final_header=True)
 
 def link(main_module_name: str,
-         object_file_content: ObjectFileContent,
+         object_file_content: str,
          unique_identifier_prefix: str):
     def identifier_generator_fun():
         for i in itertools.count():

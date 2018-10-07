@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Iterable, Optional, Dict, Set
-from _py2tmp import utils
+from typing import List, Iterable, Optional, Set
 
-class ExprType(utils.ValueType):
+from _py2tmp.value_type import ValueType
+
+
+class ExprType(ValueType):
     def __str__(self) -> str: ...  # pragma: no cover
 
 class BoolType(ExprType):

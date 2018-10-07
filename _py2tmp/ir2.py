@@ -18,6 +18,8 @@ from contextlib import contextmanager
 import itertools
 
 from _py2tmp import utils
+from _py2tmp.value_type import ValueType
+
 
 class Writer:
     def __init__(self):
@@ -44,7 +46,7 @@ class Writer:
         yield
         self.current_indent = old_indent
 
-class ExprType(utils.ValueType):
+class ExprType(ValueType):
     def __str__(self) -> str: ...  # pragma: no cover
 
 class BoolType(ExprType):
@@ -87,7 +89,7 @@ class ListType(ExprType):
     def __str__(self):
         return 'List[%s]' % str(self.elem_type)
 
-class CustomTypeArgDecl(utils.ValueType):
+class CustomTypeArgDecl(ValueType):
     def __init__(self, name: str, expr_type: ExprType):
         self.name = name
         self.expr_type = expr_type

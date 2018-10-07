@@ -251,7 +251,8 @@ def find_matches_in_unification_of_template_instantiation_with_definition(templa
                                specialization2.patterns,
                                specialization1_arg_vars,
                                specialization2_arg_vars,
-                               identifier_generator)
+                               identifier_generator,
+                               verbose)
                 if result.kind == UnificationResultKind.CERTAIN:
                     might_be_best_match[j] = False
 
@@ -350,7 +351,7 @@ def unify(initial_exprs: List[ir0.Expr],
           expr_variables: Set[str],
           pattern_variables: Set[str],
           identifier_generator: Iterable[str],
-          verbose: bool = True) -> UnificationResult:
+          verbose: bool) -> UnificationResult:
     # We need to replace local literals before doing the unification, to avoid assuming that e.g. T in an expr
     # is equal to T in a pattern just because they have the same name.
 
@@ -423,14 +424,15 @@ def unify(initial_exprs: List[ir0.Expr],
                 traceback.format_exc()))
         return UnificationResult(UnificationResultKind.POSSIBLE)
     except AssertionError as e:
-        print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nAssertionError' % (
-            ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
-            ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
-            ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
-            ', '.join(expr_variable for expr_variable in expr_variables),
-            ', '.join(pattern_variable for pattern_variable in pattern_variables),
-            unique_var_name_by_expr_type_literal_name,
-            unique_var_name_by_pattern_type_literal_name))
+        if verbose:
+            print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nAssertionError' % (
+                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
+                ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
+                ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
+                ', '.join(expr_variable for expr_variable in expr_variables),
+                ', '.join(pattern_variable for pattern_variable in pattern_variables),
+                unique_var_name_by_expr_type_literal_name,
+                unique_var_name_by_pattern_type_literal_name))
         raise
 
     try:
@@ -448,15 +450,16 @@ def unify(initial_exprs: List[ir0.Expr],
                 traceback.format_exc()))
         return UnificationResult(UnificationResultKind.POSSIBLE)
     except AssertionError as e:
-        print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nvar_expr_equations = %s\nAssertionError' % (
-            ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
-            ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
-            ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
-            ', '.join(expr_variable for expr_variable in expr_variables),
-            ', '.join(pattern_variable for pattern_variable in pattern_variables),
-            unique_var_name_by_expr_type_literal_name,
-            unique_var_name_by_pattern_type_literal_name,
-            var_expr_equations))
+        if verbose:
+            print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nvar_expr_equations = %s\nAssertionError' % (
+                ', '.join(ir0_to_cpp.expr_to_cpp_simple(expr) for expr in initial_exprs),
+                ', '.join('%s = %s' % (var, ir0_to_cpp.expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
+                ', '.join(ir0_to_cpp.expr_to_cpp_simple(pattern) for pattern in patterns),
+                ', '.join(expr_variable for expr_variable in expr_variables),
+                ', '.join(pattern_variable for pattern_variable in pattern_variables),
+                unique_var_name_by_expr_type_literal_name,
+                unique_var_name_by_pattern_type_literal_name,
+                var_expr_equations))
         raise
 
     var_expr_equations = [(_pack_if_variable(var, literal_expr_by_unique_name),

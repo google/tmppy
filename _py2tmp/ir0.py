@@ -11,11 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import itertools
-from typing import Sequence, Set, Optional, Iterable, Union, Tuple, Dict
-from enum import Enum
 import re
+from enum import Enum
+from typing import Sequence, Set, Optional, Iterable, Union, Tuple, Dict
+
 from _py2tmp import utils
+from _py2tmp.value_type import ValueType
+
 
 class ExprKind(Enum):
     BOOL = 1
@@ -23,7 +25,7 @@ class ExprKind(Enum):
     TYPE = 3
     TEMPLATE = 4
 
-class TemplateBodyElementOrExprOrTemplateDefn:
+class TemplateBodyElementOrExprOrTemplateDefn(ValueType):
     def get_referenced_identifiers(self) -> Iterable[str]:
         for expr in self.get_transitive_subexpressions():
             for identifier in expr.get_local_referenced_identifiers():
@@ -44,7 +46,7 @@ class TemplateBodyElementOrExprOrTemplateDefn:
 
     def get_direct_subexpressions(self) -> Iterable['Expr']: ...
 
-class ExprType(utils.ValueType):
+class ExprType(ValueType):
     def __init__(self, kind: ExprKind):
         self.kind = kind
 
@@ -60,7 +62,7 @@ class TypeType(ExprType):
     def __init__(self):
         super().__init__(kind=ExprKind.TYPE)
 
-class TemplateArgType(utils.ValueType):
+class TemplateArgType(ValueType):
     def __init__(self, expr_type: ExprType, is_variadic: bool):
         self.expr_type = expr_type
         self.is_variadic = is_variadic
@@ -71,7 +73,7 @@ class TemplateType(ExprType):
         self.args = tuple(TemplateArgType(arg.expr_type, arg.is_variadic)
                           for arg in args)
 
-class Expr(utils.ValueType, TemplateBodyElementOrExprOrTemplateDefn):
+class Expr(TemplateBodyElementOrExprOrTemplateDefn):
     def __init__(self, expr_type: ExprType):
         self.expr_type = expr_type
 
@@ -134,7 +136,7 @@ class Typedef(TemplateBodyElement):
     def get_direct_subexpressions(self):
         yield self.expr
 
-class TemplateArgDecl(utils.ValueType):
+class TemplateArgDecl(ValueType):
     def __init__(self, expr_type: ExprType, name: str, is_variadic: bool):
         assert name
         self.expr_type = expr_type
@@ -143,7 +145,7 @@ class TemplateArgDecl(utils.ValueType):
 
 _non_identifier_char_pattern = re.compile('[^a-zA-Z0-9_]+')
 
-class TemplateSpecialization:
+class TemplateSpecialization(ValueType):
     def __init__(self,
                  args: Sequence[TemplateArgDecl],
                  patterns: 'Optional[Sequence[Expr]]',
@@ -565,7 +567,7 @@ class VariadicTypeExpansion(UnaryExpr):
         [expr] = new_subexpressions
         return VariadicTypeExpansion(expr)
 
-class Header:
+class Header(ValueType):
     def __init__(self,
                  template_defns: Sequence[TemplateDefn],
                  check_if_error_specializations: Sequence[TemplateSpecialization],
