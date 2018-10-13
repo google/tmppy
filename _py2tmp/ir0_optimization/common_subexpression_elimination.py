@@ -29,7 +29,7 @@ def _create_var_to_var_assignment(lhs: str, rhs: str, expr_type: ir0.ExprType):
     else:
         raise NotImplementedError('Unexpected kind: %s' % str(expr_type.kind))
 
-class _CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
+class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
     def __init__(self):
         super().__init__()
 
@@ -141,9 +141,9 @@ class _CommonSubexpressionEliminationTransformation(transform_ir0.Transformation
                           for elem in result_elems))
         return result_elems
 
-    def _transform_toplevel_elems(self,
-                                  elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
-                                  identifier_generator: Iterator[str]):
+    def transform_toplevel_elems(self,
+                                 elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
+                                 identifier_generator: Iterator[str]):
 
         name_by_expr = dict()  # type: Dict[ir0.Expr, str]
         replacements = dict()  # type: Dict[str, str]
@@ -164,15 +164,3 @@ class _CommonSubexpressionEliminationTransformation(transform_ir0.Transformation
                     name_by_expr[elem.expr] = elem.name
 
         return result_elems
-
-def perform_common_subexpression_normalization(template_defn: ir0.TemplateDefn,
-                                               identifier_generator: Iterator[str]):
-    writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
-    transformation = _CommonSubexpressionEliminationTransformation()
-    transformation.transform_template_defn(template_defn, writer)
-    return writer.template_defns, False
-
-def perform_common_subexpression_normalization_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
-                                                                 identifier_generator: Iterator[str]):
-    transformation = _CommonSubexpressionEliminationTransformation()
-    return transformation._transform_toplevel_elems(toplevel_elems, identifier_generator), False

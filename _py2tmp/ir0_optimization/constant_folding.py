@@ -18,7 +18,7 @@ from _py2tmp import ir0, transform_ir0
 from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import elem_can_trigger_static_asserts
 from _py2tmp.ir0_optimization.replace_var_with_expr import replace_var_with_expr_in_template_body_element
 
-class _ConstantFoldingTransformation(transform_ir0.Transformation):
+class ConstantFoldingTransformation(transform_ir0.Transformation):
     def __init__(self, inline_template_instantiations_with_multiple_references: bool):
         super().__init__()
         self.inline_template_instantiations_with_multiple_references = inline_template_instantiations_with_multiple_references
@@ -26,10 +26,12 @@ class _ConstantFoldingTransformation(transform_ir0.Transformation):
     def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
         writer.write(ir0.TemplateDefn(args=template_defn.args,
                                       main_definition=self._transform_template_specialization(template_defn.main_definition,
-                                                                                              template_defn.result_element_names)
+                                                                                              template_defn.result_element_names,
+                                                                                              writer)
                                       if template_defn.main_definition is not None else None,
                                       specializations=[self._transform_template_specialization(specialization,
-                                                                                               template_defn.result_element_names)
+                                                                                               template_defn.result_element_names,
+                                                                                               writer)
                                                        for specialization in template_defn.specializations],
                                       name=template_defn.name,
                                       description=template_defn.description,
@@ -37,16 +39,19 @@ class _ConstantFoldingTransformation(transform_ir0.Transformation):
 
     def _transform_template_specialization(self,
                                            specialization: ir0.TemplateSpecialization,
-                                           result_element_names: Sequence[str]) -> ir0.TemplateSpecialization:
+                                           result_element_names: Sequence[str],
+                                           writer: transform_ir0.Writer) -> ir0.TemplateSpecialization:
         return ir0.TemplateSpecialization(args=specialization.args,
                                           patterns=specialization.patterns,
-                                          body=self._transform_template_body_elems(specialization.body,
-                                                                                   result_element_names),
+                                          body=self.transform_template_body_elems(specialization.body,
+                                                                                  writer,
+                                                                                  result_element_names),
                                           is_metafunction=specialization.is_metafunction)
 
-    def _transform_template_body_elems(self,
-                                       stmts: Sequence[ir0.TemplateBodyElement],
-                                       result_element_names: Sequence[str]):
+    def transform_template_body_elems(self,
+                                      stmts: Sequence[ir0.TemplateBodyElement],
+                                      writer: transform_ir0.Writer,
+                                      result_element_names: Sequence[str] = tuple()):
         stmts = list(stmts)
 
         # stmt[var_name_to_defining_stmt_index['x']] is the stmt that defines 'x'
@@ -209,17 +214,3 @@ class _ConstantFoldingTransformation(transform_ir0.Transformation):
                                               var=referenced_var,
                                               from_stmt_index=stmt_index_defining_var,
                                               by=remaining_uses_of_var_by_stmt_index[stmt_index_defining_var][referenced_var])
-
-def perform_constant_folding(template_defn: ir0.TemplateDefn,
-                             identifier_generator: Iterator[str],
-                             inline_template_instantiations_with_multiple_references: bool):
-    writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
-    transformation = _ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
-    transformation.transform_template_defn(template_defn, writer)
-    return writer.template_defns, False
-
-def perform_constant_folding_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
-                                               inline_template_instantiations_with_multiple_references: bool):
-    transformation = _ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references=inline_template_instantiations_with_multiple_references)
-    toplevel_elems = transformation._transform_template_body_elems(toplevel_elems, result_element_names=tuple())
-    return toplevel_elems, False

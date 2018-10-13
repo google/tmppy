@@ -13,17 +13,18 @@
 # limitations under the License.
 import itertools
 from typing import Dict, Iterator, Set, List, Union
-from _py2tmp import ir0, transform_ir0, ir0_builtin_literals
-from _py2tmp.tmppy_object_file import ObjectFileContent
+
+from _py2tmp import ir0, transform_ir0, ir0_builtin_literals, ir0_to_cpp, utils
 from _py2tmp.ir0_optimization import unify_ir0
 from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
 from _py2tmp.ir0_optimization.configuration_knobs import ConfigurationKnobs
 from _py2tmp.ir0_optimization.local_optimizations import perform_local_optimizations_on_toplevel_elems, \
     perform_local_optimizations_on_template_defn
-from _py2tmp.ir0_optimization.optimization_execution import apply_template_defn_optimization, apply_toplevel_elems_optimization, \
-    template_defn_to_cpp
+from _py2tmp.ir0_optimization.optimization_execution import apply_elem_optimization, \
+    describe_template_defns, describe_toplevel_elems
 from _py2tmp.ir0_optimization.replace_var_with_expr import replace_var_with_expr_in_template_body_elements, \
     VariadicVarReplacementNotPossibleException, replace_var_with_expr_in_expr
+from _py2tmp.tmppy_object_file import ObjectFileContent
 
 _select1st_type_and_name = [
     (ir0.BoolType(), 'Bool'),
@@ -325,6 +326,11 @@ def _ensure_remains_variadic_if_it_was(original_expr: ir0.Expr, transformed_expr
                                  member_type=transformed_expr.expr_type,
                                  member_name='value')
 
+def _template_defn_to_cpp(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
+    writer = ir0_to_cpp.ToplevelWriter(identifier_generator)
+    ir0_to_cpp.template_defn_to_cpp(template_defn, enclosing_function_defn_args=[], writer=writer)
+    return utils.clang_format(''.join(writer.strings))
+
 def perform_template_inlining(template_defn: ir0.TemplateDefn,
                               inlineable_refs: Set[str],
                               template_defn_by_name: Dict[str, ir0.TemplateDefn],
@@ -345,12 +351,12 @@ def perform_template_inlining(template_defn: ir0.TemplateDefn,
         transformation.transform_template_defn(template_defn, writer)
         return writer.template_defns, transformation.needs_another_loop
 
-    [template_defn], needs_another_loop2 = apply_template_defn_optimization(template_defn,
-                                                                            identifier_generator,
-                                                                            optimization=perform_optimization,
-                                                                            optimization_name='TemplateInstantiationInliningTransformation',
-                                                                            other_context=lambda: 'Potentially inlineable template(s):\n' + ''.join(template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
-                                                                                                                                                    for template_name in inlineable_refs) + '\n')
+    [template_defn], needs_another_loop2 = apply_elem_optimization([template_defn],
+                                                                   perform_optimization,
+                                                                   lambda template_defns: describe_template_defns(template_defns, identifier_generator),
+                                                                   optimization_name='TemplateInstantiationInliningTransformation',
+                                                                   other_context=lambda: 'Potentially inlineable template(s):\n' + ''.join(_template_defn_to_cpp(template_defn_by_name[template_name], identifier_generator)
+                                                                                                                                           for template_name in inlineable_refs) + '\n')
 
     return template_defn, needs_another_loop1 or needs_another_loop2
 
@@ -375,12 +381,12 @@ def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir0.S
 
         return elems, transformation.needs_another_loop
 
-    toplevel_elems, needs_another_loop2 = apply_toplevel_elems_optimization(toplevel_elems,
-                                                                            identifier_generator,
-                                                                            optimization=perform_optimization,
-                                                                            optimization_name='TemplateInstantiationInliningTransformation',
-                                                                            other_context=lambda: 'Potentially inlineable template(s):\n' + ''.join(
-                                                                                template_defn_to_cpp(template_defn_by_name[template_name],
-                                                                                                     identifier_generator)
-                                                                                for template_name in inlineable_refs) + '\n')
+    toplevel_elems, needs_another_loop2 = apply_elem_optimization(toplevel_elems,
+                                                                  perform_optimization,
+                                                                  lambda toplevel_elems: describe_toplevel_elems(toplevel_elems, identifier_generator),
+                                                                  optimization_name='TemplateInstantiationInliningTransformation',
+                                                                  other_context=lambda: 'Potentially inlineable template(s):\n' + ''.join(
+                                                                      _template_defn_to_cpp(template_defn_by_name[template_name],
+                                                                                            identifier_generator)
+                                                                      for template_name in inlineable_refs) + '\n')
     return toplevel_elems, needs_another_loop1 or needs_another_loop2

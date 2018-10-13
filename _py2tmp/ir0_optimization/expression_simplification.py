@@ -17,7 +17,7 @@ from _py2tmp import ir0, transform_ir0, ir0_builtin_literals, ir0_to_cpp
 from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
 from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import expr_can_trigger_static_asserts
 
-class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
+class ExpressionSimplificationTransformation(transform_ir0.Transformation):
     def __init__(self):
         super().__init__()
         self.in_variadic_type_expansion = False
@@ -385,18 +385,3 @@ class _ExpressionSimplificationTransformation(transform_ir0.Transformation):
                                                                                instantiation_might_trigger_static_asserts=False),
                                      member_type=lhs.expr_type,
                                      member_name='value')
-
-
-def perform_expression_simplification(template_defn: ir0.TemplateDefn):
-    writer = transform_ir0.ToplevelWriter(iter([]), allow_toplevel_elems=False)
-    transformation = _ExpressionSimplificationTransformation()
-    transformation.transform_template_defn(template_defn, writer)
-    return writer.template_defns, False
-
-def perform_expression_simplification_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]]):
-    transformation = _ExpressionSimplificationTransformation()
-    writer = transform_ir0.ToplevelWriter(iter([]), allow_toplevel_elems=False)
-    toplevel_elems = transformation.transform_template_body_elems(toplevel_elems, writer)
-    assert not writer.template_defns
-    assert not writer.toplevel_elems
-    return toplevel_elems, False

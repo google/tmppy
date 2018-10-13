@@ -15,7 +15,7 @@
 from typing import List, Union, Iterator
 from _py2tmp import ir0, transform_ir0
 
-class _NormalizeExpressionsTransformation(transform_ir0.Transformation):
+class NormalizeExpressionsTransformation(transform_ir0.Transformation):
     def __init__(self):
         super().__init__()
 
@@ -37,26 +37,3 @@ class _NormalizeExpressionsTransformation(transform_ir0.Transformation):
     def transform_typedef(self, typedef: ir0.Typedef, writer: transform_ir0.Writer):
         writer.write(ir0.Typedef(name=typedef.name,
                                  expr=self.transform_expr(typedef.expr, writer, split_nontrivial_exprs=False)))
-
-def normalize_template_defn(template_defn: ir0.TemplateDefn, identifier_generator: Iterator[str]):
-    '''Converts template_defn to an equivalent TemplateDefn where all expressions contain 0 or 1 operations.
-
-    Unlike other constants/typedefs, the exprs that initialize "result" and "error" will always have 0 operations.
-    '''
-    writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
-    _NormalizeExpressionsTransformation().transform_template_defn(template_defn, writer)
-
-    return writer.template_defns, False
-
-def normalize_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
-                             identifier_generator: Iterator[str]):
-    '''Converts template_defn to an equivalent TemplateDefn where all expressions contain 0 or 1 operations.
-
-    Unlike other constants/typedefs, the exprs that initialize "result" and "error" will always have 0 operations.
-    '''
-    writer = transform_ir0.ToplevelWriter(identifier_generator, allow_template_defns=False)
-    for toplevel_elem in toplevel_elems:
-        transformation = _NormalizeExpressionsTransformation()
-        transformation.transform_toplevel_elem(toplevel_elem, writer)
-
-    return writer.toplevel_elems, False
