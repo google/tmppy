@@ -28,7 +28,6 @@ def _compile(module_name: str, object_files: List[str], filename: str, verbose):
     object_file_content = compile(module_name=module_name,
                                   file_name=filename,
                                   context_object_files=object_files,
-                                  unique_identifier_prefix='TmppyInternal_',
                                   include_intermediate_irs_for_debugging=verbose)
 
     if verbose:
@@ -52,8 +51,7 @@ def _compile_and_link(module_name: str, object_files: List[str], filename: str, 
     object_file_content = _compile(module_name, object_files, filename, verbose)
 
     result = link(module_name,
-                  object_file_content,
-                  unique_identifier_prefix='TmppyInternal2_')
+                  object_file_content)
 
     if verbose:
         print('Conversion result:')

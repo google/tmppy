@@ -65,11 +65,10 @@ def compute_merged_header_for_linking(main_module_name: str,
                                             linking_final_header=True)
 
 def link(main_module_name: str,
-         object_file_content: ObjectFileContent,
-         unique_identifier_prefix: str):
+         object_file_content: ObjectFileContent):
     def identifier_generator_fun():
         for i in itertools.count():
-            yield unique_identifier_prefix + str(i)
+            yield 'TmppyInternal_' + str(i)
     identifier_generator = identifier_generator_fun()
 
     header = compute_merged_header_for_linking(main_module_name, object_file_content, identifier_generator)

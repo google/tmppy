@@ -13,7 +13,8 @@
 # limitations under the License.
 import itertools
 import pickle
-from typing import List, Optional
+from typing import List
+
 import typed_ast.ast3 as ast
 
 from _py2tmp import ast_to_ir3, ir3_optimization, ir3_to_ir2, ir2_to_ir1, ir1_to_ir0, ir0_optimization
@@ -22,7 +23,6 @@ from _py2tmp.tmppy_object_file import ObjectFileContent, ModuleInfo, merge_objec
 
 def compile(file_name: str,
             context_object_files: List[str],
-            unique_identifier_prefix: str,
             include_intermediate_irs_for_debugging: bool,
             module_name: str):
     with open(file_name) as file:
@@ -36,18 +36,18 @@ def compile(file_name: str,
     return compile_source_code(module_name=module_name,
                                file_name=file_name,
                                source_code=tmppy_source_code,
-                               unique_identifier_prefix=unique_identifier_prefix,
                                include_intermediate_irs_for_debugging=include_intermediate_irs_for_debugging,
                                context_object_file_content=merge_object_files(object_file_contents))
 
 def compile_source_code(module_name: str,
                         source_code: str,
                         context_object_file_content: ObjectFileContent,
-                        unique_identifier_prefix: str,
                         include_intermediate_irs_for_debugging: bool,
                         file_name: str = '<unknown>'):
 
     source_ast = ast.parse(source_code, filename=file_name)
+
+    unique_identifier_prefix = 'tmppy_internal_'+ module_name.replace('.', '_') + '_x'
 
     def identifier_generator_fun():
         for i in itertools.count():
@@ -57,8 +57,9 @@ def compile_source_code(module_name: str,
     module_ir3 = ast_to_ir3.module_ast_to_ir3(source_ast,
                                               file_name,
                                               source_code.splitlines(),
-                                              identifier_generator)
-    module_ir3 = ir3_optimization.optimize_module(module_ir3)
+                                              identifier_generator,
+                                              context_object_file_content)
+    module_ir3 = ir3_optimization.optimize_module(module_ir3, context_object_file_content)
     module_ir2 = ir3_to_ir2.module_to_ir2(module_ir3, identifier_generator)
     module_ir1 = ir2_to_ir1.module_to_ir1(module_ir2)
     non_optimized_header = ir1_to_ir0.module_to_ir0(module_ir1, identifier_generator)
@@ -77,7 +78,14 @@ def compile_source_code(module_name: str,
         module_info = ModuleInfo(ir0_header=optimized_header,
                                  ir3_module=module_ir3)
 
-    modules_by_name = context_object_file_content.modules_by_name.copy()
+    modules_by_name = {module_name: (module_info
+                                     if module_info.ir3_module is None
+                                     else ModuleInfo(ir3_module=None,
+                                                     ir2_module=module_info.ir2_module,
+                                                     ir1_module=module_info.ir1_module,
+                                                     ir0_header_before_optimization=module_info.ir0_header_before_optimization,
+                                                     ir0_header=module_info.ir0_header))
+                       for module_name, module_info in context_object_file_content.modules_by_name.items()}
     modules_by_name[module_name] = module_info
 
     return ObjectFileContent(modules_by_name)

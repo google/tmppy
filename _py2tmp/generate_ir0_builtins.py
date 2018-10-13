@@ -595,7 +595,6 @@ def main():
     object_file_content = compile(module_name=module_name,
                                   file_name=importlib_util.find_spec(module_name).origin,
                                   context_object_files=[],
-                                  unique_identifier_prefix='TmppyInternalBuiltin_',
                                   include_intermediate_irs_for_debugging=False)
     [module_info] = object_file_content.modules_by_name.values()
     assert isinstance(module_info, ModuleInfo)

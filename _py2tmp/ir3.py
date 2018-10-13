@@ -98,12 +98,18 @@ class FunctionArgDecl:
         self.name = name
 
 class VarReference(Expr):
-    def __init__(self, expr_type: ExprType, name: str, is_global_function: bool, is_function_that_may_throw: bool):
+    def __init__(self,
+                 expr_type: ExprType,
+                 name: str,
+                 is_global_function: bool,
+                 is_function_that_may_throw: bool,
+                 source_module: Optional[str] = None):
         super().__init__(expr_type=expr_type)
         assert name
         self.name = name
         self.is_global_function = is_global_function
         self.is_function_that_may_throw = is_function_that_may_throw
+        self.source_module = source_module
 
     def get_free_variables(self):
         if not self.is_global_function:

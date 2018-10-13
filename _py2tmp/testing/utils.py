@@ -27,15 +27,19 @@ import textwrap
 import traceback
 import unittest
 from functools import wraps, lru_cache
-from typing import Callable, Iterable, Any
+from typing import Callable, Iterable, Any, Dict
 
 import py2tmp_test_config as config
 import pytest
 
 import _py2tmp
-from _py2tmp import ir0, ObjectFileContent
+from _py2tmp import ir0, ObjectFileContent, CompilationError
+from _py2tmp.tmppy_object_file import merge_object_files
 
 CHECK_TESTS_WERE_FULLY_OPTIMIZED = True
+
+TEST_MODULE_NAME = 'test_module'
+BUILTINS_OBJECT_FILE_PATH = './builtins.tmppyc'
 
 class TestFailedException(Exception):
     pass
@@ -596,14 +600,15 @@ def expect_cpp_code_compile_error(
 
 def expect_cpp_code_success(tmppy_source: str, 
                             object_file_content: _py2tmp.ObjectFileContent,
-                            cxx_source: str):
+                            cxx_source: str,
+                            main_module_name=TEST_MODULE_NAME):
     """
     Tests that the given source compiles and runs successfully.
 
     :param cxx_source: The C++ source code. This will be dedented.
     """
     
-    main_module = object_file_content.modules_by_name[TEST_MODULE_NAME]
+    main_module = object_file_content.modules_by_name[main_module_name]
 
     if 'main(' not in cxx_source:
         cxx_source += textwrap.dedent('''
@@ -690,9 +695,6 @@ def _get_function_body(f):
         source_code = source_code[1:-1]
     return textwrap.dedent(''.join(source_code))
 
-TEST_MODULE_NAME = 'test_module'
-BUILTINS_OBJECT_FILE_PATH = './builtins.tmppyc'
-
 @lru_cache()
 def get_builtins_object_file_content():
     with open(BUILTINS_OBJECT_FILE_PATH, 'rb') as file:
@@ -700,21 +702,23 @@ def get_builtins_object_file_content():
     assert isinstance(object_file, ObjectFileContent)
     return object_file
 
-def _compile(python_source):
-    return _py2tmp.compile_source_code(module_name=TEST_MODULE_NAME,
+def compile(python_source,
+            module_name=TEST_MODULE_NAME,
+            context_object_file_content: ObjectFileContent = ObjectFileContent({})):
+    return _py2tmp.compile_source_code(module_name=module_name,
                                        source_code=python_source,
-                                       context_object_file_content=get_builtins_object_file_content(),
-                                       unique_identifier_prefix='TmppyInternal_',
+                                       context_object_file_content=merge_object_files([get_builtins_object_file_content(),
+                                                                                       context_object_file_content]),
                                        include_intermediate_irs_for_debugging=True)
 
-def _link(object_file_content: ObjectFileContent):
-    return _py2tmp.link(main_module_name=TEST_MODULE_NAME,
-                        object_file_content=object_file_content,
-                        unique_identifier_prefix='TmppyInternal2_')
+def link(object_file_content: ObjectFileContent,
+         main_module_name=TEST_MODULE_NAME):
+    return _py2tmp.link(main_module_name=main_module_name,
+                        object_file_content=object_file_content)
 
 def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization):
     try:
-        object_file_content = _compile(tmppy_source)
+        object_file_content = compile(tmppy_source)
         e = None
     except _py2tmp.CompilationError as e1:
         e = e1
@@ -746,9 +750,9 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
                 _py2tmp.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
                 _py2tmp.ConfigurationKnobs.verbose = True
                 _py2tmp.ConfigurationKnobs.max_num_optimization_steps = -1
-                object_file_content = _compile(tmppy_source)
+                object_file_content = compile(tmppy_source)
                 main_module = object_file_content.modules_by_name[TEST_MODULE_NAME]
-                cpp_source = _link(object_file_content)
+                cpp_source = link(object_file_content)
 
                 if _py2tmp.ConfigurationKnobs.reached_max_num_remaining_loops_counter:
                     raise TestFailedException('Reached max_num_remaining_loops_counter.')
@@ -772,7 +776,7 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
                                     tmppy_ir1=str(main_module.ir1_module),
                                     cpp_source=cpp_source))
 
-    cpp_source = _link(object_file_content)
+    cpp_source = link(object_file_content)
     return object_file_content, cpp_source
 
 def assert_compilation_succeeds(extra_cpp_prelude='', always_allow_toplevel_static_asserts_after_optimization=False):
@@ -919,39 +923,112 @@ def _get_line_from_diagnostic(diagnostic):
     matches = re.match('<unknown>:([0-9]*):', diagnostic)
     return int(matches.group(1))
 
+def check_compilation_error(e: CompilationError,
+                            tmppy_source: str):
+    actual_source_lines = []
+    expected_error_regex = None
+    expected_error_line = None
+    expected_note_by_line = dict()
+    for line_index, line in enumerate(tmppy_source.splitlines()):
+        error_regex_marker = ' # error: '
+        note_regex_marker = ' # note: '
+        if error_regex_marker in line:
+            if expected_error_regex:
+                raise TestFailedException('Multiple expected errors in the same test are not supported')
+            [line, expected_error_regex] = line.split(error_regex_marker)
+            expected_error_line = line_index + 1
+        elif note_regex_marker in line:
+            [line, expected_note_regex] = line.split(note_regex_marker)
+            expected_note_by_line[line_index + 1] = expected_note_regex
+        actual_source_lines.append(line)
+
+    if not expected_error_regex:
+        raise TestFailedException(textwrap.dedent('''\
+                assert_conversion_fails was used, but no expected error regex was found.
+                
+                TMPPy source:
+                {tmppy_source}
+                ''').format(tmppy_source = add_line_numbers(tmppy_source)))
+
+    # py2tmp diagnostics take up 3 lines each, e.g.:
+    # <unknown>:2:11: error: Empty lists are not currently supported.
+    #   return []
+    #          ^
+    py2tmp_diagnostics = _split_list(e.args[0].splitlines(), num_elems_in_chunk=3)
+    error_diagnostic = py2tmp_diagnostics[0]
+
+    expected_error_regex = '<unknown>:[0-9]*:[0-9]*: error: ' + expected_error_regex
+    if not re.match(expected_error_regex, error_diagnostic[0]):
+        raise TestFailedException(textwrap.dedent('''\
+                An exception was thrown, but it didn\'t match the expected error regex.
+                Expected error regex: {expected_error_regex}
+                Actual error:
+                {actual_error}
+                
+                TMPPy source:
+                {tmppy_source}
+                ''').format(expected_error_regex = expected_error_regex,
+                            actual_error = '\n'.join(error_diagnostic),
+                            tmppy_source = add_line_numbers(tmppy_source)))
+
+    matches = re.match('<unknown>:([0-9]*):', error_diagnostic[0])
+    actual_error_line = int(matches.group(1))
+    if expected_error_line != actual_error_line:
+        raise TestFailedException(textwrap.dedent('''\
+                An exception matching the expected regex was thrown, but the error mentioned the wrong line: {actual_error_line} was reported instead of {expected_error_line}
+                Expected error regex: {expected_error_regex}
+                Actual error:
+                {actual_error}
+                
+                TMPPy source:
+                {tmppy_source}
+                ''').format(actual_error_line=actual_error_line,
+                            expected_error_line=expected_error_line,
+                            expected_error_regex = expected_error_regex,
+                            actual_error = '\n'.join(error_diagnostic),
+                            tmppy_source = add_line_numbers(tmppy_source)))
+
+    actual_note_by_line = {_get_line_from_diagnostic(note[0]): note
+                           for note in py2tmp_diagnostics[1:]}
+    for expected_note_line, expected_note_regex in expected_note_by_line.items():
+        actual_note = actual_note_by_line.get(expected_note_line)
+        if not actual_note:
+            raise Exception('Expected the note %s on line %s but no note was emitted mentioning this line. Emitted notes: %s' % (
+                expected_note_regex, expected_note_line, json.dumps(actual_note_by_line, indent=4)))
+        expected_note_regex = '<unknown>:[0-9]*:[0-9]*: note: ' + expected_note_regex
+        if not re.match(expected_note_regex, actual_note[0]):
+            raise TestFailedException(textwrap.dedent('''\
+                    A note diagnostic was emitted, but it didn\'t match the expected note regex.
+                    Expected note regex: {expected_note_regex}
+                    Actual note:
+                    {actual_note}
+                    
+                    TMPPy source:
+                    {tmppy_source}
+                    ''').format(expected_note_regex = expected_note_regex,
+                                actual_note = '\n'.join(actual_note),
+                                tmppy_source = add_line_numbers(tmppy_source)))
+
+    for actual_note_line, actual_note in actual_note_by_line.items():
+        expected_note = expected_note_by_line.get(actual_note_line)
+        if not expected_note:
+            raise TestFailedException(textwrap.dedent('''\
+                    Unexpected note:
+                    {actual_note}
+                    
+                    TMPPy source:
+                    {tmppy_source}
+                    ''').format(actual_note = '\n'.join(actual_note),
+                                tmppy_source = add_line_numbers(tmppy_source)))
+
 def assert_conversion_fails(f):
     @wraps(f)
     def wrapper():
         def run_test(allow_toplevel_static_asserts_after_optimization: bool):
             tmppy_source = _get_function_body(f)
-            actual_source_lines = []
-            expected_error_regex = None
-            expected_error_line = None
-            expected_note_by_line = dict()
-            for line_index, line in enumerate(tmppy_source.splitlines()):
-                error_regex_marker = ' # error: '
-                note_regex_marker = ' # note: '
-                if error_regex_marker in line:
-                    if expected_error_regex:
-                        raise TestFailedException('Multiple expected errors in the same test are not supported')
-                    [line, expected_error_regex] = line.split(error_regex_marker)
-                    expected_error_line = line_index + 1
-                elif note_regex_marker in line:
-                    [line, expected_note_regex] = line.split(note_regex_marker)
-                    expected_note_by_line[line_index + 1] = expected_note_regex
-                actual_source_lines.append(line)
-
-            if not expected_error_regex:
-                raise TestFailedException(textwrap.dedent('''\
-                        assert_conversion_fails was used, but no expected error regex was found.
-                        
-                        TMPPy source:
-                        {tmppy_source}
-                        ''').format(tmppy_source = add_line_numbers(tmppy_source)))
-
             e = None
             try:
-                object_file_content = _compile('\n'.join(actual_source_lines))
+                object_file_content = compile(tmppy_source)
             except _py2tmp.CompilationError as e1:
                 e = e1
 
@@ -971,76 +1048,8 @@ def assert_conversion_fails(f):
                                     tmppy_ir2=str(main_module.ir2_module),
                                     tmppy_ir1=str(main_module.ir1_module)))
 
-            # py2tmp diagnostics take up 3 lines each, e.g.:
-            # <unknown>:2:11: error: Empty lists are not currently supported.
-            #   return []
-            #          ^
-            py2tmp_diagnostics = _split_list(e.args[0].splitlines(), num_elems_in_chunk=3)
-            error_diagnostic = py2tmp_diagnostics[0]
+            check_compilation_error(e, tmppy_source)
 
-            expected_error_regex = '<unknown>:[0-9]*:[0-9]*: error: ' + expected_error_regex
-            if not re.match(expected_error_regex, error_diagnostic[0]):
-                raise TestFailedException(textwrap.dedent('''\
-                        An exception was thrown, but it didn\'t match the expected error regex.
-                        Expected error regex: {expected_error_regex}
-                        Actual error:
-                        {actual_error}
-                        
-                        TMPPy source:
-                        {tmppy_source}
-                        ''').format(expected_error_regex = expected_error_regex,
-                                    actual_error = '\n'.join(error_diagnostic),
-                                    tmppy_source = add_line_numbers(tmppy_source)))
-
-            matches = re.match('<unknown>:([0-9]*):', error_diagnostic[0])
-            actual_error_line = int(matches.group(1))
-            if expected_error_line != actual_error_line:
-                raise TestFailedException(textwrap.dedent('''\
-                        An exception matching the expected regex was thrown, but the error mentioned the wrong line: {actual_error_line} was reported instead of {expected_error_line}
-                        Expected error regex: {expected_error_regex}
-                        Actual error:
-                        {actual_error}
-                        
-                        TMPPy source:
-                        {tmppy_source}
-                        ''').format(actual_error_line=actual_error_line,
-                                    expected_error_line=expected_error_line,
-                                    expected_error_regex = expected_error_regex,
-                                    actual_error = '\n'.join(error_diagnostic),
-                                    tmppy_source = add_line_numbers(tmppy_source)))
-
-            actual_note_by_line = {_get_line_from_diagnostic(note[0]): note
-                                   for note in py2tmp_diagnostics[1:]}
-            for expected_note_line, expected_note_regex in expected_note_by_line.items():
-                actual_note = actual_note_by_line.get(expected_note_line)
-                if not actual_note:
-                    raise Exception('Expected the note %s on line %s but no note was emitted mentioning this line. Emitted notes: %s' % (
-                        expected_note_regex, expected_note_line, json.dumps(actual_note_by_line, indent=4)))
-                expected_note_regex = '<unknown>:[0-9]*:[0-9]*: note: ' + expected_note_regex
-                if not re.match(expected_note_regex, actual_note[0]):
-                    raise TestFailedException(textwrap.dedent('''\
-                            A note diagnostic was emitted, but it didn\'t match the expected note regex.
-                            Expected note regex: {expected_note_regex}
-                            Actual note:
-                            {actual_note}
-                            
-                            TMPPy source:
-                            {tmppy_source}
-                            ''').format(expected_note_regex = expected_note_regex,
-                                        actual_note = '\n'.join(actual_note),
-                                        tmppy_source = add_line_numbers(tmppy_source)))
-
-            for actual_note_line, actual_note in actual_note_by_line.items():
-                expected_note = expected_note_by_line.get(actual_note_line)
-                if not expected_note:
-                    raise TestFailedException(textwrap.dedent('''\
-                            Unexpected note:
-                            {actual_note}
-                            
-                            TMPPy source:
-                            {tmppy_source}
-                            ''').format(actual_note = '\n'.join(actual_note),
-                                        tmppy_source = add_line_numbers(tmppy_source)))
             return '(no C++ source)'
         run_test_with_optional_optimization(run_test)
 

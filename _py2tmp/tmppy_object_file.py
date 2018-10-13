@@ -11,14 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from _py2tmp import ir3, ir0, ir2, ir1
 from _py2tmp.value_type import ValueType
 
 class ModuleInfo(ValueType):
     def __init__(self,
-                 ir3_module: ir3.Module,
+                 ir3_module: Optional[ir3.Module],
                  ir0_header: ir0.Header,
                  ir0_header_before_optimization: Optional[ir0.Header] = None,
                  ir1_module: Optional[ir1.Module] = None,
@@ -37,6 +37,6 @@ def merge_object_files(object_files: List[ObjectFileContent]):
     modules_by_name = dict()
     for object_file in object_files:
         for name, module_info in object_file.modules_by_name.items():
-            # If there are duplicates we assume that they're the same, we don't check here.
-            modules_by_name[name] = module_info
+            if name not in modules_by_name or modules_by_name[name].ir3_module is None:
+                modules_by_name[name] = module_info
     return ObjectFileContent(modules_by_name)

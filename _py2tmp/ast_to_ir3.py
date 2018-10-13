@@ -14,18 +14,25 @@
 import itertools
 import re
 import textwrap
-from _py2tmp import ir3
-import typed_ast.ast3 as ast
 from typing import List, Tuple, Dict, Optional, Union, Callable, Iterator, Set
-from _py2tmp.utils import ast_to_string
+
+import typed_ast.ast3 as ast
+
+from _py2tmp import ir3, ObjectFileContent
+
 
 class Symbol:
-    def __init__(self, name: str, expr_type: ir3.ExprType, is_function_that_may_throw: bool):
+    def __init__(self,
+                 name: str,
+                 expr_type: ir3.ExprType,
+                 is_function_that_may_throw: bool,
+                 source_module: Optional[str]):
         if is_function_that_may_throw:
             assert isinstance(expr_type, ir3.FunctionType)
         self.expr_type = expr_type
         self.name = name
         self.is_function_that_may_throw = is_function_that_may_throw
+        self.source_module = source_module
 
 class SymbolLookupResult:
     def __init__(self, symbol: Symbol, ast_node: ast.AST, is_only_partially_defined: bool, symbol_table: 'SymbolTable'):
@@ -53,10 +60,11 @@ class SymbolTable:
                    expr_type: ir3.ExprType,
                    definition_ast_node: ast.AST,
                    is_only_partially_defined: bool,
-                   is_function_that_may_throw: bool):
+                   is_function_that_may_throw: bool,
+                   source_module: Optional[str]):
         if is_function_that_may_throw:
             assert isinstance(expr_type, ir3.FunctionType)
-        self.symbols_by_name[name] = (Symbol(name, expr_type, is_function_that_may_throw),
+        self.symbols_by_name[name] = (Symbol(name, expr_type, is_function_that_may_throw, source_module),
                                       definition_ast_node,
                                       is_only_partially_defined)
 
@@ -64,6 +72,7 @@ class CompilationContext:
     def __init__(self,
                  symbol_table: SymbolTable,
                  custom_types_symbol_table: SymbolTable,
+                 external_ir3_symbols_by_name_by_module: Dict[str, Dict[str, Union[ir3.FunctionDefn, ir3.CustomType]]],
                  filename: str,
                  source_lines: List[str],
                  identifier_generator: Iterator[str],
@@ -71,6 +80,7 @@ class CompilationContext:
                  partially_typechecked_function_definitions_by_name: Dict[str, ast.FunctionDef] = None):
         self.symbol_table = symbol_table
         self.custom_types_symbol_table = custom_types_symbol_table
+        self.external_ir3_symbols_by_name_by_module = external_ir3_symbols_by_name_by_module
         self.partially_typechecked_function_definitions_by_name = partially_typechecked_function_definitions_by_name or dict()
         self.filename = filename
         self.source_lines = source_lines
@@ -80,6 +90,7 @@ class CompilationContext:
     def create_child_context(self, function_name=None):
         return CompilationContext(SymbolTable(parent=self.symbol_table),
                                   self.custom_types_symbol_table,
+                                  self.external_ir3_symbols_by_name_by_module,
                                   self.filename,
                                   self.source_lines,
                                   self.identifier_generator,
@@ -91,7 +102,8 @@ class CompilationContext:
                    expr_type: ir3.ExprType,
                    definition_ast_node: ast.AST,
                    is_only_partially_defined: bool,
-                   is_function_that_may_throw: bool):
+                   is_function_that_may_throw: bool,
+                   source_module: Optional[str] = None):
         """
         Adds a symbol to the symbol table.
 
@@ -107,14 +119,16 @@ class CompilationContext:
                                      expr_type=expr_type,
                                      definition_ast_node=definition_ast_node,
                                      is_only_partially_defined=is_only_partially_defined,
-                                     is_function_that_may_throw=is_function_that_may_throw)
+                                     is_function_that_may_throw=is_function_that_may_throw,
+                                     source_module=source_module)
 
     def add_custom_type_symbol(self,
                                custom_type: ir3.CustomType,
-                               definition_ast_node: ast.ClassDef):
+                               definition_ast_node: Union[ast.ClassDef, ast.ImportFrom, None],
+                               source_module: Optional[str] = None):
         self.add_symbol(name=custom_type.name,
                         expr_type=ir3.FunctionType(argtypes=[arg.expr_type for arg in custom_type.arg_types],
-                                              returns=custom_type),
+                                                   returns=custom_type),
                         definition_ast_node=definition_ast_node,
                         is_only_partially_defined=False,
                         is_function_that_may_throw=False)
@@ -122,7 +136,8 @@ class CompilationContext:
                                                   expr_type=custom_type,
                                                   definition_ast_node=definition_ast_node,
                                                   is_only_partially_defined=False,
-                                                  is_function_that_may_throw=False)
+                                                  is_function_that_may_throw=False,
+                                                  source_module=source_module)
 
     def add_symbol_for_function_with_unknown_return_type(self,
                                                          name: str,
@@ -130,6 +145,25 @@ class CompilationContext:
         self._check_not_already_defined(name, definition_ast_node)
 
         self.partially_typechecked_function_definitions_by_name[name] = definition_ast_node
+
+    def add_symbol_for_external_elem(self,
+                                     elem: Union[ir3.FunctionDefn, ir3.CustomType],
+                                     import_from_ast_node: ast.ImportFrom,
+                                     source_module: str):
+        if isinstance(elem, ir3.FunctionDefn):
+            self.add_symbol(name=elem.name,
+                            expr_type=ir3.FunctionType(argtypes=[arg.expr_type for arg in elem.args],
+                                                       returns=elem.return_type),
+                            definition_ast_node=import_from_ast_node,
+                            is_only_partially_defined=False,
+                            is_function_that_may_throw=True,
+                            source_module=source_module)
+        elif isinstance(elem, ir3.CustomType):
+            self.add_custom_type_symbol(custom_type=elem,
+                                        definition_ast_node=import_from_ast_node,
+                                        source_module=source_module)
+        else:
+            raise NotImplementedError('Unexpected elem type: %s' % elem.__class__.__name__)
 
     def get_symbol_definition(self, name: str):
         return self.symbol_table.get_symbol_definition(name)
@@ -148,7 +182,8 @@ class CompilationContext:
                                          expr_type=expr_type,
                                          definition_ast_node=ast_node,
                                          is_only_partially_defined=False,
-                                         is_function_that_may_throw=True)
+                                         is_function_that_may_throw=True,
+                                         source_module=None)
         else:
             assert self.get_symbol_definition(name).symbol.expr_type == expr_type
 
@@ -174,6 +209,7 @@ class CompilationContext:
                 raise CompilationError(self, definition_ast_node,
                                        '%s was already defined in this scope.' % name,
                                        notes=[(previous_definition_ast_node, 'The previous declaration was here.')])
+
 
 class CompilationError(Exception):
     def __init__(self, compilation_context: CompilationContext, ast_node: ast.AST, error_message: str, notes: List[Tuple[ast.AST, str]] = []):
@@ -205,9 +241,16 @@ class CompilationError(Exception):
 def module_ast_to_ir3(module_ast_node: ast.Module,
                       filename: str,
                       source_lines: List[str],
-                      identifier_generator: Iterator[str]):
+                      identifier_generator: Iterator[str],
+                      context_object_files: ObjectFileContent):
+    external_ir3_symbols_by_name_by_module = {module_name: {elem.name: elem
+                                                            for elem in itertools.chain(module_info.ir3_module.function_defns, module_info.ir3_module.custom_types)
+                                                            if elem.name in module_info.ir3_module.public_names}
+                                              for module_name, module_info in context_object_files.modules_by_name.items()
+                                              if module_info.ir3_module}
     compilation_context = CompilationContext(SymbolTable(),
                                              SymbolTable(),
+                                             external_ir3_symbols_by_name_by_module,
                                              filename,
                                              source_lines,
                                              identifier_generator)
@@ -233,21 +276,7 @@ def module_ast_to_ir3(module_ast_node: ast.Module,
                     name=function_name,
                     definition_ast_node=ast_node)
         elif isinstance(ast_node, ast.ImportFrom):
-            supported_imports_by_module = {
-                'tmppy': ('Type', 'empty_list', 'empty_set', 'match'),
-                'typing': ('List', 'Set', 'Callable')
-            }
-            supported_imports = supported_imports_by_module.get(ast_node.module)
-            if not supported_imports:
-                raise CompilationError(compilation_context, ast_node,
-                                       'The only modules that can be imported in TMPPy are: ' + ', '.join(sorted(supported_imports_by_module.keys())))
-            if len(ast_node.names) == 0:
-                raise CompilationError(compilation_context, ast_node, 'Imports must import at least 1 symbol.')  # pragma: no cover
-            for imported_name in ast_node.names:
-                if not isinstance(imported_name, ast.alias) or imported_name.asname:
-                    raise CompilationError(compilation_context, ast_node, 'TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".')
-                if imported_name.name not in supported_imports:
-                    raise CompilationError(compilation_context, ast_node, 'The only supported imports from %s are: %s.' % (ast_node.module, ', '.join(sorted(supported_imports))))
+            _import_from_ast_to_ir3(ast_node, compilation_context)
         elif isinstance(ast_node, ast.Import):
             raise CompilationError(compilation_context, ast_node,
                                    'TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".')
@@ -288,6 +317,50 @@ def module_ast_to_ir3(module_ast_node: ast.Module,
                       assertions=toplevel_assertions,
                       custom_types=custom_types,
                       public_names=public_names)
+
+
+def _import_from_ast_to_ir3(ast_node: ast.ImportFrom, compilation_context: CompilationContext):
+    if len(ast_node.names) == 0:
+        raise CompilationError(compilation_context, ast_node,
+                               'Imports must import at least 1 symbol.')  # pragma: no cover
+    for imported_name in ast_node.names:
+        if not isinstance(imported_name, ast.alias) or imported_name.asname:
+            raise CompilationError(compilation_context, ast_node,
+                                   'TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".')
+
+    builtin_imports_by_module = {
+        'tmppy': ('Type', 'empty_list', 'empty_set', 'match'),
+        'typing': ('List', 'Set', 'Callable')
+    }
+
+    importable_names = builtin_imports_by_module.get(ast_node.module)
+    action = lambda symbol_name: None
+
+    if not importable_names:
+        # TODO: require all directly imported modules to be specified directly instead of allowing transitively-present
+        # modules.
+        symbols_by_name = compilation_context.external_ir3_symbols_by_name_by_module.get(ast_node.module)
+        if symbols_by_name is not None:
+            importable_names = symbols_by_name.keys()
+            action = lambda imported_name: compilation_context.add_symbol_for_external_elem(elem=compilation_context.external_ir3_symbols_by_name_by_module[ast_node.module][imported_name.name],
+                                                                                            import_from_ast_node=ast_node,
+                                                                                            source_module=ast_node.module)
+
+    if importable_names is None:
+        raise CompilationError(compilation_context, ast_node,
+                               'Module not found. The only modules that can be imported are the builtin modules ('
+                               + ', '.join(sorted(builtin_imports_by_module.keys()))
+                               + ') and the modules in the specified object files ('
+                               + (', '.join(sorted(name for name in compilation_context.external_ir3_symbols_by_name_by_module.keys() if name != '_py2tmp.tmppy_builtins')) or 'none')
+                               + ')')
+
+
+    for imported_name in ast_node.names:
+        if imported_name.name not in importable_names:
+            raise CompilationError(compilation_context, ast_node, 'The only supported imports from %s are: %s.' % (
+                ast_node.module, ', '.join(sorted(importable_names))))
+        action(imported_name)
+
 
 def match_expression_ast_to_ir3(ast_node: ast.Call,
                                 compilation_context: CompilationContext,
@@ -1959,7 +2032,8 @@ def var_reference_ast_to_ir3(ast_node: ast.Name,
                                 name=lookup_result.symbol.name,
                                 is_global_function=lookup_result.symbol_table.parent is None,
                                 is_function_that_may_throw=isinstance(lookup_result.symbol.expr_type, ir3.FunctionType)
-                                                              and lookup_result.symbol.is_function_that_may_throw)
+                                                           and lookup_result.symbol.is_function_that_may_throw,
+                                source_module=lookup_result.symbol.source_module)
     else:
         definition_ast_node = compilation_context.get_partial_function_definition(ast_node.id)
         if definition_ast_node:

@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _py2tmp import ir3
+from _py2tmp import ir3, ObjectFileContent
 from _py2tmp.ir3_optimization.recalculate_function_can_throw_info import recalculate_function_can_throw_info
 
-def optimize_module(module: ir3.Module):
-    module = recalculate_function_can_throw_info(module)
+def optimize_module(module: ir3.Module, context_object_file_content: ObjectFileContent):
+    module = recalculate_function_can_throw_info(module, context_object_file_content)
     return module
