@@ -719,6 +719,20 @@ struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
       BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
       value;
 };
+template <typename TmppyInternalBuiltin_35, bool TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_258;
+// Split that generates value of: (meta)function wrapping the result expression
+// in a list/set comprehension from the function BoolSetEquals
+template <bool... TmppyInternalBuiltin_130, bool TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_258<BoolList<(TmppyInternalBuiltin_130)...>,
+                                TmppyInternalBuiltin_51> {
+  static constexpr bool value =
+      !(std::is_same<
+          BoolList<((TmppyInternalBuiltin_51) ==
+                    (TmppyInternalBuiltin_130))...>,
+          BoolList<(Select1stBoolBool<
+                    false, TmppyInternalBuiltin_130>::value)...>>::value);
+};
 template <typename TmppyInternalBuiltin_5, bool TmppyInternalBuiltin_58>
 struct TmppyInternalBuiltin_260;
 // Split that generates value of: (meta)function wrapping the result expression
@@ -760,20 +774,6 @@ struct TmppyInternalBuiltin_276<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
                                 false> {
   static constexpr bool value = false;
 };
-template <typename TmppyInternalBuiltin_35, bool TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_258;
-// Split that generates value of: (meta)function wrapping the result expression
-// in a list/set comprehension from the function BoolSetEquals
-template <bool... TmppyInternalBuiltin_130, bool TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_258<BoolList<(TmppyInternalBuiltin_130)...>,
-                                TmppyInternalBuiltin_51> {
-  static constexpr bool value =
-      !(std::is_same<
-          BoolList<((TmppyInternalBuiltin_51) ==
-                    (TmppyInternalBuiltin_130))...>,
-          BoolList<(Select1stBoolBool<
-                    false, TmppyInternalBuiltin_130>::value)...>>::value);
-};
 template <typename TmppyInternal_5, typename TmppyInternal_6>
 struct TmppyInternal_23;
 // Split that generates value of: eq
@@ -810,6 +810,20 @@ struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
       BoolList<(TmppyInternalBuiltin_90)...>,
       BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
       value;
+};
+template <typename TmppyInternalBuiltin_35, int64_t TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_284;
+// Split that generates value of: (meta)function wrapping the result expression
+// in a list/set comprehension from the function Int64SetEquals
+template <int64_t... TmppyInternalBuiltin_147, int64_t TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_284<Int64List<(TmppyInternalBuiltin_147)...>,
+                                TmppyInternalBuiltin_51> {
+  static constexpr bool value =
+      !(std::is_same<
+          BoolList<((TmppyInternalBuiltin_51) ==
+                    (TmppyInternalBuiltin_147))...>,
+          BoolList<(Select1stBoolInt64<
+                    false, TmppyInternalBuiltin_147>::value)...>>::value);
 };
 template <typename TmppyInternalBuiltin_5, int64_t TmppyInternalBuiltin_58>
 struct TmppyInternalBuiltin_286;
@@ -852,20 +866,6 @@ struct TmppyInternalBuiltin_302<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
                                 false> {
   static constexpr bool value = false;
 };
-template <typename TmppyInternalBuiltin_35, int64_t TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_284;
-// Split that generates value of: (meta)function wrapping the result expression
-// in a list/set comprehension from the function Int64SetEquals
-template <int64_t... TmppyInternalBuiltin_147, int64_t TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_284<Int64List<(TmppyInternalBuiltin_147)...>,
-                                TmppyInternalBuiltin_51> {
-  static constexpr bool value =
-      !(std::is_same<
-          BoolList<((TmppyInternalBuiltin_51) ==
-                    (TmppyInternalBuiltin_147))...>,
-          BoolList<(Select1stBoolInt64<
-                    false, TmppyInternalBuiltin_147>::value)...>>::value);
-};
 template <typename TmppyInternal_5, typename TmppyInternal_6>
 struct TmppyInternal_23;
 // Split that generates value of: eq
@@ -902,6 +902,21 @@ struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
       BoolList<(TmppyInternalBuiltin_90)...>,
       BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
       value;
+};
+template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_310;
+// Split that generates value of: (meta)function wrapping the result expression
+// in a list/set comprehension from the function TypeSetEquals
+template <typename... TmppyInternalBuiltin_164,
+          typename TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_310<List<TmppyInternalBuiltin_164...>,
+                                TmppyInternalBuiltin_51> {
+  static constexpr bool value =
+      !(std::is_same<
+          BoolList<(std::is_same<TmppyInternalBuiltin_51,
+                                 TmppyInternalBuiltin_164>::value)...>,
+          BoolList<(Select1stBoolType<
+                    false, TmppyInternalBuiltin_164>::value)...>>::value);
 };
 template <typename TmppyInternalBuiltin_5, typename TmppyInternalBuiltin_58>
 struct TmppyInternalBuiltin_312;
@@ -944,21 +959,6 @@ template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
 struct TmppyInternalBuiltin_328<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
                                 false> {
   static constexpr bool value = false;
-};
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_310;
-// Split that generates value of: (meta)function wrapping the result expression
-// in a list/set comprehension from the function TypeSetEquals
-template <typename... TmppyInternalBuiltin_164,
-          typename TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_310<List<TmppyInternalBuiltin_164...>,
-                                TmppyInternalBuiltin_51> {
-  static constexpr bool value =
-      !(std::is_same<
-          BoolList<(std::is_same<TmppyInternalBuiltin_51,
-                                 TmppyInternalBuiltin_164>::value)...>,
-          BoolList<(Select1stBoolType<
-                    false, TmppyInternalBuiltin_164>::value)...>>::value);
 };
 template <typename TmppyInternal_5, typename TmppyInternal_6>
 struct TmppyInternal_23;

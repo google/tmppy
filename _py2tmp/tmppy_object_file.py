@@ -36,7 +36,7 @@ class ObjectFileContent(ValueType):
 def merge_object_files(object_files: List[ObjectFileContent]):
     modules_by_name = dict()
     for object_file in object_files:
-        for name, module_info in object_file.modules_by_name:
+        for name, module_info in object_file.modules_by_name.items():
             # If there are duplicates we assume that they're the same, we don't check here.
             modules_by_name[name] = module_info
     return ObjectFileContent(modules_by_name)

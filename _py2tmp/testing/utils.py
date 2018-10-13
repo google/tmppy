@@ -26,14 +26,14 @@ import tempfile
 import textwrap
 import traceback
 import unittest
-from functools import wraps
+from functools import wraps, lru_cache
 from typing import Callable, Iterable, Any
 
 import py2tmp_test_config as config
 import pytest
 
 import _py2tmp
-from _py2tmp import ir0
+from _py2tmp import ir0, ObjectFileContent
 
 CHECK_TESTS_WERE_FULLY_OPTIMIZED = True
 
@@ -691,15 +691,23 @@ def _get_function_body(f):
     return textwrap.dedent(''.join(source_code))
 
 TEST_MODULE_NAME = 'test_module'
+BUILTINS_OBJECT_FILE_PATH = './builtins.tmppyc'
+
+@lru_cache()
+def get_builtins_object_file_content():
+    with open(BUILTINS_OBJECT_FILE_PATH, 'rb') as file:
+        object_file = pickle.loads(file.read())
+    assert isinstance(object_file, ObjectFileContent)
+    return object_file
 
 def _compile(python_source):
     return _py2tmp.compile_source_code(module_name=TEST_MODULE_NAME,
                                        source_code=python_source,
-                                       context_object_file_content=_py2tmp.ObjectFileContent({}),
+                                       context_object_file_content=get_builtins_object_file_content(),
                                        unique_identifier_prefix='TmppyInternal_',
                                        include_intermediate_irs_for_debugging=True)
 
-def _link(object_file_content: str):
+def _link(object_file_content: ObjectFileContent):
     return _py2tmp.link(main_module_name=TEST_MODULE_NAME,
                         object_file_content=object_file_content,
                         unique_identifier_prefix='TmppyInternal2_')

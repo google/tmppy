@@ -14,6 +14,7 @@
 
 import argparse
 import pickle
+from typing import List
 
 from _py2tmp import utils
 from _py2tmp.compile import compile
@@ -23,10 +24,10 @@ from _py2tmp.link import link
 def _module_name_from_filename(file_name: str):
     return file_name.replace('/', '.')
 
-def _compile(module_name: str, filename: str, verbose):
+def _compile(module_name: str, object_files: List[str], filename: str, verbose):
     object_file_content = compile(module_name=module_name,
                                   file_name=filename,
-                                  context_object_files=[],
+                                  context_object_files=object_files,
                                   unique_identifier_prefix='TmppyInternal_',
                                   include_intermediate_irs_for_debugging=verbose)
 
@@ -47,8 +48,8 @@ def _compile(module_name: str, filename: str, verbose):
 
     return object_file_content
 
-def _compile_and_link(module_name, filename: str, verbose):
-    object_file_content = _compile(module_name, filename, verbose)
+def _compile_and_link(module_name: str, object_files: List[str], filename: str, verbose):
+    object_file_content = _compile(module_name, object_files, filename, verbose)
 
     result = link(module_name,
                   object_file_content,
@@ -59,36 +60,46 @@ def _compile_and_link(module_name, filename: str, verbose):
         print(result)
     return result
 
-def main():
-    parser = argparse.ArgumentParser(description='Converts python source code into C++ metafunctions.')
-    parser.add_argument('--verbose', help='If "true", prints verbose messages during the conversion')
-    parser.add_argument('-o', required=True, metavar='output_file', help='Output file (.tmppyc or .h).')
-    parser.add_argument('source', help='The python source file to convert')
-    parser.add_argument('object_files', nargs='*', help='.tmppyc object files for the modules (directly) imported in this source file')
-
-    args = parser.parse_args()
-
-    for object_file in args.object_files:
+def main(verbose: bool,
+         builtins_path: str,
+         output_file: str,
+         source: str,
+         object_files: List[str]):
+    object_files = object_files + [builtins_path]
+    for object_file in object_files:
         if not object_file.endswith('.tmppyc'):
             raise Exception('The specified object file %s does not have a .tmppyc extension.')
 
     suffix = '.py'
-    if not args.source.endswith(suffix):
-        raise Exception('The input file name does not end with .py: ' + args.source)
+    if not source.endswith(suffix):
+        raise Exception('The input file name does not end with .py: ' + source)
 
-    module_name = _module_name_from_filename(args.source)
+    module_name = _module_name_from_filename(source)
 
-    verbose = (args.verbose == 'true')
-    if args.o.endswith('.h'):
-        result = _compile_and_link(module_name, args.source, verbose)
-        with open(args.o, 'w') as output_file:
+    verbose = (verbose == 'true')
+    if output_file.endswith('.h'):
+        result = _compile_and_link(module_name, object_files, source, verbose)
+        with open(output_file, 'w') as output_file:
             output_file.write(result)
-    elif args.o.endswith('.tmppyc'):
-        result = pickle.dumps(_compile(module_name, args.source, verbose))
-        with open(args.o, 'wb') as output_file:
+    elif output_file.endswith('.tmppyc'):
+        result = pickle.dumps(_compile(module_name, object_files, source, verbose))
+        with open(output_file, 'wb') as output_file:
             output_file.write(result)
     else:
-        raise Exception('The output file name does not end with .h or .tmppyc: ' + args.o)
+        raise Exception('The output file name does not end with .h or .tmppyc: ' + output_file)
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Converts python source code into C++ metafunctions.')
+    parser.add_argument('--verbose', help='If "true", prints verbose messages during the conversion')
+    parser.add_argument('--builtins-path', required=True, help='The path to the builtins.tmppyc file.')
+    parser.add_argument('-o', required=True, metavar='output_file', help='Output file (.tmppyc or .h).')
+    parser.add_argument('source', required=True, help='The python source file to convert')
+    parser.add_argument('object_files', nargs='*', help='.tmppyc object files for the modules (directly) imported in this source file')
+
+    args = parser.parse_args()
+
+    main(verbose=(args.verbose == 'true'),
+         builtins_path=args.builtins_path,
+         output_file=args.o,
+         source=args.source,
+         object_files=args.object_files)

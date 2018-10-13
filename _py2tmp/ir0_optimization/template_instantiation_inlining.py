@@ -155,6 +155,11 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
         self.needs_another_loop = False
         self.inlineable_templates_by_name = _with_global_inlineable_templates(context_object_file_content, local_inlineable_templates)
         self.parent_template_specialization_definitions = dict()
+        self.root_template_defn_name = None
+
+    def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
+        self.root_template_defn_name = template_defn.name
+        return super().transform_template_defn(template_defn, writer)
 
     def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: transform_ir0.Writer):
         old_parent_template_specialization_definitions = self.parent_template_specialization_definitions
@@ -300,7 +305,7 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
 
         self.needs_another_loop = True
         if ConfigurationKnobs.verbose:
-            print('Inlining template defn: %s' % template_defn_to_inline.name)
+            print('Inlining template defn: %s into %s' % (template_defn_to_inline.name, self.root_template_defn_name or ir0_to_cpp.expr_to_cpp_simple(class_member_access)))
 
         for elem in body:
             transformation.transform_template_body_elem(elem, writer)

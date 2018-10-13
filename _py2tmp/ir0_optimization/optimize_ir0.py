@@ -33,10 +33,10 @@ from _py2tmp.ir0_optimization.template_instantiation_inlining import perform_tem
 from _py2tmp.tmppy_object_file import ObjectFileContent
 
 
-def _calculate_max_num_optimization_loops(num_templates_in_connected_component):
+def _calculate_max_num_optimization_loops(size):
     # This is just a heuristic. We want to make enough loops to fully optimize the code but without looping forever
     # when there are mutually-recursive functions.
-    return num_templates_in_connected_component * 20 + 20
+    return size * 10 + 40
 
 def _optimize_header_first_pass(header: ir0.Header,
                                 identifier_generator: Iterator[str],

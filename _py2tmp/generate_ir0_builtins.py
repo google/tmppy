@@ -11,14 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import argparse
 import importlib.util as importlib_util
+import pickle
 from functools import lru_cache
 from typing import List, Optional, Sequence
 
 from _py2tmp import ir0, ir0_builtin_literals
 from _py2tmp.compile import compile
 from _py2tmp.ir0_optimization import configuration_knobs
-from _py2tmp.tmppy_object_file import ModuleInfo
+from _py2tmp.tmppy_object_file import ModuleInfo, ObjectFileContent
 
 
 def _type_arg_decl(name: str):
@@ -581,13 +583,17 @@ _define_template_with_single_specialization(name='TypeListToSet',
                                                                           ir0_builtin_literals.GlobalLiterals.ADD_TO_TYPE_SET,
                                                                           ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))
 
-@lru_cache()
-def get_module():
-    old_max_num_optimization_steps = configuration_knobs.ConfigurationKnobs.max_num_optimization_steps
-    configuration_knobs.ConfigurationKnobs.max_num_optimization_steps = -1
+def main():
+    parser = argparse.ArgumentParser(description='Converts python source code into C++ metafunctions.')
+    parser.add_argument('-o', required=True, metavar='output_file', help='Output file (.tmppyc).')
+    args = parser.parse_args()
 
-    object_file_content = compile(module_name='_py2tmp.tmppy_builtins',
-                                  file_name=importlib_util.find_spec('_py2tmp.tmppy_builtins').origin,
+    if not args.o.endswith('.tmppyc'):
+        raise Exception('The output file name does not end with .tmppyc: ' + args.o)
+
+    module_name = '_py2tmp.tmppy_builtins'
+    object_file_content = compile(module_name=module_name,
+                                  file_name=importlib_util.find_spec(module_name).origin,
                                   context_object_files=[],
                                   unique_identifier_prefix='TmppyInternalBuiltin_',
                                   include_intermediate_irs_for_debugging=False)
@@ -600,6 +606,11 @@ def get_module():
                                                    toplevel_content=module_info.ir0_header.toplevel_content,
                                                    public_names=module_info.ir0_header.public_names,
                                                    split_template_name_by_old_name_and_result_element_name=module_info.ir0_header.split_template_name_by_old_name_and_result_element_name))
+    object_file_content = ObjectFileContent({module_name: module_info})
 
-    configuration_knobs.ConfigurationKnobs.max_num_optimization_steps = old_max_num_optimization_steps
-    return module_info
+    with open(args.o, 'wb') as output_file:
+        output_file.write(pickle.dumps(object_file_content))
+
+
+if __name__ == '__main__':
+    main()

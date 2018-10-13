@@ -14,7 +14,7 @@
 import itertools
 from typing import Iterator
 
-from _py2tmp import ir0, ir0_optimization, ir0_builtins, ir0_to_cpp
+from _py2tmp import ir0, ir0_optimization, ir0_to_cpp
 from _py2tmp.tmppy_object_file import ObjectFileContent
 
 
@@ -26,9 +26,7 @@ def compute_merged_header_for_linking(main_module_name: str,
     toplevel_content = []
     split_template_name_by_old_name_and_result_element_name = dict()
 
-    module_infos = itertools.chain(object_file_content.modules_by_name.values(), [ir0_builtins.get_module()])
-
-    for module_info in module_infos:
+    for module_info in object_file_content.modules_by_name.values():
         template_defns += module_info.ir0_header.template_defns
         check_if_error_specializations += module_info.ir0_header.check_if_error_specializations
         toplevel_content += module_info.ir0_header.toplevel_content
@@ -67,7 +65,7 @@ def compute_merged_header_for_linking(main_module_name: str,
                                             linking_final_header=True)
 
 def link(main_module_name: str,
-         object_file_content: str,
+         object_file_content: ObjectFileContent,
          unique_identifier_prefix: str):
     def identifier_generator_fun():
         for i in itertools.count():
