@@ -273,6 +273,12 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
             if class_member_access.expr.template_expr.cpp_type == 'std::is_same':
                 args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
                 return self.transform_is_same(args, writer)
+            if class_member_access.expr.template_expr.cpp_type == 'Bool':
+                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
+                return self.transform_bool_wrapper(args, writer)
+            if class_member_access.expr.template_expr.cpp_type == 'Int64':
+                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
+                return self.transform_int64_wrapper(args, writer)
             if class_member_access.expr.template_expr.cpp_type.startswith('Select1st'):
                 args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
                 return self.transform_select1st(args, writer)
@@ -281,7 +287,7 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
 
     def _can_remove_subexpression(self, expr: ir0.Expr):
         # If we're in a variadic type expr, we can't remove variadic sub-exprs (not in general at least).
-        # E.g. BoolList<(F<Ts>::value || true)...> can't be optimized to BoolList<true>
+        # E.g. List<Bool<(F<Ts>::value || true)>...> can't be optimized to List<Bool<true>> nor List<Bool<true>...>.
         if self.in_variadic_type_expansion and transform_ir0.is_expr_variadic(expr):
             return False
 
@@ -311,11 +317,9 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
                                      member_name='type')
 
     def transform_is_same(self, args: List[ir0.Expr], writer: transform_ir0.Writer):
-        assert len(args) == 2
         lhs, rhs = args
-        list_template_names = {'List', 'BoolList', 'Int64List'}
-        if (isinstance(lhs, ir0.TemplateInstantiation) and isinstance(lhs.template_expr, ir0.AtomicTypeLiteral) and lhs.template_expr.cpp_type in list_template_names
-                and isinstance(rhs, ir0.TemplateInstantiation) and isinstance(rhs.template_expr, ir0.AtomicTypeLiteral) and rhs.template_expr.cpp_type in list_template_names
+        if (isinstance(lhs, ir0.TemplateInstantiation) and isinstance(lhs.template_expr, ir0.AtomicTypeLiteral) and not lhs.template_expr.may_be_alias
+                and isinstance(rhs, ir0.TemplateInstantiation) and isinstance(rhs.template_expr, ir0.AtomicTypeLiteral) and not rhs.template_expr.may_be_alias
                 and lhs.template_expr.cpp_type == rhs.template_expr.cpp_type
                 and not any(isinstance(arg, ir0.VariadicTypeExpansion) for arg in lhs.args)
                 and not any(isinstance(arg, ir0.VariadicTypeExpansion) for arg in rhs.args)
@@ -324,28 +328,17 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
 
             # std::is_same<List<X1, X2, X3>, List<Y1, Y2, Y3>>::value
             # -> std::is_same<X1, Y1>::value && std::is_same<X2, Y2>::value && std::is_same<X3, Y3>::value
-            if lhs.template_expr.cpp_type == 'List':
-                result = None
-                for lhs_arg, rhs_arg in zip(lhs.args, rhs.args):
-                    if result:
-                        result = ir0.BoolBinaryOpExpr(lhs=result,
-                                                      rhs=self._create_is_same_expr(lhs_arg, rhs_arg),
-                                                      op='&&')
-                    else:
-                        result = self._create_is_same_expr(lhs_arg, rhs_arg)
-                return self.transform_expr(result, writer)
-
-            # std::is_same<IntList<n1, n2, n3>, IntList<m1, m2, m3>>::value
-            # -> (n1 == m1) && (n2 == m2) && (n3 == m3)
-            # (and same for BoolList)
             result = None
             for lhs_arg, rhs_arg in zip(lhs.args, rhs.args):
-                if result:
-                    result = ir0.BoolBinaryOpExpr(lhs=result,
-                                                  rhs=ir0.ComparisonExpr(lhs_arg, rhs_arg, op='=='),
-                                                  op='&&')
+                assert lhs_arg.expr_type == rhs_arg.expr_type
+                if lhs_arg.expr_type == ir0.TypeType():
+                    comparison = self._create_is_same_expr(lhs_arg, rhs_arg)
                 else:
-                    result = ir0.ComparisonExpr(lhs_arg, rhs_arg, op='==')
+                    comparison = ir0.ComparisonExpr(lhs_arg, rhs_arg, op='==')
+                if result:
+                    result = ir0.BoolBinaryOpExpr(lhs=result, rhs=comparison, op='&&')
+                else:
+                    result = comparison
             return self.transform_expr(result, writer)
 
         return self._create_is_same_expr(lhs, rhs)
@@ -357,6 +350,16 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
                                                       instantiation_might_trigger_static_asserts=False),
             member_type=ir0.BoolType(),
             member_name='value')
+
+    def transform_bool_wrapper(self, args: List[ir0.Expr], writer: transform_ir0.Writer):
+        expr, = args
+        # Bool<b>::value -> b
+        return expr
+
+    def transform_int64_wrapper(self, args: List[ir0.Expr], writer: transform_ir0.Writer):
+        expr, = args
+        # Int64<n>::value -> n
+        return expr
 
     def transform_select1st(self, args: List[ir0.Expr], writer: transform_ir0.Writer):
         lhs, rhs = args

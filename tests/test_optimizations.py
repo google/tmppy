@@ -463,10 +463,10 @@ struct tmppy_internal_test_module_x49;
 // Split that generates type of: g
 template <bool... tmppy_internal_test_module_x25>
 struct tmppy_internal_test_module_x49<
-    BoolList<(tmppy_internal_test_module_x25)...>> {
-  using type = Int64List<(tmppy_internal_test_module_x35<
-                          tmppy_internal_test_module_x25,
-                          tmppy_internal_test_module_x25>::value)...>;
+    List<Bool<tmppy_internal_test_module_x25>...>> {
+  using type = List<Int64<tmppy_internal_test_module_x35<
+      tmppy_internal_test_module_x25,
+      tmppy_internal_test_module_x25>::value>...>;
 };
 template <typename tmppy_internal_test_module_x8> struct g {
   using error = void;
@@ -515,12 +515,12 @@ struct tmppy_internal_test_module_x52;
 template <bool... tmppy_internal_test_module_x28,
           int64_t tmppy_internal_test_module_x9>
 struct tmppy_internal_test_module_x52<
-    BoolList<(tmppy_internal_test_module_x28)...>,
+    List<Bool<tmppy_internal_test_module_x28>...>,
     tmppy_internal_test_module_x9> {
-  using type = Int64List<(
+  using type = List<Int64<
       (tmppy_internal_test_module_x38<tmppy_internal_test_module_x28,
                                       tmppy_internal_test_module_x28>::value) +
-      (tmppy_internal_test_module_x9))...>;
+      (tmppy_internal_test_module_x9)>...>;
 };
 template <typename tmppy_internal_test_module_x8,
           int64_t tmppy_internal_test_module_x9>
@@ -574,35 +574,41 @@ def test_optimization_multiple_list_comprehensions():
 
 @assert_code_optimizes_to(r'''
 template <typename T> struct CheckIfError { using type = void; };
-template <typename L1, typename L2> struct BoolListConcat;
-template <bool... bs1, bool... bs2>
-struct BoolListConcat<BoolList<(bs1)...>, BoolList<(bs2)...>> {
-  using type = BoolList<(bs1)..., (bs2)...>;
+template <typename L1, typename L2> struct ListConcat;
+template <typename... Ts, typename... Us>
+struct ListConcat<List<Ts...>, List<Us...>> {
+  using type = List<Ts..., Us...>;
 };
-template <typename TmppyInternalBuiltin_7, bool TmppyInternalBuiltin_21,
-          bool TmppyInternalBuiltin_123>
-struct TmppyInternalBuiltin_246;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x28,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x99>
+struct tmppy_internal__py2tmp_tmppy_builtins_x198;
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_7, bool TmppyInternalBuiltin_21>
-struct TmppyInternalBuiltin_246<TmppyInternalBuiltin_7, TmppyInternalBuiltin_21,
-                                true> {
-  using type = TmppyInternalBuiltin_7;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x28>
+struct tmppy_internal__py2tmp_tmppy_builtins_x198<
+    tmppy_internal__py2tmp_tmppy_builtins_x7,
+    tmppy_internal__py2tmp_tmppy_builtins_x28, true> {
+  using type = tmppy_internal__py2tmp_tmppy_builtins_x7;
 };
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_7, bool TmppyInternalBuiltin_21>
-struct TmppyInternalBuiltin_246<TmppyInternalBuiltin_7, TmppyInternalBuiltin_21,
-                                false> {
-  using type = typename BoolListConcat<BoolList<TmppyInternalBuiltin_21>,
-                                       TmppyInternalBuiltin_7>::type;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x28>
+struct tmppy_internal__py2tmp_tmppy_builtins_x198<
+    tmppy_internal__py2tmp_tmppy_builtins_x7,
+    tmppy_internal__py2tmp_tmppy_builtins_x28, false> {
+  using type =
+      typename ListConcat<List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x28>>,
+                          tmppy_internal__py2tmp_tmppy_builtins_x7>::type;
 };
 template <bool tmppy_internal_test_module_x5,
           bool tmppy_internal_test_module_x6>
 struct set_of {
   using error = void;
-  using type = typename TmppyInternalBuiltin_246<
-      BoolList<tmppy_internal_test_module_x5>, tmppy_internal_test_module_x6,
+  using type = typename tmppy_internal__py2tmp_tmppy_builtins_x198<
+      List<Bool<tmppy_internal_test_module_x5>>, tmppy_internal_test_module_x6,
       (tmppy_internal_test_module_x6) == (tmppy_internal_test_module_x5)>::type;
 };
 ''')
@@ -613,35 +619,41 @@ def test_optimization_set_with_two_bools():
 
 @assert_code_optimizes_to(r'''
 template <typename T> struct CheckIfError { using type = void; };
-template <typename L1, typename L2> struct Int64ListConcat;
-template <int64_t... ns, int64_t... ms>
-struct Int64ListConcat<Int64List<(ns)...>, Int64List<(ms)...>> {
-  using type = Int64List<(ns)..., (ms)...>;
+template <typename L1, typename L2> struct ListConcat;
+template <typename... Ts, typename... Us>
+struct ListConcat<List<Ts...>, List<Us...>> {
+  using type = List<Ts..., Us...>;
 };
-template <typename TmppyInternalBuiltin_7, int64_t TmppyInternalBuiltin_28,
-          bool TmppyInternalBuiltin_126>
-struct TmppyInternalBuiltin_250;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7,
+          int64_t tmppy_internal__py2tmp_tmppy_builtins_x32,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x102>
+struct tmppy_internal__py2tmp_tmppy_builtins_x202;
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_7, int64_t TmppyInternalBuiltin_28>
-struct TmppyInternalBuiltin_250<TmppyInternalBuiltin_7, TmppyInternalBuiltin_28,
-                                true> {
-  using type = TmppyInternalBuiltin_7;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7,
+          int64_t tmppy_internal__py2tmp_tmppy_builtins_x32>
+struct tmppy_internal__py2tmp_tmppy_builtins_x202<
+    tmppy_internal__py2tmp_tmppy_builtins_x7,
+    tmppy_internal__py2tmp_tmppy_builtins_x32, true> {
+  using type = tmppy_internal__py2tmp_tmppy_builtins_x7;
 };
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_7, int64_t TmppyInternalBuiltin_28>
-struct TmppyInternalBuiltin_250<TmppyInternalBuiltin_7, TmppyInternalBuiltin_28,
-                                false> {
-  using type = typename Int64ListConcat<Int64List<TmppyInternalBuiltin_28>,
-                                        TmppyInternalBuiltin_7>::type;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7,
+          int64_t tmppy_internal__py2tmp_tmppy_builtins_x32>
+struct tmppy_internal__py2tmp_tmppy_builtins_x202<
+    tmppy_internal__py2tmp_tmppy_builtins_x7,
+    tmppy_internal__py2tmp_tmppy_builtins_x32, false> {
+  using type = typename ListConcat<
+      List<Int64<tmppy_internal__py2tmp_tmppy_builtins_x32>>,
+      tmppy_internal__py2tmp_tmppy_builtins_x7>::type;
 };
 template <int64_t tmppy_internal_test_module_x5,
           int64_t tmppy_internal_test_module_x6>
 struct set_of {
   using error = void;
-  using type = typename TmppyInternalBuiltin_250<
-      Int64List<tmppy_internal_test_module_x5>, tmppy_internal_test_module_x6,
+  using type = typename tmppy_internal__py2tmp_tmppy_builtins_x202<
+      List<Int64<tmppy_internal_test_module_x5>>, tmppy_internal_test_module_x6,
       (tmppy_internal_test_module_x6) == (tmppy_internal_test_module_x5)>::type;
 };
 ''')
@@ -652,34 +664,40 @@ def test_optimization_set_with_two_ints():
 
 @assert_code_optimizes_to(r'''
 template <typename T> struct CheckIfError { using type = void; };
-template <typename L1, typename L2> struct TypeListConcat;
+template <typename L1, typename L2> struct ListConcat;
 template <typename... Ts, typename... Us>
-struct TypeListConcat<List<Ts...>, List<Us...>> {
+struct ListConcat<List<Ts...>, List<Us...>> {
   using type = List<Ts..., Us...>;
 };
-template <typename TmppyInternalBuiltin_7, typename TmppyInternalBuiltin_5,
-          bool TmppyInternalBuiltin_129>
-struct TmppyInternalBuiltin_254;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x105>
+struct tmppy_internal__py2tmp_tmppy_builtins_x206;
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_7, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_254<TmppyInternalBuiltin_7, TmppyInternalBuiltin_5,
-                                true> {
-  using type = TmppyInternalBuiltin_7;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x206<
+    tmppy_internal__py2tmp_tmppy_builtins_x7,
+    tmppy_internal__py2tmp_tmppy_builtins_x5, true> {
+  using type = tmppy_internal__py2tmp_tmppy_builtins_x7;
 };
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_7, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_254<TmppyInternalBuiltin_7, TmppyInternalBuiltin_5,
-                                false> {
-  using type = typename TypeListConcat<List<TmppyInternalBuiltin_5>,
-                                       TmppyInternalBuiltin_7>::type;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x206<
+    tmppy_internal__py2tmp_tmppy_builtins_x7,
+    tmppy_internal__py2tmp_tmppy_builtins_x5, false> {
+  using type =
+      typename ListConcat<List<tmppy_internal__py2tmp_tmppy_builtins_x5>,
+                          tmppy_internal__py2tmp_tmppy_builtins_x7>::type;
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
 struct set_of {
   using error = void;
-  using type = typename TmppyInternalBuiltin_254<
+  using type = typename tmppy_internal__py2tmp_tmppy_builtins_x206<
       List<tmppy_internal_test_module_x5>, tmppy_internal_test_module_x6,
       std::is_same<tmppy_internal_test_module_x6,
                    tmppy_internal_test_module_x5>::value>::type;
@@ -701,13 +719,13 @@ template <bool tmppy_internal_test_module_x5,
           bool... tmppy_internal_test_module_x15>
 struct tmppy_internal_test_module_x20<
     tmppy_internal_test_module_x5,
-    BoolList<(tmppy_internal_test_module_x15)...>> {
+    List<Bool<tmppy_internal_test_module_x15>...>> {
   static constexpr bool value =
       !(std::is_same<
-          BoolList<((tmppy_internal_test_module_x5) ==
-                    (tmppy_internal_test_module_x15))...>,
-          BoolList<(Select1stBoolBool<
-                    false, tmppy_internal_test_module_x15>::value)...>>::value);
+          List<Bool<(tmppy_internal_test_module_x5) ==
+                    (tmppy_internal_test_module_x15)>...>,
+          List<Bool<Select1stBoolBool<
+              false, tmppy_internal_test_module_x15>::value>...>>::value);
 };
 template <bool tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -734,13 +752,13 @@ template <int64_t tmppy_internal_test_module_x5,
           int64_t... tmppy_internal_test_module_x15>
 struct tmppy_internal_test_module_x20<
     tmppy_internal_test_module_x5,
-    Int64List<(tmppy_internal_test_module_x15)...>> {
+    List<Int64<tmppy_internal_test_module_x15>...>> {
   static constexpr bool value =
       !(std::is_same<
-          BoolList<((tmppy_internal_test_module_x5) ==
-                    (tmppy_internal_test_module_x15))...>,
-          BoolList<(Select1stBoolInt64<
-                    false, tmppy_internal_test_module_x15>::value)...>>::value);
+          List<Bool<(tmppy_internal_test_module_x5) ==
+                    (tmppy_internal_test_module_x15)>...>,
+          List<Bool<Select1stBoolInt64<
+              false, tmppy_internal_test_module_x15>::value>...>>::value);
 };
 template <int64_t tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -769,10 +787,10 @@ struct tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
                                       List<tmppy_internal_test_module_x15...>> {
   static constexpr bool value =
       !(std::is_same<
-          BoolList<(std::is_same<tmppy_internal_test_module_x5,
-                                 tmppy_internal_test_module_x15>::value)...>,
-          BoolList<(Select1stBoolType<
-                    false, tmppy_internal_test_module_x15>::value)...>>::value);
+          List<Bool<std::is_same<tmppy_internal_test_module_x5,
+                                 tmppy_internal_test_module_x15>::value>...>,
+          List<Bool<Select1stBoolType<
+              false, tmppy_internal_test_module_x15>::value>...>>::value);
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -792,69 +810,86 @@ def test_optimization_is_in_type_set():
 
 @assert_code_optimizes_to(r'''
 template <typename T> struct CheckIfError { using type = void; };
-template <typename TmppyInternalBuiltin_5, bool TmppyInternalBuiltin_58>
-struct TmppyInternalBuiltin_260;
+template <bool tmppy_internal__py2tmp_tmppy_builtins_x46,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x212;
 // Split that generates value of: (meta)function wrapping the result expression
 // in a list/set comprehension from the function BoolSetEquals
-template <bool... TmppyInternalBuiltin_131, bool TmppyInternalBuiltin_58>
-struct TmppyInternalBuiltin_260<BoolList<(TmppyInternalBuiltin_131)...>,
-                                TmppyInternalBuiltin_58> {
+template <bool tmppy_internal__py2tmp_tmppy_builtins_x46,
+          bool... tmppy_internal__py2tmp_tmppy_builtins_x107>
+struct tmppy_internal__py2tmp_tmppy_builtins_x212<
+    tmppy_internal__py2tmp_tmppy_builtins_x46,
+    List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x107>...>> {
   static constexpr bool value =
       !(std::is_same<
-          BoolList<((TmppyInternalBuiltin_58) ==
-                    (TmppyInternalBuiltin_131))...>,
-          BoolList<(Select1stBoolBool<
-                    false, TmppyInternalBuiltin_131>::value)...>>::value);
+          List<Bool<(tmppy_internal__py2tmp_tmppy_builtins_x46) ==
+                    (tmppy_internal__py2tmp_tmppy_builtins_x107)>...>,
+          List<Bool<Select1stBoolBool<
+              false, tmppy_internal__py2tmp_tmppy_builtins_x107>::value>...>>::
+            value);
 };
-template <typename L, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_268;
-// Split that generates type of: TmppyInternalBuiltin_138
-template <bool... elems, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_268<BoolList<(elems)...>, TmppyInternalBuiltin_5> {
-  using type = BoolList<(
-      TmppyInternalBuiltin_260<TmppyInternalBuiltin_5, elems>::value)...>;
+template <typename L, typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x220;
+// Split that generates type of: tmppy_internal__py2tmp_tmppy_builtins_x114
+template <bool... elems, typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x220<
+    List<Bool<elems>...>, tmppy_internal__py2tmp_tmppy_builtins_x5> {
+  using type = List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x212<
+      elems, tmppy_internal__py2tmp_tmppy_builtins_x5>::value>...>;
 };
-template <typename TmppyInternalBuiltin_7> struct TmppyInternalBuiltin_196;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7>
+struct tmppy_internal__py2tmp_tmppy_builtins_x172;
 // Split that generates value of: BoolListAll
-template <bool... TmppyInternalBuiltin_90>
-struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
+template <bool... tmppy_internal__py2tmp_tmppy_builtins_x78>
+struct tmppy_internal__py2tmp_tmppy_builtins_x172<
+    List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x78>...>> {
   static constexpr bool value = std::is_same<
-      BoolList<(TmppyInternalBuiltin_90)...>,
-      BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
-      value;
+      List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x78>...>,
+      List<Bool<Select1stBoolBool<
+          true, tmppy_internal__py2tmp_tmppy_builtins_x78>::value>...>>::value;
 };
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5,
-          bool TmppyInternalBuiltin_143>
-struct TmppyInternalBuiltin_276;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x119>
+struct tmppy_internal__py2tmp_tmppy_builtins_x228;
 // Split that generates value of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_276<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
-                                true> {
-  static constexpr bool value =
-      TmppyInternalBuiltin_196<typename TmppyInternalBuiltin_268<
-          TmppyInternalBuiltin_35, TmppyInternalBuiltin_5>::type>::value;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x228<
+    tmppy_internal__py2tmp_tmppy_builtins_x21,
+    tmppy_internal__py2tmp_tmppy_builtins_x5, true> {
+  static constexpr bool value = tmppy_internal__py2tmp_tmppy_builtins_x172<
+      typename tmppy_internal__py2tmp_tmppy_builtins_x220<
+          tmppy_internal__py2tmp_tmppy_builtins_x21,
+          tmppy_internal__py2tmp_tmppy_builtins_x5>::type>::value;
 };
 // Split that generates value of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_276<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
-                                false> {
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x228<
+    tmppy_internal__py2tmp_tmppy_builtins_x21,
+    tmppy_internal__py2tmp_tmppy_builtins_x5, false> {
   static constexpr bool value = false;
 };
-template <typename TmppyInternalBuiltin_35, bool TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_258;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x39>
+struct tmppy_internal__py2tmp_tmppy_builtins_x210;
 // Split that generates value of: (meta)function wrapping the result expression
 // in a list/set comprehension from the function BoolSetEquals
-template <bool... TmppyInternalBuiltin_130, bool TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_258<BoolList<(TmppyInternalBuiltin_130)...>,
-                                TmppyInternalBuiltin_51> {
+template <bool... tmppy_internal__py2tmp_tmppy_builtins_x106,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x39>
+struct tmppy_internal__py2tmp_tmppy_builtins_x210<
+    List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x106>...>,
+    tmppy_internal__py2tmp_tmppy_builtins_x39> {
   static constexpr bool value =
       !(std::is_same<
-          BoolList<((TmppyInternalBuiltin_51) ==
-                    (TmppyInternalBuiltin_130))...>,
-          BoolList<(Select1stBoolBool<
-                    false, TmppyInternalBuiltin_130>::value)...>>::value);
+          List<Bool<(tmppy_internal__py2tmp_tmppy_builtins_x39) ==
+                    (tmppy_internal__py2tmp_tmppy_builtins_x106)>...>,
+          List<Bool<Select1stBoolBool<
+              false, tmppy_internal__py2tmp_tmppy_builtins_x106>::value>...>>::
+            value);
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -863,17 +898,17 @@ struct tmppy_internal_test_module_x23;
 template <bool... tmppy_internal_test_module_x17,
           bool... tmppy_internal_test_module_x18>
 struct tmppy_internal_test_module_x23<
-    BoolList<(tmppy_internal_test_module_x17)...>,
-    BoolList<(tmppy_internal_test_module_x18)...>> {
-  static constexpr bool value = TmppyInternalBuiltin_276<
-      BoolList<(tmppy_internal_test_module_x18)...>,
-      BoolList<(tmppy_internal_test_module_x17)...>,
+    List<Bool<tmppy_internal_test_module_x17>...>,
+    List<Bool<tmppy_internal_test_module_x18>...>> {
+  static constexpr bool value = tmppy_internal__py2tmp_tmppy_builtins_x228<
+      List<Bool<tmppy_internal_test_module_x18>...>,
+      List<Bool<tmppy_internal_test_module_x17>...>,
       std::is_same<
-          BoolList<(TmppyInternalBuiltin_258<
-                    BoolList<(tmppy_internal_test_module_x18)...>,
-                    tmppy_internal_test_module_x17>::value)...>,
-          BoolList<(Select1stBoolBool<true, tmppy_internal_test_module_x17>::
-                        value)...>>::value>::value;
+          List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x210<
+              List<Bool<tmppy_internal_test_module_x18>...>,
+              tmppy_internal_test_module_x17>::value>...>,
+          List<Bool<Select1stBoolBool<
+              true, tmppy_internal_test_module_x17>::value>...>>::value>::value;
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -892,69 +927,86 @@ def test_optimization_bool_set_equals():
 
 @assert_code_optimizes_to(r'''
 template <typename T> struct CheckIfError { using type = void; };
-template <typename TmppyInternalBuiltin_5, int64_t TmppyInternalBuiltin_58>
-struct TmppyInternalBuiltin_286;
+template <int64_t tmppy_internal__py2tmp_tmppy_builtins_x46,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x238;
 // Split that generates value of: (meta)function wrapping the result expression
 // in a list/set comprehension from the function Int64SetEquals
-template <int64_t... TmppyInternalBuiltin_148, int64_t TmppyInternalBuiltin_58>
-struct TmppyInternalBuiltin_286<Int64List<(TmppyInternalBuiltin_148)...>,
-                                TmppyInternalBuiltin_58> {
+template <int64_t tmppy_internal__py2tmp_tmppy_builtins_x46,
+          int64_t... tmppy_internal__py2tmp_tmppy_builtins_x124>
+struct tmppy_internal__py2tmp_tmppy_builtins_x238<
+    tmppy_internal__py2tmp_tmppy_builtins_x46,
+    List<Int64<tmppy_internal__py2tmp_tmppy_builtins_x124>...>> {
   static constexpr bool value =
       !(std::is_same<
-          BoolList<((TmppyInternalBuiltin_58) ==
-                    (TmppyInternalBuiltin_148))...>,
-          BoolList<(Select1stBoolInt64<
-                    false, TmppyInternalBuiltin_148>::value)...>>::value);
+          List<Bool<(tmppy_internal__py2tmp_tmppy_builtins_x46) ==
+                    (tmppy_internal__py2tmp_tmppy_builtins_x124)>...>,
+          List<Bool<Select1stBoolInt64<
+              false, tmppy_internal__py2tmp_tmppy_builtins_x124>::value>...>>::
+            value);
 };
-template <typename L, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_294;
-// Split that generates type of: TmppyInternalBuiltin_155
-template <int64_t... elems, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_294<Int64List<(elems)...>, TmppyInternalBuiltin_5> {
-  using type = BoolList<(
-      TmppyInternalBuiltin_286<TmppyInternalBuiltin_5, elems>::value)...>;
+template <typename L, typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x246;
+// Split that generates type of: tmppy_internal__py2tmp_tmppy_builtins_x131
+template <int64_t... elems, typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x246<
+    List<Int64<elems>...>, tmppy_internal__py2tmp_tmppy_builtins_x5> {
+  using type = List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x238<
+      elems, tmppy_internal__py2tmp_tmppy_builtins_x5>::value>...>;
 };
-template <typename TmppyInternalBuiltin_7> struct TmppyInternalBuiltin_196;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7>
+struct tmppy_internal__py2tmp_tmppy_builtins_x172;
 // Split that generates value of: BoolListAll
-template <bool... TmppyInternalBuiltin_90>
-struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
+template <bool... tmppy_internal__py2tmp_tmppy_builtins_x78>
+struct tmppy_internal__py2tmp_tmppy_builtins_x172<
+    List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x78>...>> {
   static constexpr bool value = std::is_same<
-      BoolList<(TmppyInternalBuiltin_90)...>,
-      BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
-      value;
+      List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x78>...>,
+      List<Bool<Select1stBoolBool<
+          true, tmppy_internal__py2tmp_tmppy_builtins_x78>::value>...>>::value;
 };
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5,
-          bool TmppyInternalBuiltin_160>
-struct TmppyInternalBuiltin_302;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x136>
+struct tmppy_internal__py2tmp_tmppy_builtins_x254;
 // Split that generates value of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_302<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
-                                true> {
-  static constexpr bool value =
-      TmppyInternalBuiltin_196<typename TmppyInternalBuiltin_294<
-          TmppyInternalBuiltin_35, TmppyInternalBuiltin_5>::type>::value;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x254<
+    tmppy_internal__py2tmp_tmppy_builtins_x21,
+    tmppy_internal__py2tmp_tmppy_builtins_x5, true> {
+  static constexpr bool value = tmppy_internal__py2tmp_tmppy_builtins_x172<
+      typename tmppy_internal__py2tmp_tmppy_builtins_x246<
+          tmppy_internal__py2tmp_tmppy_builtins_x21,
+          tmppy_internal__py2tmp_tmppy_builtins_x5>::type>::value;
 };
 // Split that generates value of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_302<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
-                                false> {
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x254<
+    tmppy_internal__py2tmp_tmppy_builtins_x21,
+    tmppy_internal__py2tmp_tmppy_builtins_x5, false> {
   static constexpr bool value = false;
 };
-template <typename TmppyInternalBuiltin_35, int64_t TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_284;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          int64_t tmppy_internal__py2tmp_tmppy_builtins_x39>
+struct tmppy_internal__py2tmp_tmppy_builtins_x236;
 // Split that generates value of: (meta)function wrapping the result expression
 // in a list/set comprehension from the function Int64SetEquals
-template <int64_t... TmppyInternalBuiltin_147, int64_t TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_284<Int64List<(TmppyInternalBuiltin_147)...>,
-                                TmppyInternalBuiltin_51> {
+template <int64_t... tmppy_internal__py2tmp_tmppy_builtins_x123,
+          int64_t tmppy_internal__py2tmp_tmppy_builtins_x39>
+struct tmppy_internal__py2tmp_tmppy_builtins_x236<
+    List<Int64<tmppy_internal__py2tmp_tmppy_builtins_x123>...>,
+    tmppy_internal__py2tmp_tmppy_builtins_x39> {
   static constexpr bool value =
       !(std::is_same<
-          BoolList<((TmppyInternalBuiltin_51) ==
-                    (TmppyInternalBuiltin_147))...>,
-          BoolList<(Select1stBoolInt64<
-                    false, TmppyInternalBuiltin_147>::value)...>>::value);
+          List<Bool<(tmppy_internal__py2tmp_tmppy_builtins_x39) ==
+                    (tmppy_internal__py2tmp_tmppy_builtins_x123)>...>,
+          List<Bool<Select1stBoolInt64<
+              false, tmppy_internal__py2tmp_tmppy_builtins_x123>::value>...>>::
+            value);
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -963,17 +1015,17 @@ struct tmppy_internal_test_module_x23;
 template <int64_t... tmppy_internal_test_module_x17,
           int64_t... tmppy_internal_test_module_x18>
 struct tmppy_internal_test_module_x23<
-    Int64List<(tmppy_internal_test_module_x17)...>,
-    Int64List<(tmppy_internal_test_module_x18)...>> {
-  static constexpr bool value = TmppyInternalBuiltin_302<
-      Int64List<(tmppy_internal_test_module_x18)...>,
-      Int64List<(tmppy_internal_test_module_x17)...>,
+    List<Int64<tmppy_internal_test_module_x17>...>,
+    List<Int64<tmppy_internal_test_module_x18>...>> {
+  static constexpr bool value = tmppy_internal__py2tmp_tmppy_builtins_x254<
+      List<Int64<tmppy_internal_test_module_x18>...>,
+      List<Int64<tmppy_internal_test_module_x17>...>,
       std::is_same<
-          BoolList<(TmppyInternalBuiltin_284<
-                    Int64List<(tmppy_internal_test_module_x18)...>,
-                    tmppy_internal_test_module_x17>::value)...>,
-          BoolList<(Select1stBoolInt64<true, tmppy_internal_test_module_x17>::
-                        value)...>>::value>::value;
+          List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x236<
+              List<Int64<tmppy_internal_test_module_x18>...>,
+              tmppy_internal_test_module_x17>::value>...>,
+          List<Bool<Select1stBoolInt64<
+              true, tmppy_internal_test_module_x17>::value>...>>::value>::value;
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -992,71 +1044,88 @@ def test_optimization_int_set_equals():
 
 @assert_code_optimizes_to(r'''
 template <typename T> struct CheckIfError { using type = void; };
-template <typename TmppyInternalBuiltin_5, typename TmppyInternalBuiltin_58>
-struct TmppyInternalBuiltin_312;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x46,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x264;
 // Split that generates value of: (meta)function wrapping the result expression
 // in a list/set comprehension from the function TypeSetEquals
-template <typename... TmppyInternalBuiltin_165,
-          typename TmppyInternalBuiltin_58>
-struct TmppyInternalBuiltin_312<List<TmppyInternalBuiltin_165...>,
-                                TmppyInternalBuiltin_58> {
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x46,
+          typename... tmppy_internal__py2tmp_tmppy_builtins_x141>
+struct tmppy_internal__py2tmp_tmppy_builtins_x264<
+    tmppy_internal__py2tmp_tmppy_builtins_x46,
+    List<tmppy_internal__py2tmp_tmppy_builtins_x141...>> {
   static constexpr bool value =
       !(std::is_same<
-          BoolList<(std::is_same<TmppyInternalBuiltin_58,
-                                 TmppyInternalBuiltin_165>::value)...>,
-          BoolList<(Select1stBoolType<
-                    false, TmppyInternalBuiltin_165>::value)...>>::value);
+          List<Bool<std::is_same<
+              tmppy_internal__py2tmp_tmppy_builtins_x46,
+              tmppy_internal__py2tmp_tmppy_builtins_x141>::value>...>,
+          List<Bool<Select1stBoolType<
+              false, tmppy_internal__py2tmp_tmppy_builtins_x141>::value>...>>::
+            value);
 };
-template <typename L, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_320;
-// Split that generates type of: TmppyInternalBuiltin_172
-template <typename... elems, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_320<List<elems...>, TmppyInternalBuiltin_5> {
-  using type = BoolList<(
-      TmppyInternalBuiltin_312<TmppyInternalBuiltin_5, elems>::value)...>;
+template <typename L, typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x272;
+// Split that generates type of: tmppy_internal__py2tmp_tmppy_builtins_x148
+template <typename... elems, typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x272<
+    List<elems...>, tmppy_internal__py2tmp_tmppy_builtins_x5> {
+  using type = List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x264<
+      elems, tmppy_internal__py2tmp_tmppy_builtins_x5>::value>...>;
 };
-template <typename TmppyInternalBuiltin_7> struct TmppyInternalBuiltin_196;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x7>
+struct tmppy_internal__py2tmp_tmppy_builtins_x172;
 // Split that generates value of: BoolListAll
-template <bool... TmppyInternalBuiltin_90>
-struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
+template <bool... tmppy_internal__py2tmp_tmppy_builtins_x78>
+struct tmppy_internal__py2tmp_tmppy_builtins_x172<
+    List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x78>...>> {
   static constexpr bool value = std::is_same<
-      BoolList<(TmppyInternalBuiltin_90)...>,
-      BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
-      value;
+      List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x78>...>,
+      List<Bool<Select1stBoolBool<
+          true, tmppy_internal__py2tmp_tmppy_builtins_x78>::value>...>>::value;
 };
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5,
-          bool TmppyInternalBuiltin_177>
-struct TmppyInternalBuiltin_328;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5,
+          bool tmppy_internal__py2tmp_tmppy_builtins_x153>
+struct tmppy_internal__py2tmp_tmppy_builtins_x280;
 // Split that generates value of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_328<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
-                                true> {
-  static constexpr bool value =
-      TmppyInternalBuiltin_196<typename TmppyInternalBuiltin_320<
-          TmppyInternalBuiltin_35, TmppyInternalBuiltin_5>::type>::value;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x280<
+    tmppy_internal__py2tmp_tmppy_builtins_x21,
+    tmppy_internal__py2tmp_tmppy_builtins_x5, true> {
+  static constexpr bool value = tmppy_internal__py2tmp_tmppy_builtins_x172<
+      typename tmppy_internal__py2tmp_tmppy_builtins_x272<
+          tmppy_internal__py2tmp_tmppy_builtins_x21,
+          tmppy_internal__py2tmp_tmppy_builtins_x5>::type>::value;
 };
 // Split that generates value of: (meta)function generated for an if-else
 // statement
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
-struct TmppyInternalBuiltin_328<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
-                                false> {
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x5>
+struct tmppy_internal__py2tmp_tmppy_builtins_x280<
+    tmppy_internal__py2tmp_tmppy_builtins_x21,
+    tmppy_internal__py2tmp_tmppy_builtins_x5, false> {
   static constexpr bool value = false;
 };
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_310;
+template <typename tmppy_internal__py2tmp_tmppy_builtins_x21,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x39>
+struct tmppy_internal__py2tmp_tmppy_builtins_x262;
 // Split that generates value of: (meta)function wrapping the result expression
 // in a list/set comprehension from the function TypeSetEquals
-template <typename... TmppyInternalBuiltin_164,
-          typename TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_310<List<TmppyInternalBuiltin_164...>,
-                                TmppyInternalBuiltin_51> {
+template <typename... tmppy_internal__py2tmp_tmppy_builtins_x140,
+          typename tmppy_internal__py2tmp_tmppy_builtins_x39>
+struct tmppy_internal__py2tmp_tmppy_builtins_x262<
+    List<tmppy_internal__py2tmp_tmppy_builtins_x140...>,
+    tmppy_internal__py2tmp_tmppy_builtins_x39> {
   static constexpr bool value =
       !(std::is_same<
-          BoolList<(std::is_same<TmppyInternalBuiltin_51,
-                                 TmppyInternalBuiltin_164>::value)...>,
-          BoolList<(Select1stBoolType<
-                    false, TmppyInternalBuiltin_164>::value)...>>::value);
+          List<Bool<std::is_same<
+              tmppy_internal__py2tmp_tmppy_builtins_x39,
+              tmppy_internal__py2tmp_tmppy_builtins_x140>::value>...>,
+          List<Bool<Select1stBoolType<
+              false, tmppy_internal__py2tmp_tmppy_builtins_x140>::value>...>>::
+            value);
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -1066,15 +1135,15 @@ template <typename... tmppy_internal_test_module_x17,
           typename... tmppy_internal_test_module_x18>
 struct tmppy_internal_test_module_x23<List<tmppy_internal_test_module_x17...>,
                                       List<tmppy_internal_test_module_x18...>> {
-  static constexpr bool value = TmppyInternalBuiltin_328<
+  static constexpr bool value = tmppy_internal__py2tmp_tmppy_builtins_x280<
       List<tmppy_internal_test_module_x18...>,
       List<tmppy_internal_test_module_x17...>,
       std::is_same<
-          BoolList<(TmppyInternalBuiltin_310<
-                    List<tmppy_internal_test_module_x18...>,
-                    tmppy_internal_test_module_x17>::value)...>,
-          BoolList<(Select1stBoolType<true, tmppy_internal_test_module_x17>::
-                        value)...>>::value>::value;
+          List<Bool<tmppy_internal__py2tmp_tmppy_builtins_x262<
+              List<tmppy_internal_test_module_x18...>,
+              tmppy_internal_test_module_x17>::value>...>,
+          List<Bool<Select1stBoolType<
+              true, tmppy_internal_test_module_x17>::value>...>>::value>::value;
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>

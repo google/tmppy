@@ -14,12 +14,10 @@
 import argparse
 import importlib.util as importlib_util
 import pickle
-from functools import lru_cache
 from typing import List, Optional, Sequence
 
 from _py2tmp import ir0, ir0_builtin_literals
 from _py2tmp.compile import compile
-from _py2tmp.ir0_optimization import configuration_knobs
 from _py2tmp.tmppy_object_file import ModuleInfo, ObjectFileContent
 
 
@@ -88,17 +86,12 @@ def _local_metafunction_call(template_var_name: str,
                               member_name=member_name,
                               member_type=member_type)
 
-def _bool_list_of(*args: ir0.Expr):
-    return ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.BOOL_LIST,
-                                     args=args,
+def _int_wrapper(value_expr: ir0.Expr):
+    return ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.INT64_WRAPPER,
+                                     args=[value_expr],
                                      instantiation_might_trigger_static_asserts=False)
 
-def _int_list_of(*args: ir0.Expr):
-    return ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.INT_LIST,
-                                     args=args,
-                                     instantiation_might_trigger_static_asserts=False)
-
-def _type_list_of(*args: ir0.Expr):
+def _list_of(*args: ir0.Expr):
     return ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.LIST,
                                      args=args,
                                      instantiation_might_trigger_static_asserts=False)
@@ -168,8 +161,8 @@ def _fold_int64s_to_type(acc: ir0.Expr, f: ir0.Expr, ns: ir0.Expr):
                               member_name='type',
                               member_type=ir0.TypeType())
 
-def _fold_types_to_type(acc: ir0.Expr, f: ir0.Expr, ts: ir0.Expr):
-    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.FOLD_TYPES_TO_TYPE,
+def _fold(acc: ir0.Expr, f: ir0.Expr, ts: ir0.Expr):
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.FOLD,
                               args=[acc, f, ts],
                               instantiation_might_trigger_static_asserts=True,
                               member_name='type',
@@ -189,22 +182,8 @@ def _always_false_from_type(t: ir0.Expr):
                               member_name='value',
                               member_type=ir0.BoolType())
 
-def _is_in_bool_set(b: ir0.Expr, s: ir0.Expr):
-    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.IS_IN_BOOL_LIST,
-                              args=[b, s],
-                              instantiation_might_trigger_static_asserts=False,
-                              member_type=ir0.BoolType(),
-                              member_name='value')
-
-def _is_in_int64_set(n: ir0.Expr, s: ir0.Expr):
-    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.IS_IN_INT64_LIST,
-                              args=[n, s],
-                              instantiation_might_trigger_static_asserts=False,
-                              member_type=ir0.BoolType(),
-                              member_name='value')
-
-def _is_in_type_set(t: ir0.Expr, s: ir0.Expr):
-    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.IS_IN_TYPE_LIST,
+def _is_in_list(t: ir0.Expr, s: ir0.Expr):
+    return _metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.IS_IN_LIST,
                               args=[t, s],
                               instantiation_might_trigger_static_asserts=False,
                               member_type=ir0.BoolType(),
@@ -329,74 +308,42 @@ def _define_template_with_single_specialization(name: str,
                          has_error=(error_expr is not None))
 
 # template <typename L1, typename L2>
-# struct TypeListConcat;
+# struct ListConcat;
 #
 # template <typename... Ts, typename... Us>
-# struct TypeListConcat<List<Ts...>, List<Us...>> {
+# struct ListConcat<List<Ts...>, List<Us...>> {
 #   using type = List<Ts..., Us...>;
 # };
-_define_template_with_single_specialization(name='TypeListConcat',
+_define_template_with_single_specialization(name='ListConcat',
                                             main_definition_args=[_type_arg_decl('L1'),
                                                                   _type_arg_decl('L2')],
                                             specialization_args=[_variadic_type_arg_decl('Ts'),
                                                                  _variadic_type_arg_decl('Us')],
-                                            patterns=[_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
-                                                      _type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Us')))],
-                                            type_expr=_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts')),
-                                                                    ir0.VariadicTypeExpansion(_local_variadic_type('Us'))))
-
-# template <typename L1, typename L2>
-# struct Int64ListConcat;
-#
-# template <int64_t... ns, int64_t... ms>
-# struct Int64ListConcat<Int64List<ns...>, Int64List<ms...>> {
-#   using type = Int64List<ns..., ms...>;
-# };
-_define_template_with_single_specialization(name='Int64ListConcat',
-                                            main_definition_args=[_type_arg_decl('L1'),
-                                                                  _type_arg_decl('L2')],
-                                            specialization_args=[_variadic_int64_arg_decl('ns'),
-                                                                 _variadic_int64_arg_decl('ms')],
-                                            patterns=[_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns'))),
-                                                      _int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ms')))],
-                                            type_expr=_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns')),
-                                                                   ir0.VariadicTypeExpansion(_local_variadic_int('ms'))))
-
-# template <typename L1, typename L2>
-# struct BoolListConcat;
-#
-# template <bool... bs1, bool... bs2>
-# struct BoolListConcat<BoolList<bs1...>, BoolList<bs2...>> {
-#   using type = BoolList<bs1..., bs2...>;
-# };
-_define_template_with_single_specialization(name='BoolListConcat',
-                                            main_definition_args=[_type_arg_decl('L1'),
-                                                                  _type_arg_decl('L2')],
-                                            specialization_args=[_variadic_bool_arg_decl('bs1'),
-                                                                 _variadic_bool_arg_decl('bs2')],
-                                            patterns=[_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs1'))),
-                                                      _bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs2')))],
-                                            type_expr=_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs1')),
-                                                                    ir0.VariadicTypeExpansion(_local_variadic_bool('bs2'))))
+                                            patterns=[_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))),
+                                                      _list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Us')))],
+                                            type_expr=_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts')),
+                                                               ir0.VariadicTypeExpansion(_local_variadic_type('Us'))))
 
 # template <typename L>
 # struct Int64ListSum {
 #   static constexpr int64_t value = 0;
 # };
 #
-# template <int64_t n, int64_t... ns>
-# struct Int64ListSum<Int64List<n, ns...>> {
-#   static constexpr int64_t value = n + Int64ListSum<Int64List<ns...>>::value;
+# template <typename N, typename... ns>
+# struct Int64ListSum<List<N, Ns...>> {
+#   static constexpr int64_t value = N::value + Int64ListSum<List<Ns...>>::value;
 # };
 _define_template(name='Int64ListSum',
                  result_element_name='value',
                  main_definition=_specialization(args=[_type_arg_decl('L')],
                                                  value_expr=ir0.Literal(0)),
-                 specializations=[_specialization(args=[_int64_arg_decl('n'),
-                                                        _variadic_int64_arg_decl('ns')],
-                                                  patterns=[_int_list_of(_local_int('n'), ir0.VariadicTypeExpansion(_local_variadic_int('ns')))],
-                                                  value_expr=ir0.Int64BinaryOpExpr(lhs=_local_int('n'),
-                                                                                   rhs=_int64_list_sum(_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns')))),
+                 specializations=[_specialization(args=[_type_arg_decl('N'),
+                                                        _variadic_type_arg_decl('Ns')],
+                                                  patterns=[_list_of(_local_type('N'), ir0.VariadicTypeExpansion(_local_variadic_type('Ns')))],
+                                                  value_expr=ir0.Int64BinaryOpExpr(lhs=ir0.ClassMemberAccess(class_type_expr=_local_type('N'),
+                                                                                                             member_name='value',
+                                                                                                             member_type=ir0.Int64Type()),
+                                                                                   rhs=_int64_list_sum(_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ns')))),
                                                                                    op='+'))])
 
 
@@ -428,123 +375,18 @@ _define_template(name='GetFirstError',
                                                             ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))],
                                                   type_expr=_local_type('T'))])
 
-# template <typename Acc, template <typename Acc1, bool b1> class F, bool... bs>
-# struct FoldBoolsToType {
-#   using type = Acc;
-# };
-#
-# template <typename Acc, template <typename Acc1, bool b1> class F, bool b, bool... bs>
-# struct FoldBoolsToType<Acc, F, b, bs...> {
-#   using type = typename FoldBoolsToType<typename F<Acc, b>::type,
-#                                         F,
-#                                         bs...>::type;
-# };
-_define_template(name='FoldBoolsToType',
-                 result_element_name='type',
-                 main_definition=_specialization(args=[_type_arg_decl('Acc'),
-                                                       _template_template_arg_decl('F', _type_arg_type(), _bool_arg_type()),
-                                                       _variadic_bool_arg_decl('bs')],
-                                                 type_expr=_local_type('Acc')),
-                 specializations=[_specialization(args=[_type_arg_decl('Acc'),
-                                                        _template_template_arg_decl('F', _type_arg_type(), _bool_arg_type()),
-                                                        _bool_arg_decl('b'),
-                                                        _variadic_bool_arg_decl('bs')],
-                                                  patterns=[_local_type('Acc'),
-                                                            ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _bool_arg_type()]), is_variadic=False),
-                                                            _local_bool('b'),
-                                                            ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))],
-                                                  type_expr=_fold_bools_to_type(_local_metafunction_call('F',
-                                                                                                         arg_types=[_type_arg_type(), _bool_arg_type()],
-                                                                                                         args=[_local_type('Acc'),
-                                                                                                               _local_bool('b')],
-                                                                                                         instantiation_might_trigger_static_asserts=True,
-                                                                                                         member_name='type',
-                                                                                                         member_type=ir0.TypeType()),
-                                                                                ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _bool_arg_type()]), is_variadic=False),
-                                                                                ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))))])
-
-
-
-# template <typename L>
-# struct BoolListToSet;
-#
-# template <bool... bs>
-# struct BoolListToSet<BoolList<bs...>> {
-#   using type = typename FoldBoolsToType<BoolList<>, AddToBoolSet, bs...>::type;
-# };
-_define_template_with_single_specialization(name='BoolListToSet',
-                                            main_definition_args=[_type_arg_decl('L')],
-                                            specialization_args=[_variadic_bool_arg_decl('bs')],
-                                            patterns=[_bool_list_of(ir0.VariadicTypeExpansion(_local_variadic_bool('bs')))],
-                                            type_expr=_fold_bools_to_type(_bool_list_of(),
-                                                                          ir0_builtin_literals.GlobalLiterals.ADD_TO_BOOL_SET,
-                                                                          ir0.VariadicTypeExpansion(_local_variadic_bool('bs'))))
-
-
-# template <typename Acc, template <typename Acc1, int64_t n1> class F, int64_t... ns>
-# struct FoldInt64sToType {
-#   using type = Acc;
-# };
-#
-# template <typename Acc, template <typename Acc1, int64_t n1> class F, int64_t n, int64_t... ns>
-# struct FoldInt64sToType<Acc, F, n, ns...> {
-#   using type = typename FoldInt64sToType<typename F<Acc, n>::type,
-#                                          F,
-#                                          ns...>::type;
-# };
-_define_template(name='FoldInt64sToType',
-                 result_element_name='type',
-                 main_definition=_specialization(args=[_type_arg_decl('Acc'),
-                                                       _template_template_arg_decl('F', _type_arg_type(), _int64_arg_type()),
-                                                       _variadic_int64_arg_decl('ns')],
-                                                 type_expr=_local_type('Acc')),
-                 specializations=[_specialization(args=[_type_arg_decl('Acc'),
-                                                        _template_template_arg_decl('F', _type_arg_type(), _int64_arg_type()),
-                                                        _int64_arg_decl('n'),
-                                                        _variadic_int64_arg_decl('ns')],
-                                                  patterns=[_local_type('Acc'),
-                                                            ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _int64_arg_type()]), is_variadic=False),
-                                                            _local_int('n'),
-                                                            ir0.VariadicTypeExpansion(_local_variadic_int('ns'))],
-                                                  type_expr=_fold_int64s_to_type(_local_metafunction_call('F',
-                                                                                                          arg_types=[_type_arg_type(), _int64_arg_type()],
-                                                                                                          args=[_local_type('Acc'),
-                                                                                                                _local_int('n')],
-                                                                                                          instantiation_might_trigger_static_asserts=True,
-                                                                                                          member_name='type',
-                                                                                                          member_type=ir0.TypeType()),
-                                                                                 ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _int64_arg_type()]), is_variadic=False),
-                                                                                 ir0.VariadicTypeExpansion(_local_variadic_int('ns'))))])
-
-# template <typename L>
-# struct Int64ListToSet;
-#
-# template <int64_t... ns>
-# struct Int64ListToSet<Int64List<ns...>> {
-#   using type = typename FoldInt64sToType<Int64List<>, AddToInt64Set, ns...>::type;
-# };
-_define_template_with_single_specialization(name='Int64ListToSet',
-                                            main_definition_args=[_type_arg_decl('L')],
-                                            specialization_args=[_variadic_int64_arg_decl('ns')],
-                                            patterns=[_int_list_of(ir0.VariadicTypeExpansion(_local_variadic_int('ns')))],
-                                            type_expr=_fold_int64s_to_type(_int_list_of(),
-                                                                           ir0_builtin_literals.GlobalLiterals.ADD_TO_INT64_SET,
-                                                                           ir0.VariadicTypeExpansion(_local_variadic_int('ns'))))
-
-
-
 # template <typename Acc, template <typename Acc1, typename T1> class F, typename... Ts>
-# struct FoldTypesToType {
+# struct Fold {
 #   using type = Acc;
 # };
 #
 # template <typename Acc, template <typename Acc1, typename T1> class F, typename T, typename... Ts>
-# struct FoldTypesToType<Acc, F, T, Ts...> {
-#   using type = typename FoldTypesToType<typename F<Acc, T>::type,
-#                                          F,
-#                                          Ts...>::type;
+# struct Fold<Acc, F, T, Ts...> {
+#   using type = typename Fold<typename F<Acc, T>::type,
+#                              F,
+#                              Ts...>::type;
 # };
-_define_template(name='FoldTypesToType',
+_define_template(name='Fold',
                  result_element_name='type',
                  main_definition=_specialization(args=[_type_arg_decl('Acc'),
                                                        _template_template_arg_decl('F', _type_arg_type(), _type_arg_type()),
@@ -558,30 +400,30 @@ _define_template(name='FoldTypesToType',
                                                             ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _type_arg_type()]), is_variadic=False),
                                                             _local_type('T'),
                                                             ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))],
-                                                  type_expr=_fold_types_to_type(_local_metafunction_call('F',
-                                                                                                         arg_types=[_type_arg_type(), _type_arg_type()],
-                                                                                                         args=[_local_type('Acc'),
+                                                  type_expr=_fold(_local_metafunction_call('F',
+                                                                                           arg_types=[_type_arg_type(), _type_arg_type()],
+                                                                                           args=[_local_type('Acc'),
                                                                                                                _local_type('T')],
-                                                                                                         instantiation_might_trigger_static_asserts=True,
-                                                                                                         member_name='type',
-                                                                                                         member_type=ir0.TypeType()),
-                                                                                ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _type_arg_type()]), is_variadic=False),
-                                                                                ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))])
+                                                                                           instantiation_might_trigger_static_asserts=True,
+                                                                                           member_name='type',
+                                                                                           member_type=ir0.TypeType()),
+                                                                  ir0.AtomicTypeLiteral.for_local('F', ir0.TemplateType([_type_arg_type(), _type_arg_type()]), is_variadic=False),
+                                                                  ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))])
 
 # template <typename L>
-# struct TypeListToSet;
+# struct ListToSet;
 #
 # template <typename... Ts>
-# struct TypeListToSet<List<Ts...>> {
-#   using type = typename FoldTypesToType<List<>, AddToTypeSet, Ts...>::type;
+# struct ListToSet<List<Ts...>> {
+#   using type = typename Fold<List<>, AddToTypeSet, Ts...>::type;
 # };
-_define_template_with_single_specialization(name='TypeListToSet',
+_define_template_with_single_specialization(name='ListToSet',
                                             main_definition_args=[_type_arg_decl('L')],
                                             specialization_args=[_variadic_type_arg_decl('Ts')],
-                                            patterns=[_type_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts')))],
-                                            type_expr=_fold_types_to_type(_type_list_of(),
-                                                                          ir0_builtin_literals.GlobalLiterals.ADD_TO_TYPE_SET,
-                                                                          ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))
+                                            patterns=[_list_of(ir0.VariadicTypeExpansion(_local_variadic_type('Ts')))],
+                                            type_expr=_fold(_list_of(),
+                                                            ir0_builtin_literals.GlobalLiterals.ADD_TO_TYPE_SET,
+                                                            ir0.VariadicTypeExpansion(_local_variadic_type('Ts'))))
 
 def main():
     parser = argparse.ArgumentParser(description='Converts python source code into C++ metafunctions.')

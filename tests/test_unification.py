@@ -22,7 +22,7 @@ from _py2tmp.ir0_optimization.unification import ListExpansion, UnificationStrat
 
 
 class Term:
-    def __init__(self, name: str, args: List[Union[str, 'Term']]):
+    def __init__(self, name: str, args: List[Union[str, 'Term', ListExpansion]]):
         self.name = name
         self.args = args
 
@@ -466,7 +466,7 @@ def test_unify_list_var_with_list_var(canonicalize):
         (ListExpansion('x'), ListExpansion('y')),
     ], canonicalize)
     assert equations == {
-        'x': 'y'
+        'x': 'y',
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
@@ -475,7 +475,53 @@ def test_unify_list_var_with_empty_list(canonicalize):
         (ListExpansion('x'), []),
     ], canonicalize)
     assert equations == {
-        'x...': '[]'
+        'x...': '[]',
+    }
+
+@pytest.mark.parametrize('canonicalize', [True, False])
+def test_unify_term_with_list_var_with_empty_list(canonicalize):
+    equations = unify([
+        (ListExpansion(Term('f', [Term('g', ['x'])])), []),
+    ], canonicalize)
+    assert equations == {
+        'x...': '[]',
+    }
+
+@pytest.mark.parametrize('canonicalize', [True, False])
+def test_unify_term_with_list_vars_with_empty_list(canonicalize):
+    equations = unify([
+        (ListExpansion(Term('f', ['x', 'y'])), []),
+    ], canonicalize)
+    assert equations == {
+        'x...': '[]',
+        'y...': '[]',
+    }
+
+def test_unify_term_with_list_var_with_singleton_list_without_canonicalization():
+    equations = unify([
+        (ListExpansion(Term('f', [Term('g', ['x'])])), [Term('f', [Term('g', ['y'])])]),
+    ], canonicalize=False)
+    assert equations == {
+        'x...': '[y]',
+    }
+
+def test_unify_term_with_list_var_with_singleton_list_with_canonicalization():
+    equations = unify([
+        (ListExpansion(Term('f', [Term('g', ['x'])])), [Term('f', [Term('g', ['y'])])]),
+    ], canonicalize=True)
+    assert equations == {
+        'x...': '[y...]',
+    }
+
+@pytest.mark.parametrize('canonicalize', [True, False])
+def test_unify_term_with_list_var_with_multi_element_list(canonicalize):
+    equations = unify([
+        (ListExpansion(Term('f', [Term('g', ['x'])])), [Term('f', [Term('g', ['y'])]),
+                                                        Term('f', [Term('g', ['z'])]),
+                                                        Term('f', [Term('g', ['k'])])]),
+    ], canonicalize)
+    assert equations == {
+        'x...': '[y, z, k]',
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
@@ -484,7 +530,7 @@ def test_unify_list_var_with_term(canonicalize):
         (ListExpansion('x'), [Term('f', ['y'])]),
     ], canonicalize)
     assert equations == {
-        'x...': '[f(y)]'
+        'x...': '[f(y)]',
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
@@ -493,7 +539,7 @@ def test_unify_lists_common_prefix(canonicalize):
         (['x', 'y', ListExpansion('z')], ['x', 'y', Term('f', []), 'k']),
     ], canonicalize)
     assert equations == {
-        'z...': '[f(), k]'
+        'z...': '[f(), k]',
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
@@ -502,7 +548,7 @@ def test_unify_lists_common_suffix(canonicalize):
         ([ListExpansion('z'), 'x', 'y'], [Term('f', []), 'k', 'x', 'y', ]),
     ], canonicalize)
     assert equations == {
-        'z...': '[f(), k]'
+        'z...': '[f(), k]',
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
@@ -511,7 +557,7 @@ def test_unify_lists_common_prefix_and_suffix(canonicalize):
         (['x', ListExpansion('z'), 'y'], ['x', Term('f', []), 'k', 'y']),
     ], canonicalize)
     assert equations == {
-        'z...': '[f(), k]'
+        'z...': '[f(), k]',
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])
@@ -530,7 +576,7 @@ def test_unify_lists_one_to_many_list_vars(canonicalize):
         ([ListExpansion('x')], [Term('f', []), ListExpansion('y'), Term('g', []), ListExpansion('z'), Term('h', [])]),
     ], canonicalize)
     assert equations == {
-        'x...': '[f(), y..., g(), z..., h()]'
+        'x...': '[f(), y..., g(), z..., h()]',
     }
 
 @pytest.mark.parametrize('canonicalize', [True, False])

@@ -232,18 +232,28 @@ def list_expr_to_ir1(list_expr: Union[ir2.ListExpr, ir2.ListPatternExpr]):
     #
     # Becomes:
     #
-    # IntList<1, 2, x>
+    # List<Int64<1>, Int64<2>, Int64<x>>
 
-    list_template_name = ir1_to_ir0.list_template_name_for_type(ir1_to_ir0.type_to_ir0(type_to_ir1(list_expr.elem_type)))
+    if isinstance(list_expr.elem_type, ir2.BoolType):
+        wrap = lambda expr: ir1.TemplateInstantiation(template_name='Bool',
+                                                      arg_exprs=[expr],
+                                                      instantiation_might_trigger_static_asserts=False)
+    elif isinstance(list_expr.elem_type, ir2.IntType):
+        wrap = lambda expr: ir1.TemplateInstantiation(template_name='Int64',
+                                                      arg_exprs=[expr],
+                                                      instantiation_might_trigger_static_asserts=False)
+    else:
+        wrap = lambda expr: expr
 
-    arg_exprs = [expr_to_ir1(elem_expr) for elem_expr in list_expr.elems]
+    arg_exprs = [wrap(expr_to_ir1(elem_expr))
+                 for elem_expr in list_expr.elems]
     if isinstance(list_expr, ir2.ListPatternExpr) and list_expr.list_extraction_expr:
-        arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(expr_type=ir1.ParameterPackType(type_to_ir1(list_expr.list_extraction_expr)),
-                                                                     name=list_expr.list_extraction_expr.name,
-                                                                     is_global_function=list_expr.list_extraction_expr.is_global_function,
-                                                                     is_function_that_may_throw=list_expr.list_extraction_expr.is_function_that_may_throw)))
+        arg_exprs.append(ir1.ParameterPackExpansion(wrap(ir1.VarReference(expr_type=ir1.ParameterPackType(type_to_ir1(list_expr.list_extraction_expr)),
+                                                                          name=list_expr.list_extraction_expr.name,
+                                                                          is_global_function=list_expr.list_extraction_expr.is_global_function,
+                                                                          is_function_that_may_throw=list_expr.list_extraction_expr.is_function_that_may_throw))))
 
-    return ir1.TemplateInstantiation(template_name=list_template_name,
+    return ir1.TemplateInstantiation(template_name='List',
                                      arg_exprs=arg_exprs,
                                      expr_type=type_to_ir1(list_expr.expr_type),
                                      instantiation_might_trigger_static_asserts=False)
@@ -333,19 +343,9 @@ def list_concat_expr_to_ir1(expr: ir2.ListConcatExpr):
     #
     # Becomes (if l1 and l2 are lists of ints):
     #
-    # Int64ListConcat<l1, l2>::type
+    # ListConcat<l1, l2>::type
 
-    elem_kind = ir1_to_ir0.type_to_ir0(type_to_ir1(expr.expr_type.elem_type)).kind
-    if elem_kind == ir0.ExprKind.BOOL:
-        list_concat_template_name = 'BoolListConcat'
-    elif elem_kind == ir0.ExprKind.INT64:
-        list_concat_template_name = 'Int64ListConcat'
-    elif elem_kind == ir0.ExprKind.TYPE:
-        list_concat_template_name = 'TypeListConcat'
-    else:
-        raise NotImplementedError('elem_kind: %s' % elem_kind)
-
-    template_instantiation = ir1.TemplateInstantiation(template_name=list_concat_template_name,
+    template_instantiation = ir1.TemplateInstantiation(template_name='ListConcat',
                                                        arg_exprs=[expr_to_ir1(expr.lhs), expr_to_ir1(expr.rhs)],
                                                        instantiation_might_trigger_static_asserts=False)
 

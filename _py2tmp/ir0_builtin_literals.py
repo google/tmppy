@@ -71,15 +71,15 @@ class GlobalLiterals:
     FLOAT = ir0.AtomicTypeLiteral.for_nonlocal_type('float', may_be_alias=False)
     DOUBLE = ir0.AtomicTypeLiteral.for_nonlocal_type('double', may_be_alias=False)
 
-    BOOL_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='BoolList',
-                                                            args=[_variadic_bool_arg_type()],
-                                                            is_metafunction_that_may_return_error=False,
-                                                            may_be_alias=False)
+    BOOL_WRAPPER = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Bool',
+                                                               args=[ir0.TemplateArgType(expr_type=ir0.BoolType(), is_variadic=False)],
+                                                               is_metafunction_that_may_return_error=False,
+                                                               may_be_alias=False)
 
-    INT_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Int64List',
-                                                           args=[_variadic_int64_arg_type()],
-                                                           is_metafunction_that_may_return_error=False,
-                                                           may_be_alias=False)
+    INT64_WRAPPER = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Int64',
+                                                                args=[ir0.TemplateArgType(expr_type=ir0.Int64Type(), is_variadic=False)],
+                                                                is_metafunction_that_may_return_error=False,
+                                                                may_be_alias=False)
 
     LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='List',
                                                        args=[_variadic_type_arg_type()],
@@ -122,18 +122,10 @@ class GlobalLiterals:
                                                             args=[_variadic_type_arg_type()],
                                                             may_be_alias=False)
 
-    BOOL_LIST_TO_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='BoolListToSet',
-                                                                   args=[_type_arg_type()],
-                                                                   is_metafunction_that_may_return_error=False,
-                                                                   may_be_alias=False)
-    INT64_LIST_TO_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Int64ListToSet',
-                                                                    args=[_type_arg_type()],
-                                                                    is_metafunction_that_may_return_error=False,
-                                                                    may_be_alias=False)
-    TYPE_LIST_TO_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='TypeListToSet',
-                                                                   args=[_type_arg_type()],
-                                                                   is_metafunction_that_may_return_error=False,
-                                                                   may_be_alias=False)
+    LIST_TO_SET = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='ListToSet',
+                                                              args=[_type_arg_type()],
+                                                              is_metafunction_that_may_return_error=False,
+                                                              may_be_alias=False)
 
     ADD_TO_BOOL_SET_HELPER = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='AddToBoolSetHelper',
                                                                          args=[_type_arg_type(),
@@ -190,33 +182,23 @@ class GlobalLiterals:
                                                                       is_metafunction_that_may_return_error=True,
                                                                       may_be_alias=False)
 
-    FOLD_TYPES_TO_TYPE = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='FoldTypesToType',
-                                                                     args=[_type_arg_type(),
+    FOLD = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Fold',
+                                                       args=[_type_arg_type(),
                                                                            _template_template_arg_type(_type_arg_type(),
                                                                                                        _type_arg_type()),
                                                                            _variadic_type_arg_type()],
-                                                                     is_metafunction_that_may_return_error=True,
-                                                                     may_be_alias=False)
+                                                       is_metafunction_that_may_return_error=True,
+                                                       may_be_alias=False)
 
     INT64_LIST_SUM = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='Int64ListSum',
                                                                  args=[_type_arg_type()],
                                                                  is_metafunction_that_may_return_error=False,
                                                                  may_be_alias=False)
 
-    IS_IN_BOOL_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInBoolList',
-                                                                  args=[_bool_arg_type(), _type_arg_type()],
-                                                                  is_metafunction_that_may_return_error=False,
-                                                                  may_be_alias=False)
-
-    IS_IN_INT64_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInInt64List',
-                                                                   args=[_int64_arg_type(), _type_arg_type()],
-                                                                   is_metafunction_that_may_return_error=False,
-                                                                   may_be_alias=False)
-
-    IS_IN_TYPE_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInTypeList',
-                                                                  args=[_type_arg_type(), _type_arg_type()],
-                                                                  is_metafunction_that_may_return_error=False,
-                                                                  may_be_alias=False)
+    IS_IN_LIST = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type='IsInList',
+                                                             args=[_type_arg_type(), _type_arg_type()],
+                                                             is_metafunction_that_may_return_error=False,
+                                                             may_be_alias=False)
 
 def select1st_literal(lhs_type: ir0.ExprType, rhs_type: ir0.ExprType):
     kind_to_string = {
