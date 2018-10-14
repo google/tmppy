@@ -16,11 +16,11 @@ from py2tmp.testing import *
 from _py2tmp.testing.utils import main
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <int64_t tmppy_internal_test_module_x5> struct inc {
   using error = void;
   static constexpr int64_t value = (tmppy_internal_test_module_x5) + (1LL);
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_one_function():
     def inc(n: int):
@@ -33,11 +33,11 @@ def test_optimization_toplevel_code():
     assert 1 + 1 == 2
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <int64_t tmppy_internal_test_module_x5> struct f {
   using error = void;
   static constexpr bool value = true;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_common_subexpression_elimination():
     from tmppy import Type
@@ -63,11 +63,11 @@ def test_common_subexpression_elimination_at_toplevel():
     assert (2*(3 + 1) == 2*(3 + 1)) == (Type.pointer(Type('int')) == Type.pointer(Type('int')))
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <int64_t tmppy_internal_test_module_x5> struct inc {
   using error = void;
   static constexpr int64_t value = (tmppy_internal_test_module_x5) + (1LL);
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_two_functions_with_call():
     def _plus(n: int, m: int):
@@ -84,6 +84,7 @@ def test_optimization_function_call_at_toplevel():
     assert _plus(3, 1) == 4
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <bool tmppy_internal_test_module_x5,
           bool tmppy_internal_test_module_x15>
 struct tmppy_internal_test_module_x20;
@@ -116,19 +117,18 @@ template <bool tmppy_internal_test_module_x5>
 struct tmppy_internal_test_module_x20<tmppy_internal_test_module_x5, false> {
   static constexpr int64_t value = tmppy_internal_test_module_x24<true>::value;
 };
-template <bool tmppy_internal_test_module_x5> struct f {
-  using error = void;
-  static constexpr int64_t value =
-      tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
-                                     tmppy_internal_test_module_x5>::value;
-};
 template <bool tmppy_internal_test_module_x5> struct g {
   using error = void;
   static constexpr int64_t value =
       tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
                                      tmppy_internal_test_module_x5>::value;
 };
-template <typename T> struct CheckIfError { using type = void; };
+template <bool tmppy_internal_test_module_x5> struct f {
+  using error = void;
+  static constexpr int64_t value =
+      tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
+                                     tmppy_internal_test_module_x5>::value;
+};
 ''')
 def test_optimization_of_mutually_recursive_functions():
     def f(b: bool) -> int:
@@ -141,6 +141,7 @@ def test_optimization_of_mutually_recursive_functions():
     assert g(False) == 3
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <bool tmppy_internal_test_module_x5,
           bool tmppy_internal_test_module_x15>
 struct tmppy_internal_test_module_x20;
@@ -173,19 +174,18 @@ template <bool tmppy_internal_test_module_x5>
 struct tmppy_internal_test_module_x20<tmppy_internal_test_module_x5, true> {
   static constexpr int64_t value = tmppy_internal_test_module_x24<false>::value;
 };
-template <bool tmppy_internal_test_module_x5> struct f {
-  using error = void;
-  static constexpr int64_t value =
-      tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
-                                     tmppy_internal_test_module_x5>::value;
-};
 template <bool tmppy_internal_test_module_x5> struct g {
   using error = void;
   static constexpr int64_t value =
       tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
                                      tmppy_internal_test_module_x5>::value;
 };
-template <typename T> struct CheckIfError { using type = void; };
+template <bool tmppy_internal_test_module_x5> struct f {
+  using error = void;
+  static constexpr int64_t value =
+      tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
+                                     tmppy_internal_test_module_x5>::value;
+};
 ''')
 def test_optimization_of_mutually_recursive_functions_branches_swapped():
     def f(b: bool) -> int:
@@ -198,6 +198,7 @@ def test_optimization_of_mutually_recursive_functions_branches_swapped():
     assert g(True) == 3
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <typename tmppy_internal_test_module_x5,
           bool tmppy_internal_test_module_x17>
 struct tmppy_internal_test_module_x22;
@@ -230,19 +231,18 @@ template <typename tmppy_internal_test_module_x5>
 struct tmppy_internal_test_module_x22<tmppy_internal_test_module_x5, false> {
   static constexpr int64_t value = tmppy_internal_test_module_x26<int>::value;
 };
-template <typename tmppy_internal_test_module_x5> struct f {
-  using error = void;
-  static constexpr int64_t value = tmppy_internal_test_module_x22<
-      tmppy_internal_test_module_x5,
-      std::is_same<tmppy_internal_test_module_x5, int>::value>::value;
-};
 template <typename tmppy_internal_test_module_x5> struct g {
   using error = void;
   static constexpr int64_t value = tmppy_internal_test_module_x22<
       tmppy_internal_test_module_x5,
       std::is_same<tmppy_internal_test_module_x5, int>::value>::value;
 };
-template <typename T> struct CheckIfError { using type = void; };
+template <typename tmppy_internal_test_module_x5> struct f {
+  using error = void;
+  static constexpr int64_t value = tmppy_internal_test_module_x22<
+      tmppy_internal_test_module_x5,
+      std::is_same<tmppy_internal_test_module_x5, int>::value>::value;
+};
 ''')
 def test_optimization_of_mutually_recursive_functions_with_type_param():
     from tmppy import Type
@@ -442,6 +442,7 @@ def test_match_optimization_with_multiple_specializations_chooses_more_specific_
     assert _f(Type.pointer(Type.pointer(Type('int')))) == Type.array(Type('int'))
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <bool tmppy_internal_test_module_x5,
           bool tmppy_internal_test_module_x24>
 struct tmppy_internal_test_module_x35;
@@ -456,12 +457,6 @@ struct tmppy_internal_test_module_x35<tmppy_internal_test_module_x5, true> {
 template <bool tmppy_internal_test_module_x5>
 struct tmppy_internal_test_module_x35<tmppy_internal_test_module_x5, false> {
   static constexpr int64_t value = -1LL;
-};
-template <bool tmppy_internal_test_module_x5> struct f {
-  using error = void;
-  static constexpr int64_t value =
-      tmppy_internal_test_module_x35<tmppy_internal_test_module_x5,
-                                     tmppy_internal_test_module_x5>::value;
 };
 template <typename tmppy_internal_test_module_x8>
 struct tmppy_internal_test_module_x49;
@@ -478,7 +473,12 @@ template <typename tmppy_internal_test_module_x8> struct g {
   using type = typename tmppy_internal_test_module_x49<
       tmppy_internal_test_module_x8>::type;
 };
-template <typename T> struct CheckIfError { using type = void; };
+template <bool tmppy_internal_test_module_x5> struct f {
+  using error = void;
+  static constexpr int64_t value =
+      tmppy_internal_test_module_x35<tmppy_internal_test_module_x5,
+                                     tmppy_internal_test_module_x5>::value;
+};
 ''')
 def test_optimization_list_comprehension_bool_to_int():
     from typing import List
@@ -492,6 +492,7 @@ def test_optimization_list_comprehension_bool_to_int():
     assert g([True, False]) == [5, -1]
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <bool tmppy_internal_test_module_x5,
           bool tmppy_internal_test_module_x27>
 struct tmppy_internal_test_module_x38;
@@ -506,12 +507,6 @@ struct tmppy_internal_test_module_x38<tmppy_internal_test_module_x5, true> {
 template <bool tmppy_internal_test_module_x5>
 struct tmppy_internal_test_module_x38<tmppy_internal_test_module_x5, false> {
   static constexpr int64_t value = -1LL;
-};
-template <bool tmppy_internal_test_module_x5> struct f {
-  using error = void;
-  static constexpr int64_t value =
-      tmppy_internal_test_module_x38<tmppy_internal_test_module_x5,
-                                     tmppy_internal_test_module_x5>::value;
 };
 template <typename tmppy_internal_test_module_x8,
           int64_t tmppy_internal_test_module_x9>
@@ -534,7 +529,12 @@ struct g {
   using type = typename tmppy_internal_test_module_x52<
       tmppy_internal_test_module_x8, tmppy_internal_test_module_x9>::type;
 };
-template <typename T> struct CheckIfError { using type = void; };
+template <bool tmppy_internal_test_module_x5> struct f {
+  using error = void;
+  static constexpr int64_t value =
+      tmppy_internal_test_module_x38<tmppy_internal_test_module_x5,
+                                     tmppy_internal_test_module_x5>::value;
+};
 ''')
 def test_optimization_list_comprehension_bool_to_int_with_captured_var():
     from typing import List
@@ -548,6 +548,7 @@ def test_optimization_list_comprehension_bool_to_int_with_captured_var():
     assert g([True, False], 6) == [11, 5]
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <typename tmppy_internal_test_module_x5>
 struct tmppy_internal_test_module_x66;
 // Split that generates type of: f
@@ -560,7 +561,6 @@ template <typename tmppy_internal_test_module_x5> struct f {
   using type = typename tmppy_internal_test_module_x66<
       tmppy_internal_test_module_x5>::type;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_multiple_list_comprehensions():
     from typing import List
@@ -573,6 +573,7 @@ def test_optimization_multiple_list_comprehensions():
                                                Type.const(Type.pointer(Type('float')))]
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <typename L1, typename L2> struct BoolListConcat;
 template <bool... bs1, bool... bs2>
 struct BoolListConcat<BoolList<(bs1)...>, BoolList<(bs2)...>> {
@@ -604,7 +605,6 @@ struct set_of {
       BoolList<tmppy_internal_test_module_x5>, tmppy_internal_test_module_x6,
       (tmppy_internal_test_module_x6) == (tmppy_internal_test_module_x5)>::type;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_set_with_two_bools():
     def set_of(x: bool, y: bool):
@@ -612,6 +612,7 @@ def test_optimization_set_with_two_bools():
     assert set_of(True, False) == {True, False}
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <typename L1, typename L2> struct Int64ListConcat;
 template <int64_t... ns, int64_t... ms>
 struct Int64ListConcat<Int64List<(ns)...>, Int64List<(ms)...>> {
@@ -643,7 +644,6 @@ struct set_of {
       Int64List<tmppy_internal_test_module_x5>, tmppy_internal_test_module_x6,
       (tmppy_internal_test_module_x6) == (tmppy_internal_test_module_x5)>::type;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_set_with_two_ints():
     def set_of(x: int, y: int):
@@ -651,6 +651,7 @@ def test_optimization_set_with_two_ints():
     assert set_of(3, 4) == {3, 4}
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <typename L1, typename L2> struct TypeListConcat;
 template <typename... Ts, typename... Us>
 struct TypeListConcat<List<Ts...>, List<Us...>> {
@@ -683,7 +684,6 @@ struct set_of {
       std::is_same<tmppy_internal_test_module_x6,
                    tmppy_internal_test_module_x5>::value>::type;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_set_with_two_types():
     from tmppy import Type
@@ -692,6 +692,7 @@ def test_optimization_set_with_two_types():
     assert set_of(Type('int'), Type('float')) == {Type('int'), Type('float')}
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <bool tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
 struct tmppy_internal_test_module_x20;
@@ -716,7 +717,6 @@ struct is_in_set {
       tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
                                      tmppy_internal_test_module_x6>::value;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_is_in_bool_set():
     from typing import Set
@@ -725,6 +725,7 @@ def test_optimization_is_in_bool_set():
     assert is_in_set(True, {False}) == False
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <int64_t tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
 struct tmppy_internal_test_module_x20;
@@ -749,7 +750,6 @@ struct is_in_set {
       tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
                                      tmppy_internal_test_module_x6>::value;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_is_in_int_set():
     from typing import Set
@@ -758,6 +758,7 @@ def test_optimization_is_in_int_set():
     assert is_in_set(3, {5}) == False
 
 @assert_code_optimizes_to(r'''
+template <typename T> struct CheckIfError { using type = void; };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
 struct tmppy_internal_test_module_x20;
@@ -781,7 +782,6 @@ struct is_in_set {
       tmppy_internal_test_module_x20<tmppy_internal_test_module_x5,
                                      tmppy_internal_test_module_x6>::value;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_is_in_type_set():
     from tmppy import Type
@@ -791,29 +791,7 @@ def test_optimization_is_in_type_set():
     assert is_in_set(Type('int'), {Type('float')}) == False
 
 @assert_code_optimizes_to(r'''
-template <typename TmppyInternalBuiltin_7> struct TmppyInternalBuiltin_196;
-// Split that generates value of: BoolListAll
-template <bool... TmppyInternalBuiltin_90>
-struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
-  static constexpr bool value = std::is_same<
-      BoolList<(TmppyInternalBuiltin_90)...>,
-      BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
-      value;
-};
-template <typename TmppyInternalBuiltin_35, bool TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_258;
-// Split that generates value of: (meta)function wrapping the result expression
-// in a list/set comprehension from the function BoolSetEquals
-template <bool... TmppyInternalBuiltin_130, bool TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_258<BoolList<(TmppyInternalBuiltin_130)...>,
-                                TmppyInternalBuiltin_51> {
-  static constexpr bool value =
-      !(std::is_same<
-          BoolList<((TmppyInternalBuiltin_51) ==
-                    (TmppyInternalBuiltin_130))...>,
-          BoolList<(Select1stBoolBool<
-                    false, TmppyInternalBuiltin_130>::value)...>>::value);
-};
+template <typename T> struct CheckIfError { using type = void; };
 template <typename TmppyInternalBuiltin_5, bool TmppyInternalBuiltin_58>
 struct TmppyInternalBuiltin_260;
 // Split that generates value of: (meta)function wrapping the result expression
@@ -836,6 +814,15 @@ struct TmppyInternalBuiltin_268<BoolList<(elems)...>, TmppyInternalBuiltin_5> {
   using type = BoolList<(
       TmppyInternalBuiltin_260<TmppyInternalBuiltin_5, elems>::value)...>;
 };
+template <typename TmppyInternalBuiltin_7> struct TmppyInternalBuiltin_196;
+// Split that generates value of: BoolListAll
+template <bool... TmppyInternalBuiltin_90>
+struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
+  static constexpr bool value = std::is_same<
+      BoolList<(TmppyInternalBuiltin_90)...>,
+      BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
+      value;
+};
 template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5,
           bool TmppyInternalBuiltin_143>
 struct TmppyInternalBuiltin_276;
@@ -854,6 +841,20 @@ template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
 struct TmppyInternalBuiltin_276<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
                                 false> {
   static constexpr bool value = false;
+};
+template <typename TmppyInternalBuiltin_35, bool TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_258;
+// Split that generates value of: (meta)function wrapping the result expression
+// in a list/set comprehension from the function BoolSetEquals
+template <bool... TmppyInternalBuiltin_130, bool TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_258<BoolList<(TmppyInternalBuiltin_130)...>,
+                                TmppyInternalBuiltin_51> {
+  static constexpr bool value =
+      !(std::is_same<
+          BoolList<((TmppyInternalBuiltin_51) ==
+                    (TmppyInternalBuiltin_130))...>,
+          BoolList<(Select1stBoolBool<
+                    false, TmppyInternalBuiltin_130>::value)...>>::value);
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -882,7 +883,6 @@ struct eq {
       tmppy_internal_test_module_x23<tmppy_internal_test_module_x5,
                                      tmppy_internal_test_module_x6>::value;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_bool_set_equals():
     from typing import Set
@@ -891,29 +891,7 @@ def test_optimization_bool_set_equals():
     assert eq({True}, {False}) == False
 
 @assert_code_optimizes_to(r'''
-template <typename TmppyInternalBuiltin_7> struct TmppyInternalBuiltin_196;
-// Split that generates value of: BoolListAll
-template <bool... TmppyInternalBuiltin_90>
-struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
-  static constexpr bool value = std::is_same<
-      BoolList<(TmppyInternalBuiltin_90)...>,
-      BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
-      value;
-};
-template <typename TmppyInternalBuiltin_35, int64_t TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_284;
-// Split that generates value of: (meta)function wrapping the result expression
-// in a list/set comprehension from the function Int64SetEquals
-template <int64_t... TmppyInternalBuiltin_147, int64_t TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_284<Int64List<(TmppyInternalBuiltin_147)...>,
-                                TmppyInternalBuiltin_51> {
-  static constexpr bool value =
-      !(std::is_same<
-          BoolList<((TmppyInternalBuiltin_51) ==
-                    (TmppyInternalBuiltin_147))...>,
-          BoolList<(Select1stBoolInt64<
-                    false, TmppyInternalBuiltin_147>::value)...>>::value);
-};
+template <typename T> struct CheckIfError { using type = void; };
 template <typename TmppyInternalBuiltin_5, int64_t TmppyInternalBuiltin_58>
 struct TmppyInternalBuiltin_286;
 // Split that generates value of: (meta)function wrapping the result expression
@@ -936,6 +914,15 @@ struct TmppyInternalBuiltin_294<Int64List<(elems)...>, TmppyInternalBuiltin_5> {
   using type = BoolList<(
       TmppyInternalBuiltin_286<TmppyInternalBuiltin_5, elems>::value)...>;
 };
+template <typename TmppyInternalBuiltin_7> struct TmppyInternalBuiltin_196;
+// Split that generates value of: BoolListAll
+template <bool... TmppyInternalBuiltin_90>
+struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
+  static constexpr bool value = std::is_same<
+      BoolList<(TmppyInternalBuiltin_90)...>,
+      BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
+      value;
+};
 template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5,
           bool TmppyInternalBuiltin_160>
 struct TmppyInternalBuiltin_302;
@@ -954,6 +941,20 @@ template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
 struct TmppyInternalBuiltin_302<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
                                 false> {
   static constexpr bool value = false;
+};
+template <typename TmppyInternalBuiltin_35, int64_t TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_284;
+// Split that generates value of: (meta)function wrapping the result expression
+// in a list/set comprehension from the function Int64SetEquals
+template <int64_t... TmppyInternalBuiltin_147, int64_t TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_284<Int64List<(TmppyInternalBuiltin_147)...>,
+                                TmppyInternalBuiltin_51> {
+  static constexpr bool value =
+      !(std::is_same<
+          BoolList<((TmppyInternalBuiltin_51) ==
+                    (TmppyInternalBuiltin_147))...>,
+          BoolList<(Select1stBoolInt64<
+                    false, TmppyInternalBuiltin_147>::value)...>>::value);
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -982,7 +983,6 @@ struct eq {
       tmppy_internal_test_module_x23<tmppy_internal_test_module_x5,
                                      tmppy_internal_test_module_x6>::value;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_int_set_equals():
     from typing import Set
@@ -991,30 +991,7 @@ def test_optimization_int_set_equals():
     assert eq({3}, {5}) == False
 
 @assert_code_optimizes_to(r'''
-template <typename TmppyInternalBuiltin_7> struct TmppyInternalBuiltin_196;
-// Split that generates value of: BoolListAll
-template <bool... TmppyInternalBuiltin_90>
-struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
-  static constexpr bool value = std::is_same<
-      BoolList<(TmppyInternalBuiltin_90)...>,
-      BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
-      value;
-};
-template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_310;
-// Split that generates value of: (meta)function wrapping the result expression
-// in a list/set comprehension from the function TypeSetEquals
-template <typename... TmppyInternalBuiltin_164,
-          typename TmppyInternalBuiltin_51>
-struct TmppyInternalBuiltin_310<List<TmppyInternalBuiltin_164...>,
-                                TmppyInternalBuiltin_51> {
-  static constexpr bool value =
-      !(std::is_same<
-          BoolList<(std::is_same<TmppyInternalBuiltin_51,
-                                 TmppyInternalBuiltin_164>::value)...>,
-          BoolList<(Select1stBoolType<
-                    false, TmppyInternalBuiltin_164>::value)...>>::value);
-};
+template <typename T> struct CheckIfError { using type = void; };
 template <typename TmppyInternalBuiltin_5, typename TmppyInternalBuiltin_58>
 struct TmppyInternalBuiltin_312;
 // Split that generates value of: (meta)function wrapping the result expression
@@ -1038,6 +1015,15 @@ struct TmppyInternalBuiltin_320<List<elems...>, TmppyInternalBuiltin_5> {
   using type = BoolList<(
       TmppyInternalBuiltin_312<TmppyInternalBuiltin_5, elems>::value)...>;
 };
+template <typename TmppyInternalBuiltin_7> struct TmppyInternalBuiltin_196;
+// Split that generates value of: BoolListAll
+template <bool... TmppyInternalBuiltin_90>
+struct TmppyInternalBuiltin_196<BoolList<(TmppyInternalBuiltin_90)...>> {
+  static constexpr bool value = std::is_same<
+      BoolList<(TmppyInternalBuiltin_90)...>,
+      BoolList<(Select1stBoolBool<true, TmppyInternalBuiltin_90>::value)...>>::
+      value;
+};
 template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5,
           bool TmppyInternalBuiltin_177>
 struct TmppyInternalBuiltin_328;
@@ -1056,6 +1042,21 @@ template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_5>
 struct TmppyInternalBuiltin_328<TmppyInternalBuiltin_35, TmppyInternalBuiltin_5,
                                 false> {
   static constexpr bool value = false;
+};
+template <typename TmppyInternalBuiltin_35, typename TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_310;
+// Split that generates value of: (meta)function wrapping the result expression
+// in a list/set comprehension from the function TypeSetEquals
+template <typename... TmppyInternalBuiltin_164,
+          typename TmppyInternalBuiltin_51>
+struct TmppyInternalBuiltin_310<List<TmppyInternalBuiltin_164...>,
+                                TmppyInternalBuiltin_51> {
+  static constexpr bool value =
+      !(std::is_same<
+          BoolList<(std::is_same<TmppyInternalBuiltin_51,
+                                 TmppyInternalBuiltin_164>::value)...>,
+          BoolList<(Select1stBoolType<
+                    false, TmppyInternalBuiltin_164>::value)...>>::value);
 };
 template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
@@ -1083,7 +1084,6 @@ struct eq {
       tmppy_internal_test_module_x23<tmppy_internal_test_module_x5,
                                      tmppy_internal_test_module_x6>::value;
 };
-template <typename T> struct CheckIfError { using type = void; };
 ''')
 def test_optimization_type_set_equals():
     from tmppy import Type

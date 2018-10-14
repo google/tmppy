@@ -108,7 +108,7 @@ def recalculate_template_instantiation_can_trigger_static_asserts_info(header: i
 
     # Determine which connected components can trigger static assert errors.
     condensed_node_can_trigger_static_asserts = defaultdict(lambda: False)
-    for connected_component_index in reversed(list(nx.topological_sort(condensed_graph))):
+    for connected_component_index in reversed(list(nx.lexicographical_topological_sort(condensed_graph))):
         condensed_node = condensed_graph.node[connected_component_index]
 
         # If a template defn in this connected component can trigger a static assert, the whole component can.

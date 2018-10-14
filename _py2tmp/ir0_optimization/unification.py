@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import itertools
 from typing import List, TypeVar, Generic, Union, Dict, Set, Tuple, Optional
 import networkx as nx
 from _py2tmp import utils
@@ -321,7 +321,7 @@ def canonicalize(var_expr_equations: Dict[str, _NonListExpr],
                         var, exprs_to_string(strategy, expanded_var_expr_equations[var])))
             else:
                 # This var is just part of a larger term in some other equation.
-                assert not vars_dependency_graph.successors(var)
+                assert not next(vars_dependency_graph.successors(var), None)
         else:
             assert len(vars_in_connected_component) > 1
             # We have a loop.
@@ -366,7 +366,7 @@ def canonicalize(var_expr_equations: Dict[str, _NonListExpr],
                     del var_expr_equations[var]
                 if var in expanded_var_expr_equations:
                     del expanded_var_expr_equations[var]
-                for successor in vars_dependency_graph.successors(var):
+                for successor in list(vars_dependency_graph.successors(var)):
                     vars_dependency_graph.remove_edge(var, successor)
 
             # And finally we add the rearranged equations.
@@ -385,7 +385,7 @@ def canonicalize(var_expr_equations: Dict[str, _NonListExpr],
     canonical_var_expr_equations: Dict[str, Union[_NonListExpr, List[_NonListExpr]]] = dict()
     canonical_expanded_var_expr_equations: Dict[str, Union[_NonListExpr, List[_NonListExpr]]] = dict()
 
-    for var in reversed(list(nx.topological_sort(vars_dependency_graph))):
+    for var in reversed(list(nx.lexicographical_topological_sort(vars_dependency_graph))):
         expr = var_expr_equations.get(var)
         if expr is not None:
             expr = strategy.replace_variables_in_expr(expr, canonical_var_expr_equations, canonical_expanded_var_expr_equations)

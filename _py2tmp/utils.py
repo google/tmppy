@@ -89,5 +89,5 @@ def compute_condensation_in_topological_order(dependency_graph: nx.DiGraph, sort
     condensed_graph = nx.condensation(dependency_graph)
     assert isinstance(condensed_graph, nx.DiGraph)
 
-    for connected_component_index in nx.topological_sort(condensed_graph, sorted(condensed_graph.nodes_iter(), key=sort_by)):
+    for connected_component_index in nx.lexicographical_topological_sort(condensed_graph, key=sort_by):
         yield list(sorted(condensed_graph.node[connected_component_index]['members'], key=sort_by))

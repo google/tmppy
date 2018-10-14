@@ -118,7 +118,7 @@ def recalculate_function_can_throw_info(module: ir3.Module, context_object_file_
 
     # Determine which connected components can throw.
     condensed_node_can_throw = defaultdict(lambda: False)
-    for connected_component_index in reversed(list(nx.topological_sort(condensed_graph))):
+    for connected_component_index in reversed(list(nx.lexicographical_topological_sort(condensed_graph))):
         condensed_node = condensed_graph.node[connected_component_index]
 
         # If a function in this connected component can throw, the whole component can throw.
