@@ -24,11 +24,11 @@ from _py2tmp.ir0_optimization.optimization_execution import apply_elem_optimizat
 
 def perform_local_optimizations(elems: List,
                                 identifier_generator: Iterator[str],
-                                apply_transformation: Callable[[List, transform_ir0.ToplevelWriter, transform_ir0.Transformation], Tuple[List, bool]],
+                                apply_transformation: Callable[[List, transform_ir0.Transformation], Tuple[List, bool]],
                                 describe_elems: Callable[[List], str],
                                 inline_template_instantiations_with_multiple_references: bool):
     optimizations = [
-        ('normalize_template_defn()', NormalizeExpressionsTransformation()),
+        ('normalize_template_defn()', NormalizeExpressionsTransformation(identifier_generator)),
         ('perform_common_subexpression_normalization()', CommonSubexpressionEliminationTransformation()),
         ('perform_constant_folding()', ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references)),
         ('perform_expression_simplification()', ExpressionSimplificationTransformation()),
@@ -38,9 +38,7 @@ def perform_local_optimizations(elems: List,
                             optimization_name=optimization_name,
                             transformation=transformation:
                      apply_elem_optimization(elems,
-                                             lambda: apply_transformation(elems,
-                                                                          transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False),
-                                                                          transformation),
+                                             lambda: apply_transformation(elems, transformation),
                                              describe_elems,
                                              optimization_name)
                      for optimization_name, transformation in optimizations]
@@ -48,10 +46,11 @@ def perform_local_optimizations(elems: List,
     return combine_optimizations(elems, optimizations)
 
 def _transform_template_defns(template_defns: List[ir0.TemplateDefn],
-                              writer: transform_ir0.ToplevelWriter,
                               transformation: transform_ir0.Transformation):
-    for template_defn in template_defns:
-        transformation.transform_template_defn(template_defn, writer)
+    writer = transform_ir0.ToplevelWriter(allow_toplevel_elems=False)
+    with transformation.set_writer(writer):
+        for template_defn in template_defns:
+            transformation.transform_template_defn(template_defn)
     return writer.template_defns, False
 
 def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn,
@@ -65,9 +64,8 @@ def perform_local_optimizations_on_template_defn(template_defn: ir0.TemplateDefn
     return template_defn, needs_another_loop
 
 def _transform_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],
-                              writer: transform_ir0.ToplevelWriter,
                               transformation: transform_ir0.Transformation):
-    toplevel_elems = transformation.transform_template_body_elems(toplevel_elems, writer)
+    toplevel_elems = transformation.transform_template_body_elems(toplevel_elems)
     return toplevel_elems, False
 
 def perform_local_optimizations_on_toplevel_elems(toplevel_elems: List[Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]],

@@ -150,50 +150,51 @@ def _with_global_inlineable_templates(context_object_file_content: ObjectFileCon
 class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation):
     def __init__(self,
                  local_inlineable_templates: List[ir0.TemplateDefn],
-                 context_object_file_content: ObjectFileContent):
+                 context_object_file_content: ObjectFileContent,
+                 identifier_generator: Iterator[str]):
+        super().__init__(identifier_generator=identifier_generator)
         self.needs_another_loop = False
         self.inlineable_templates_by_name = _with_global_inlineable_templates(context_object_file_content, local_inlineable_templates)
         self.parent_template_specialization_definitions = dict()
         self.root_template_defn_name = None
 
-    def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
+    def transform_template_defn(self, template_defn: ir0.TemplateDefn):
         self.root_template_defn_name = template_defn.name
-        return super().transform_template_defn(template_defn, writer)
+        return super().transform_template_defn(template_defn)
 
-    def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: transform_ir0.Writer):
+    def transform_template_specialization(self, specialization: ir0.TemplateSpecialization):
         old_parent_template_specialization_definitions = self.parent_template_specialization_definitions
         self.parent_template_specialization_definitions = dict()
-        result = super().transform_template_specialization(specialization, writer)
+        result = super().transform_template_specialization(specialization)
         self.parent_template_specialization_definitions = old_parent_template_specialization_definitions
         return result
 
-    def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: transform_ir0.Writer):
-        super().transform_constant_def(constant_def, writer)
+    def transform_constant_def(self, constant_def: ir0.ConstantDef):
+        super().transform_constant_def(constant_def)
 
-        if isinstance(writer, transform_ir0.ToplevelWriter):
-            result = writer.toplevel_elems[-1]
+        if isinstance(self.writer, transform_ir0.ToplevelWriter):
+            result = self.writer.toplevel_elems[-1]
         else:
-            assert isinstance(writer, transform_ir0.TemplateBodyWriter)
-            result = writer.elems[-1]
+            assert isinstance(self.writer, transform_ir0.TemplateBodyWriter)
+            result = self.writer.elems[-1]
 
         assert isinstance(result, ir0.ConstantDef)
         self.parent_template_specialization_definitions[result.name] = result.expr
 
-    def transform_typedef(self, typedef: ir0.Typedef, writer: transform_ir0.Writer):
-        super().transform_typedef(typedef, writer)
+    def transform_typedef(self, typedef: ir0.Typedef):
+        super().transform_typedef(typedef)
 
-        if isinstance(writer, transform_ir0.ToplevelWriter):
-            result = writer.toplevel_elems[-1]
+        if isinstance(self.writer, transform_ir0.ToplevelWriter):
+            result = self.writer.toplevel_elems[-1]
         else:
-            assert isinstance(writer, transform_ir0.TemplateBodyWriter)
-            result = writer.elems[-1]
+            assert isinstance(self.writer, transform_ir0.TemplateBodyWriter)
+            result = self.writer.elems[-1]
 
         assert isinstance(result, ir0.Typedef)
         self.parent_template_specialization_definitions[result.name] = result.expr
 
-    def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
-        assert isinstance(writer, transform_ir0.TemplateBodyWriter)
-        class_member_access = super().transform_class_member_access(class_member_access, writer)
+    def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess):
+        class_member_access = super().transform_class_member_access(class_member_access)
         assert isinstance(class_member_access, ir0.ClassMemberAccess)
         if (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
                 and isinstance(class_member_access.expr.template_expr, ir0.AtomicTypeLiteral)
@@ -203,12 +204,11 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
         else:
             return class_member_access
 
-        toplevel_writer = writer.get_toplevel_writer()
         unification = unify_ir0.unify_template_instantiation_with_definition(template_instantiation,
                                                                              self.parent_template_specialization_definitions,
                                                                              class_member_access.member_name,
                                                                              template_defn_to_inline,
-                                                                             toplevel_writer.identifier_generator,
+                                                                             self.identifier_generator,
                                                                              verbose=ConfigurationKnobs.verbose)
         if not unification:
             return class_member_access
@@ -245,9 +245,6 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
                 new_value_by_expanded_pattern_variable[var.expr.cpp_type] = exprs
         value_by_expanded_pattern_variable = new_value_by_expanded_pattern_variable
 
-        tmp_writer = transform_ir0.ToplevelWriter(toplevel_writer.identifier_generator,
-                                                  allow_toplevel_elems=False,
-                                                  allow_template_defns=toplevel_writer.allow_template_defns)
         body = []
         result_expr = None
         for elem in specialization.body:
@@ -262,19 +259,19 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
         new_var_name_by_old_var_name = dict()
         for elem in body:
             if isinstance(elem, ir0.TemplateDefn):
-                new_var_name_by_old_var_name[elem.name] = writer.new_id()
+                new_var_name_by_old_var_name[elem.name] = next(self.identifier_generator)
             elif isinstance(elem, ir0.ConstantDef):
-                new_var_name_by_old_var_name[elem.name] = writer.new_id()
+                new_var_name_by_old_var_name[elem.name] = next(self.identifier_generator)
             elif isinstance(elem, ir0.Typedef):
-                new_var_name_by_old_var_name[elem.name] = writer.new_id()
+                new_var_name_by_old_var_name[elem.name] = next(self.identifier_generator)
             elif isinstance(elem, ir0.StaticAssert):
                 pass
             else:
                 raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 
         transformation = transform_ir0.NameReplacementTransformation(new_var_name_by_old_var_name)
-        body = transformation.transform_template_body_elems(body, tmp_writer)
-        result_expr = transformation.transform_expr(result_expr, tmp_writer)
+        body = transformation.transform_template_body_elems(body)
+        result_expr = transformation.transform_expr(result_expr)
 
         try:
             body = replace_var_with_expr_in_template_body_elements(body, value_by_pattern_variable, value_by_expanded_pattern_variable)
@@ -307,7 +304,8 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
             print('Inlining template defn: %s into %s' % (template_defn_to_inline.name, self.root_template_defn_name or ir0_to_cpp.expr_to_cpp_simple(class_member_access)))
 
         for elem in body:
-            transformation.transform_template_body_elem(elem, writer)
+            with transformation.set_writer(self.writer):
+                transformation.transform_template_body_elem(elem)
 
         return result_expr
 
@@ -349,10 +347,11 @@ def perform_template_inlining(template_defn: ir0.TemplateDefn,
             print('Considering inlining templates: %s in template: %s' % (inlineable_refs, template_defn.name))
         transformation = _TemplateInstantiationInliningTransformation([template_defn_by_name[template_name]
                                                                        for template_name in inlineable_refs],
-                                                                      context_object_file_content)
-
-        writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False)
-        transformation.transform_template_defn(template_defn, writer)
+                                                                      context_object_file_content,
+                                                                      identifier_generator)
+        writer = transform_ir0.ToplevelWriter(allow_toplevel_elems=False)
+        with transformation.set_writer(writer):
+            transformation.transform_template_defn(template_defn)
         return writer.template_defns, transformation.needs_another_loop
 
     [template_defn], needs_another_loop2 = apply_elem_optimization([template_defn],
@@ -378,11 +377,10 @@ def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir0.S
             print('Considering inlining templates: %s in toplevel elems' % inlineable_refs)
         transformation = _TemplateInstantiationInliningTransformation([template_defn_by_name[template_name]
                                                                        for template_name in inlineable_refs],
-                                                                      context_object_file_content)
+                                                                      context_object_file_content,
+                                                                      identifier_generator)
 
-        writer = transform_ir0.ToplevelWriter(identifier_generator, allow_toplevel_elems=False, allow_template_defns=False)
-        elems = transformation.transform_template_body_elems(toplevel_elems, writer)
-
+        elems = transformation.transform_template_body_elems(toplevel_elems)
         return elems, transformation.needs_another_loop
 
     toplevel_elems, needs_another_loop2 = apply_elem_optimization(toplevel_elems,

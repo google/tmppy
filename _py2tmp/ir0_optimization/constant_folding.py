@@ -13,43 +13,42 @@
 # limitations under the License.
 
 from collections import defaultdict
-from typing import List, Dict, Set, Sequence, Iterator, Union
+from typing import List, Dict, Set, Sequence
+
 from _py2tmp import ir0, transform_ir0
-from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import elem_can_trigger_static_asserts
+from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import \
+    elem_can_trigger_static_asserts
 from _py2tmp.ir0_optimization.replace_var_with_expr import replace_var_with_expr_in_template_body_element
+
 
 class ConstantFoldingTransformation(transform_ir0.Transformation):
     def __init__(self, inline_template_instantiations_with_multiple_references: bool):
+        super().__init__()
         self.inline_template_instantiations_with_multiple_references = inline_template_instantiations_with_multiple_references
 
-    def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
-        writer.write(ir0.TemplateDefn(args=template_defn.args,
-                                      main_definition=self._transform_template_specialization(template_defn.main_definition,
-                                                                                              template_defn.result_element_names,
-                                                                                              writer)
-                                      if template_defn.main_definition is not None else None,
-                                      specializations=[self._transform_template_specialization(specialization,
-                                                                                               template_defn.result_element_names,
-                                                                                               writer)
-                                                       for specialization in template_defn.specializations],
-                                      name=template_defn.name,
-                                      description=template_defn.description,
-                                      result_element_names=template_defn.result_element_names))
+    def transform_template_defn(self, template_defn: ir0.TemplateDefn):
+        self.writer.write(ir0.TemplateDefn(args=template_defn.args,
+                                           main_definition=self._transform_template_specialization(template_defn.main_definition,
+                                                                                                   template_defn.result_element_names)
+                                           if template_defn.main_definition is not None else None,
+                                           specializations=[self._transform_template_specialization(specialization,
+                                                                                                    template_defn.result_element_names)
+                                                            for specialization in template_defn.specializations],
+                                           name=template_defn.name,
+                                           description=template_defn.description,
+                                           result_element_names=template_defn.result_element_names))
 
     def _transform_template_specialization(self,
                                            specialization: ir0.TemplateSpecialization,
-                                           result_element_names: Sequence[str],
-                                           writer: transform_ir0.Writer) -> ir0.TemplateSpecialization:
+                                           result_element_names: Sequence[str]) -> ir0.TemplateSpecialization:
         return ir0.TemplateSpecialization(args=specialization.args,
                                           patterns=specialization.patterns,
                                           body=self.transform_template_body_elems(specialization.body,
-                                                                                  writer,
                                                                                   result_element_names),
                                           is_metafunction=specialization.is_metafunction)
 
     def transform_template_body_elems(self,
                                       stmts: Sequence[ir0.TemplateBodyElement],
-                                      writer: transform_ir0.Writer,
                                       result_element_names: Sequence[str] = tuple()):
         stmts = list(stmts)
 

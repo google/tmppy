@@ -357,16 +357,12 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
             pattern_result_exprs_before_rename.append(result_expr)
 
         rename_pattern_transformation = transform_ir0.NameReplacementTransformation(replacements=variadic_var_name_by_list_var_name)
-        transformation_writer = ToplevelWriter(identifier_generator=iter([]))
-        renamed_pattern_elems = rename_pattern_transformation.transform_template_body_elems(pattern_writer.elems, transformation_writer)
+        renamed_pattern_elems = rename_pattern_transformation.transform_template_body_elems(pattern_writer.elems)
 
         for elem in renamed_pattern_elems:
             writer.write_elem(elem)
-        pattern_result_exprs_after_rename = [rename_pattern_transformation.transform_expr(expr, transformation_writer)
+        pattern_result_exprs_after_rename = [rename_pattern_transformation.transform_expr(expr)
                                              for expr in pattern_result_exprs_before_rename]
-        assert not transformation_writer.template_defns
-        assert not transformation_writer.toplevel_content
-        assert not transformation_writer.check_if_error_specializations
 
         specialization_patterns = forwarded_args_patterns + pattern_result_exprs_after_rename
 

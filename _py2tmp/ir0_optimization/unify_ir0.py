@@ -154,12 +154,7 @@ def _replace_var_names_in_expr(expr: Union[ir0.Expr, List[ir0.Expr]], new_name_b
     if isinstance(expr, list):
         return [_replace_var_names_in_expr(elem, new_name_by_old_name)
                 for elem in expr]
-    transformation = transform_ir0.NameReplacementTransformation(new_name_by_old_name)
-    writer = transform_ir0.ToplevelWriter(identifier_generator=iter([]))
-    expr = transformation.transform_expr(expr, writer)
-    assert not writer.template_defns
-    assert not writer.toplevel_elems
-    return expr
+    return transform_ir0.NameReplacementTransformation(new_name_by_old_name).transform_expr(expr)
 
 class UnificationResultKind(Enum):
     CERTAIN = 1

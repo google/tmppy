@@ -30,26 +30,22 @@ def _create_var_to_var_assignment(lhs: str, rhs: str, expr_type: ir0.ExprType):
         raise NotImplementedError('Unexpected kind: %s' % str(expr_type.kind))
 
 class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
-    def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
-        writer.write(ir0.TemplateDefn(args=template_defn.args,
-                                      main_definition=self._transform_template_specialization(template_defn.main_definition, template_defn.result_element_names, writer) if template_defn.main_definition is not None else None,
-                                      specializations=[self._transform_template_specialization(specialization, template_defn.result_element_names, writer) for specialization in template_defn.specializations],
-                                      name=template_defn.name,
-                                      description=template_defn.description,
-                                      result_element_names=template_defn.result_element_names))
+    def transform_template_defn(self, template_defn: ir0.TemplateDefn):
+        self.writer.write(ir0.TemplateDefn(args=template_defn.args,
+                                           main_definition=self._transform_template_specialization(template_defn.main_definition, template_defn.result_element_names) if template_defn.main_definition is not None else None,
+                                           specializations=[self._transform_template_specialization(specialization, template_defn.result_element_names) for specialization in template_defn.specializations],
+                                           name=template_defn.name,
+                                           description=template_defn.description,
+                                           result_element_names=template_defn.result_element_names))
 
     def _transform_template_specialization(self,
                                            specialization: ir0.TemplateSpecialization,
-                                           result_element_names: Sequence[str],
-                                           writer: transform_ir0.Writer) -> ir0.TemplateSpecialization:
-        toplevel_writer = writer.get_toplevel_writer()
-
+                                           result_element_names: Sequence[str]) -> ir0.TemplateSpecialization:
         return ir0.TemplateSpecialization(args=specialization.args,
                                           patterns=specialization.patterns,
                                           body=self._transform_template_body_elems(specialization.body,
                                                                                    result_element_names,
                                                                                    specialization.args,
-                                                                                   toplevel_writer,
                                                                                    specialization.is_metafunction),
                                           is_metafunction=specialization.is_metafunction)
 
@@ -57,7 +53,6 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
                                        elems: List[ir0.TemplateBodyElement],
                                        result_element_names: Sequence[str],
                                        template_specialization_args: Sequence[ir0.TemplateArgDecl],
-                                       toplevel_writer: transform_ir0.ToplevelWriter,
                                        is_metafunction: bool):
         name_by_expr = dict()  # type: Dict[ir0.Expr, str]
         replacements = dict()  # type: Dict[str, str]
@@ -73,8 +68,11 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
 
         result_elems = []
         for elem in elems:
-            writer = transform_ir0.TemplateBodyWriter(toplevel_writer)
-            transform_ir0.NameReplacementTransformation(replacements).transform_template_body_elem(elem, writer)
+            assert isinstance(self.writer, transform_ir0.ToplevelWriter)
+            writer = transform_ir0.TemplateBodyWriter(self.writer)
+            transformation = transform_ir0.NameReplacementTransformation(replacements)
+            with transformation.set_writer(writer):
+                transformation.transform_template_body_elem(elem)
             [elem] = writer.elems
 
             if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.expr in name_by_expr:
@@ -122,9 +120,7 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
                 else:
                     replacements2[replacement] = result_elem_name
 
-        result_elems = transform_ir0.NameReplacementTransformation(replacements2).transform_template_body_elems(result_elems,
-                                                                                                                toplevel_writer)
-
+        result_elems = transform_ir0.NameReplacementTransformation(replacements2).transform_template_body_elems(result_elems)
         result_elems = result_elems + additional_result_elems
 
         if is_metafunction and result_elems:
@@ -148,8 +144,10 @@ class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation)
 
         result_elems = []
         for elem in elems:
-            writer = transform_ir0.ToplevelWriter(identifier_generator, allow_template_defns=False)
-            transform_ir0.NameReplacementTransformation(replacements).transform_toplevel_elem(elem, writer)
+            writer = transform_ir0.ToplevelWriter(allow_template_defns=False)
+            transformation = transform_ir0.NameReplacementTransformation(replacements)
+            with transformation.set_writer(writer):
+                transformation.transform_toplevel_elem(elem)
             [elem] = writer.toplevel_elems
 
             if isinstance(elem, (ir0.ConstantDef, ir0.Typedef)) and elem.expr in name_by_expr:

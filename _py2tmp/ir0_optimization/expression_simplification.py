@@ -12,18 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Union
-from _py2tmp import ir0, transform_ir0, ir0_builtin_literals, ir0_to_cpp
+from typing import List
+
+from _py2tmp import ir0, transform_ir0, ir0_builtin_literals
 from _py2tmp.ir0_is_variadic import is_expr_variadic
 from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
-from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import expr_can_trigger_static_asserts
+from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import \
+    expr_can_trigger_static_asserts
+
 
 class ExpressionSimplificationTransformation(transform_ir0.Transformation):
     def __init__(self):
+        super().__init__()
         self.in_variadic_type_expansion = False
 
-    def transform_not_expr(self, not_expr: ir0.NotExpr, writer: transform_ir0.Writer) -> ir0.Expr:
-        expr = self.transform_expr(not_expr.expr, writer)
+    def transform_not_expr(self, not_expr: ir0.NotExpr) -> ir0.Expr:
+        expr = self.transform_expr(not_expr.expr)
         # !true => false
         # !false => true
         if isinstance(expr, ir0.Literal):
@@ -39,7 +43,7 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
                 '&&': '||',
                 '||': '&&',
             }[expr.op]
-            return self.transform_expr(ir0.BoolBinaryOpExpr(lhs=ir0.NotExpr(expr.lhs), rhs=ir0.NotExpr(expr.rhs), op=op), writer)
+            return self.transform_expr(ir0.BoolBinaryOpExpr(lhs=ir0.NotExpr(expr.lhs), rhs=ir0.NotExpr(expr.rhs), op=op))
         # !(x == y) => x != y
         # !(x != y) => x == y
         # !(x < y) => x >= y
@@ -59,8 +63,8 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
 
         return ir0.NotExpr(expr)
 
-    def transform_unary_minus_expr(self, unary_minus: ir0.UnaryMinusExpr, writer: transform_ir0.Writer) -> ir0.Expr:
-        expr = self.transform_expr(unary_minus.expr, writer)
+    def transform_unary_minus_expr(self, unary_minus: ir0.UnaryMinusExpr) -> ir0.Expr:
+        expr = self.transform_expr(unary_minus.expr)
         # -(3) => -3
         if isinstance(expr, ir0.Literal):
             assert isinstance(expr.value, int)
@@ -70,7 +74,7 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
             return ir0.Int64BinaryOpExpr(lhs=expr.rhs, rhs=expr.lhs, op='-')
         return ir0.UnaryMinusExpr(expr)
 
-    def transform_int64_binary_op_expr(self, binary_op: ir0.Int64BinaryOpExpr, writer: transform_ir0.Writer) -> ir0.Expr:
+    def transform_int64_binary_op_expr(self, binary_op: ir0.Int64BinaryOpExpr) -> ir0.Expr:
         lhs = binary_op.lhs
         rhs = binary_op.rhs
         op = binary_op.op
@@ -80,8 +84,8 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
             rhs = ir0.UnaryMinusExpr(rhs)
             op = '+'
 
-        lhs = self.transform_expr(lhs, writer)
-        rhs = self.transform_expr(rhs, writer)
+        lhs = self.transform_expr(lhs)
+        rhs = self.transform_expr(rhs)
 
         if op == '+' and isinstance(rhs, ir0.UnaryMinusExpr):
             # We could not push down the minus, so switch back to a subtraction.
@@ -147,13 +151,13 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
 
         return ir0.Int64BinaryOpExpr(lhs, rhs, op)
 
-    def transform_bool_binary_op_expr(self, binary_op: ir0.BoolBinaryOpExpr, writer: transform_ir0.Writer) -> ir0.Expr:
+    def transform_bool_binary_op_expr(self, binary_op: ir0.BoolBinaryOpExpr) -> ir0.Expr:
         lhs = binary_op.lhs
         rhs = binary_op.rhs
         op = binary_op.op
 
-        lhs = self.transform_expr(lhs, writer)
-        rhs = self.transform_expr(rhs, writer)
+        lhs = self.transform_expr(lhs)
+        rhs = self.transform_expr(rhs)
 
         if op == '&&':
             # true && false => false
@@ -195,13 +199,13 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
 
         return ir0.BoolBinaryOpExpr(lhs, rhs, op)
 
-    def transform_comparison_expr(self, comparison: ir0.ComparisonExpr, writer: transform_ir0.Writer) -> ir0.Expr:
+    def transform_comparison_expr(self, comparison: ir0.ComparisonExpr) -> ir0.Expr:
         lhs = comparison.lhs
         rhs = comparison.rhs
         op = comparison.op
 
-        lhs = self.transform_expr(lhs, writer)
-        rhs = self.transform_expr(rhs, writer)
+        lhs = self.transform_expr(lhs)
+        rhs = self.transform_expr(rhs)
 
         if isinstance(lhs, ir0.Literal) and isinstance(rhs, ir0.Literal):
             if op == '==':
@@ -230,21 +234,21 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
         if op in ('==', '!=') and isinstance(lhs, ir0.Literal) and lhs.expr_type == ir0.BoolType():
             return {
                 ('==', True): lambda: rhs,
-                ('==', False): lambda: self.transform_expr(ir0.NotExpr(rhs), writer),
-                ('!=', True): lambda: self.transform_expr(ir0.NotExpr(rhs), writer),
+                ('==', False): lambda: self.transform_expr(ir0.NotExpr(rhs)),
+                ('!=', True): lambda: self.transform_expr(ir0.NotExpr(rhs)),
                 ('!=', False): lambda: rhs,
             }[(op, lhs.value)]()
 
         return ir0.ComparisonExpr(lhs, rhs, op)
 
-    def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
-        expr = self.transform_expr(static_assert.expr, writer)
+    def transform_static_assert(self, static_assert: ir0.StaticAssert):
+        expr = self.transform_expr(static_assert.expr)
 
         if isinstance(expr, ir0.Literal) and expr.value is True:
             return
 
-        writer.write(ir0.StaticAssert(expr=expr,
-                                      message=static_assert.message))
+        self.writer.write(ir0.StaticAssert(expr=expr,
+                                           message=static_assert.message))
 
     def _is_syntactically_equal(self, lhs: ir0.Expr, rhs: ir0.Expr):
         if not lhs.is_same_expr_excluding_subexpressions(rhs):
@@ -256,28 +260,28 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
         return all(self._is_syntactically_equal(lhs_expr, rhs_expr)
                    for lhs_expr, rhs_expr in zip(lhs_exprs, rhs_exprs))
 
-    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: transform_ir0.Writer):
+    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion):
         old_in_variadic_type_expansion = self.in_variadic_type_expansion
         self.in_variadic_type_expansion = True
-        result = super().transform_variadic_type_expansion(expr, writer)
+        result = super().transform_variadic_type_expansion(expr)
         self.in_variadic_type_expansion = old_in_variadic_type_expansion
         return result
 
-    def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
+    def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess):
         if (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
             and isinstance(class_member_access.expr.template_expr, ir0.AtomicTypeLiteral)):
 
             if class_member_access.expr.template_expr.cpp_type == 'GetFirstError':
-                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
+                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr)
                 return self.transform_get_first_error(args)
             if class_member_access.expr.template_expr.cpp_type == 'std::is_same':
-                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
-                return self.transform_is_same(args, writer)
+                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr)
+                return self.transform_is_same(args)
             if class_member_access.expr.template_expr.cpp_type.startswith('Select1st'):
-                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr, writer=writer)
-                return self.transform_select1st(args, writer)
+                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr)
+                return self.transform_select1st(args)
 
-        return super().transform_class_member_access(class_member_access, writer)
+        return super().transform_class_member_access(class_member_access)
 
     def _can_remove_subexpression(self, expr: ir0.Expr):
         # If we're in a variadic type expr, we can't remove variadic sub-exprs (not in general at least).
@@ -310,7 +314,7 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
                                      member_type=ir0.TypeType(),
                                      member_name='type')
 
-    def transform_is_same(self, args: List[ir0.Expr], writer: transform_ir0.Writer):
+    def transform_is_same(self, args: List[ir0.Expr]):
         assert len(args) == 2
         lhs, rhs = args
         list_template_names = {'List', 'BoolList', 'Int64List'}
@@ -333,7 +337,7 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
                                                       op='&&')
                     else:
                         result = self._create_is_same_expr(lhs_arg, rhs_arg)
-                return self.transform_expr(result, writer)
+                return self.transform_expr(result)
 
             # std::is_same<IntList<n1, n2, n3>, IntList<m1, m2, m3>>::value
             # -> (n1 == m1) && (n2 == m2) && (n3 == m3)
@@ -346,7 +350,7 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
                                                   op='&&')
                 else:
                     result = ir0.ComparisonExpr(lhs_arg, rhs_arg, op='==')
-            return self.transform_expr(result, writer)
+            return self.transform_expr(result)
 
         return self._create_is_same_expr(lhs, rhs)
 
@@ -358,7 +362,7 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
             member_type=ir0.BoolType(),
             member_name='value')
 
-    def transform_select1st(self, args: List[ir0.Expr], writer: transform_ir0.Writer):
+    def transform_select1st(self, args: List[ir0.Expr]):
         lhs, rhs = args
 
         best_var = None

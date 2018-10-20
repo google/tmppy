@@ -13,8 +13,10 @@
 # limitations under the License.
 import itertools
 from typing import List, Union, Dict, Set, Optional
-from _py2tmp import ir0, transform_ir0, ir0_to_cpp
+
+from _py2tmp import ir0, transform_ir0
 from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
+
 
 class VariadicVarReplacementNotPossibleException(Exception):
     pass
@@ -24,11 +26,12 @@ class _ReplaceVarWithExprTransformation(transform_ir0.Transformation):
                  replacement_expr_by_var: Dict[str, Union[ir0.Expr, List[ir0.Expr]]],
                  replacement_expr_by_expanded_var: Dict[str, Union[ir0.Expr, List[ir0.Expr]]],
                  variadic_vars_with_expansion_in_progress: Set[str] = set()):
+        super().__init__()
         self.replacement_expr_by_var = replacement_expr_by_var
         self.replacement_expr_by_expanded_var = replacement_expr_by_expanded_var
         self.variadic_vars_with_expansion_in_progress = variadic_vars_with_expansion_in_progress
 
-    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: transform_ir0.Writer):
+    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion):
         variadic_vars_to_expand = compute_non_expanded_variadic_vars(expr.expr).keys()
         previous_variadic_vars_with_expansion_in_progress = self.variadic_vars_with_expansion_in_progress
         self.variadic_vars_with_expansion_in_progress = previous_variadic_vars_with_expansion_in_progress.union(variadic_vars_to_expand)
@@ -59,7 +62,7 @@ class _ReplaceVarWithExprTransformation(transform_ir0.Transformation):
                         values = [values]
                     child_replacement_expr_by_expanded_var[var] = values[i]
                 child_transformation = _ReplaceVarWithExprTransformation(child_replacement_expr_by_var, child_replacement_expr_by_expanded_var, self.variadic_vars_with_expansion_in_progress)
-                transformed_expr = child_transformation.transform_expr(expr.expr, writer)
+                transformed_expr = child_transformation.transform_expr(expr.expr)
                 for expr1 in (transformed_expr if isinstance(transformed_expr, list) else [transformed_expr]):
                     transformed_exprs.append(expr1)
 
@@ -70,7 +73,7 @@ class _ReplaceVarWithExprTransformation(transform_ir0.Transformation):
                 if any(compute_non_expanded_variadic_vars(expr) for expr in transformed_exprs):
                     raise VariadicVarReplacementNotPossibleException('Found non-expanded variadic vars after expanding one to multiple elements')
         else:
-            transformed_expr = self.transform_expr(expr.expr, writer)
+            transformed_expr = self.transform_expr(expr.expr)
             if isinstance(transformed_expr, list):
                 [transformed_expr] = transformed_expr
 
@@ -81,7 +84,7 @@ class _ReplaceVarWithExprTransformation(transform_ir0.Transformation):
 
         return transformed_exprs
 
-    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: transform_ir0.Writer):
+    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral):
         if type_literal.cpp_type in self.replacement_expr_by_var:
             result = self.replacement_expr_by_var[type_literal.cpp_type]
         elif type_literal.cpp_type in self.replacement_expr_by_expanded_var:
@@ -99,18 +102,18 @@ class _ReplaceVarWithExprTransformation(transform_ir0.Transformation):
 
         return result
 
-    def transform_exprs(self, exprs: List[ir0.Expr], original_parent_element: Optional[ir0.Expr], writer):
+    def transform_exprs(self, exprs: List[ir0.Expr], original_parent_element: Optional[ir0.Expr]):
         if isinstance(original_parent_element, (ir0.TemplateInstantiation, ir0.FunctionTypeExpr)):
             results = []
             for expr in exprs:
-                expr_or_expr_list = self.transform_expr(expr, writer)
+                expr_or_expr_list = self.transform_expr(expr)
                 for expr in (expr_or_expr_list if isinstance(expr_or_expr_list, list) else [expr_or_expr_list]):
                     assert isinstance(expr, ir0.Expr)
                     results.append(expr)
             return results
         else:
             results = []
-            for expr_or_expr_list in super().transform_exprs(exprs, original_parent_element, writer):
+            for expr_or_expr_list in super().transform_exprs(exprs, original_parent_element):
                 for expr in (expr_or_expr_list if isinstance(expr_or_expr_list, list) else [expr_or_expr_list]):
                     assert isinstance(expr, ir0.Expr)
                     assert not isinstance(expr, ir0.VariadicTypeExpansion)
@@ -214,9 +217,10 @@ def replace_var_with_expr_in_template_body_element(elem: ir0.TemplateBodyElement
                                                    var: str,
                                                    expr: ir0.Expr) \
         -> ir0.TemplateBodyElement:
-    toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[], allow_template_defns=False, allow_toplevel_elems=False)
-    writer = transform_ir0.TemplateBodyWriter(toplevel_writer)
-    _ReplaceVarWithExprTransformation({var: expr}, dict()).transform_template_body_elem(elem, writer)
+    writer = transform_ir0.TemplateBodyWriter(toplevel_writer=None)
+    transformation = _ReplaceVarWithExprTransformation({var: expr}, dict())
+    with transformation.set_writer(writer):
+        transformation.transform_template_body_elem(elem)
     [elem] = writer.elems
     return elem
 
@@ -224,15 +228,12 @@ def replace_var_with_expr_in_template_body_elements(elems: List[ir0.TemplateBody
                                                     replacement_expr_by_var: Dict[str, Union[ir0.Expr, List[ir0.Expr]]],
                                                     replacement_expr_by_expanded_var: Dict[str, Union[ir0.Expr, List[ir0.Expr]]]) \
         -> List[ir0.TemplateBodyElement]:
-    toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[], allow_template_defns=False, allow_toplevel_elems=False)
-    return _ReplaceVarWithExprTransformation(replacement_expr_by_var, replacement_expr_by_expanded_var).transform_template_body_elems(elems, toplevel_writer)
+    transformation = _ReplaceVarWithExprTransformation(replacement_expr_by_var, replacement_expr_by_expanded_var)
+    return transformation.transform_template_body_elems(elems)
 
 def replace_var_with_expr_in_expr(expr: ir0.Expr,
                                   replacement_expr_by_var: Dict[str, Union[ir0.Expr, List[ir0.Expr]]],
                                   replacement_expr_by_expanded_var: Dict[str, Union[ir0.Expr, List[ir0.Expr]]]) \
         -> Union[ir0.Expr, List[ir0.Expr]]:
-    toplevel_writer = transform_ir0.ToplevelWriter(identifier_generator=[], allow_template_defns=False, allow_toplevel_elems=False)
-    result = _ReplaceVarWithExprTransformation(replacement_expr_by_var,
-                                               replacement_expr_by_expanded_var).transform_expr(expr,
-                                                                                                toplevel_writer)
-    return result
+    return _ReplaceVarWithExprTransformation(replacement_expr_by_var,
+                                             replacement_expr_by_expanded_var).transform_expr(expr)

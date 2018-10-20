@@ -53,23 +53,24 @@ def expr_can_trigger_static_asserts(expr: ir0.Expr):
 
 class _ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(transform_ir0.Transformation):
     def __init__(self, template_instantiation_can_trigger_static_asserts: Dict[str, bool]):
+        super().__init__()
         self.template_instantiation_can_trigger_static_asserts = template_instantiation_can_trigger_static_asserts
 
-    def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: transform_ir0.Writer):
+    def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation):
         if isinstance(template_instantiation.template_expr, ir0.AtomicTypeLiteral):
             if _is_global_literal_that_cannot_trigger_static_asserts(template_instantiation.template_expr):
                 instantiation_might_trigger_static_asserts = False
             else:
                 instantiation_might_trigger_static_asserts = self.template_instantiation_can_trigger_static_asserts.get(template_instantiation.template_expr.cpp_type,
                                                                                                                         template_instantiation.instantiation_might_trigger_static_asserts)
-            return ir0.TemplateInstantiation(template_expr=self.transform_expr(template_instantiation.template_expr, writer),
-                                             args=self.transform_exprs(template_instantiation.args, template_instantiation, writer),
+            return ir0.TemplateInstantiation(template_expr=self.transform_expr(template_instantiation.template_expr),
+                                             args=self.transform_exprs(template_instantiation.args, template_instantiation),
                                              instantiation_might_trigger_static_asserts=instantiation_might_trigger_static_asserts)
 
-        return super().transform_template_instantiation(template_instantiation, writer)
+        return super().transform_template_instantiation(template_instantiation)
 
 def _apply_template_instantiation_can_trigger_static_asserts_info(header: ir0.Header, template_instantiation_can_trigger_static_asserts: Dict[str, bool]):
-    return _ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(template_instantiation_can_trigger_static_asserts).transform_header(header, identifier_generator=iter([]))
+    return _ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(template_instantiation_can_trigger_static_asserts).transform_header(header)
 
 class _TemplateDefnContainsStaticAssertStmt(visit_ir0.Visitor):
     def __init__(self):

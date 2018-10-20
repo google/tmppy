@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import itertools
 from typing import List, Tuple, Iterator, MutableMapping, Dict
+
 from _py2tmp import ir0, transform_ir0
+
 
 # Splits template instantiations with multiple outputs so that there's only 1 result elem.
 # This allows the following inlining passes to inline in more cases.
@@ -83,9 +84,10 @@ def split_template_defn_with_multiple_outputs(template_defn: ir0.TemplateDefn,
 
 class ReplaceMetafunctionCallWithSplitTemplateCallTransformation(transform_ir0.Transformation):
     def __init__(self, split_template_name_by_old_name_and_result_element_name: Dict[Tuple[str, str], str]):
+        super().__init__()
         self.split_template_name_by_old_name_and_result_element_name = split_template_name_by_old_name_and_result_element_name
 
-    def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
+    def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess):
         if (isinstance(class_member_access.expr, ir0.TemplateInstantiation)
                 and isinstance(class_member_access.expr.template_expr, ir0.AtomicTypeLiteral)
                 and (class_member_access.expr.template_expr.cpp_type, class_member_access.member_name) in self.split_template_name_by_old_name_and_result_element_name):
@@ -98,7 +100,7 @@ class ReplaceMetafunctionCallWithSplitTemplateCallTransformation(transform_ir0.T
                                                                                                   instantiation_might_trigger_static_asserts=class_member_access.expr.instantiation_might_trigger_static_asserts),
                                                         member_name=class_member_access.member_name,
                                                         member_type=class_member_access.expr_type)
-        return super().transform_class_member_access(class_member_access, writer)
+        return super().transform_class_member_access(class_member_access)
 
 def replace_metafunction_calls_with_split_template_calls(header, identifier_generator, new_template_defns,
                                                          split_template_name_by_old_name_and_result_element_name):
@@ -109,5 +111,4 @@ def replace_metafunction_calls_with_split_template_calls(header, identifier_gene
                    toplevel_content=header.toplevel_content,
                    public_names=header.public_names,
                    split_template_name_by_old_name_and_result_element_name=split_template_name_by_old_name_and_result_element_name,
-                   check_if_error_specializations=header.check_if_error_specializations),
-        identifier_generator)
+                   check_if_error_specializations=header.check_if_error_specializations))
