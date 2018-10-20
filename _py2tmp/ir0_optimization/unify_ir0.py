@@ -53,11 +53,7 @@ def _pack_if_variable(var_or_expr: Union[str, ir0.Expr, unification.ListExpansio
     if isinstance(var_or_expr, str):
         return literal_expr_by_unique_name[var_or_expr]
     elif isinstance(var_or_expr, unification.ListExpansion):
-        result = _pack_if_variable(var_or_expr.expr, literal_expr_by_unique_name)
-        if any(var.is_variadic for var in result.get_free_vars()):
-            return ir0.VariadicTypeExpansion(result)
-        else:
-            return result
+        return ir0.VariadicTypeExpansion(_pack_if_variable(var_or_expr.expr, literal_expr_by_unique_name))
     else:
         return var_or_expr
 

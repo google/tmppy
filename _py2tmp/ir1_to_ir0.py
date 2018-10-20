@@ -119,18 +119,6 @@ class TemplateBodyWriter(Writer):
     def get_is_instance_template_name_for_error(self, error_name: str):
         return self.writer.get_is_instance_template_name_for_error(error_name)
 
-def _wrap_list_elem_expr(expr: ir0.Expr):
-    if expr.expr_type.kind == ir0.ExprKind.BOOL:
-        return ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.BOOL_WRAPPER,
-                                         args=[expr],
-                                         instantiation_might_trigger_static_asserts=False)
-    elif expr.expr_type.kind == ir0.ExprKind.INT64:
-        return ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.INT64_WRAPPER,
-                                         args=[expr],
-                                         instantiation_might_trigger_static_asserts=False)
-    else:
-        return expr
-
 def type_to_ir0(expr_type: ir1.ExprType):
     if isinstance(expr_type, ir1.BoolType):
         return ir0.BoolType()
@@ -577,9 +565,13 @@ def equality_comparison_to_ir0(comparison_expr: ir1.EqualityComparison, writer: 
 def is_in_list_expr_to_ir0(expr: ir1.IsInListExpr, writer: Writer):
     lhs = var_reference_to_ir0(expr.lhs)
     rhs = var_reference_to_ir0(expr.rhs)
-
-    return _create_metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.IS_IN_LIST,
-                                     args=[_wrap_list_elem_expr(lhs), rhs],
+    template_expr = {
+        ir0.ExprKind.BOOL: ir0_builtin_literals.GlobalLiterals.IS_IN_BOOL_LIST,
+        ir0.ExprKind.INT64: ir0_builtin_literals.GlobalLiterals.IS_IN_INT64_LIST,
+        ir0.ExprKind.TYPE: ir0_builtin_literals.GlobalLiterals.IS_IN_TYPE_LIST,
+    }[lhs.expr_type.kind]
+    return _create_metafunction_call(template_expr=template_expr,
+                                     args=[lhs, rhs],
                                      member_type=ir0.BoolType(),
                                      writer=writer)
 
@@ -631,6 +623,16 @@ def safe_unchecked_cast_expr_to_ir0(expr: ir1.SafeUncheckedCast):
                                                  is_global_function=expr.var.is_global_function,
                                                  is_function_that_may_throw=expr.var.is_function_that_may_throw))
 
+def list_template_name_for_type(expr_type: ir0.ExprType):
+    if expr_type.kind == ir0.ExprKind.BOOL:
+        return 'BoolList'
+    elif expr_type.kind == ir0.ExprKind.INT64:
+        return 'Int64List'
+    elif expr_type.kind == ir0.ExprKind.TYPE:
+        return 'List'
+    else:
+        raise NotImplementedError('expr_type.kind: %s' % expr_type.kind)
+
 def _define_transform_list_to_list_template(source_type: ir0.ExprType,
                                             dest_type: ir0.ExprType,
                                             forwarded_args: List[ir0.TemplateArgDecl],
@@ -644,11 +646,13 @@ def _define_transform_list_to_list_template(source_type: ir0.ExprType,
     # struct TransformBoolListToInt64List;
     #
     # template <bool... bs, typename ForwardedT, bool forwarded_bool>
-    # struct TransformBoolListToInt64List<List<Bool<bs>...>, ForwardedT, forwarded_bool> {
+    # struct TransformBoolListToInt64List<BoolList<bs...>, ForwardedT, forwarded_bool> {
     #   using error = typename GetFirstError<typename F<bs, ForwardedT, forwarded_bool>::error...>::type;
-    #   using type = List<mp_int<F<bs, ForwardedT, forwarded_bool>::value>...>;
+    #   using type = Int64List<F<bs, ForwardedT, forwarded_bool>::value...>;
     # };
 
+    source_type_list_name = list_template_name_for_type(source_type)
+    dest_type_list_name = list_template_name_for_type(dest_type)
     transform_list_to_list_template_name = writer.new_id()
 
     list_arg_decl = ir0.TemplateArgDecl(name='L', expr_type=ir0.TypeType(), is_variadic=False)
@@ -657,33 +661,36 @@ def _define_transform_list_to_list_template(source_type: ir0.ExprType,
     forwarded_exprs = [ir0.AtomicTypeLiteral.for_local(cpp_type=arg.name, expr_type=arg.expr_type, is_variadic=False)
                        for arg in forwarded_args]
 
-    source_variadic_arg_decl = ir0.TemplateArgDecl(expr_type=source_type,
-                                                   name='elems',
-                                                   is_variadic=True)
-    source_variadic_arg_expr = ir0.AtomicTypeLiteral.for_local('elems',
-                                                               source_type,
-                                                               is_variadic=True)
-    source_list_pattern_expr = ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.LIST,
-                                                         args=[ir0.VariadicTypeExpansion(_wrap_list_elem_expr(source_variadic_arg_expr))],
+    source_variadic_arg_decl = ir0.TemplateArgDecl(expr_type=source_type, name='elems', is_variadic=True)
+    source_variadic_arg_decl_type = ir0.TemplateArgType(expr_type=source_type, is_variadic=True)
+    source_variadic_arg_expr = ir0.AtomicTypeLiteral.for_local('elems', source_type, is_variadic=True)
+    dest_variadic_arg_expr = ir0.AtomicTypeLiteral.for_local('results', dest_type, is_variadic=True)
+    source_list_pattern_expr = ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=source_type_list_name,
+                                                                                                                   args=[source_variadic_arg_decl_type],
+                                                                                                                   is_metafunction_that_may_return_error=False,
+                                                                                                                   may_be_alias=False),
+                                                         args=[ir0.VariadicTypeExpansion(source_variadic_arg_expr)],
                                                          instantiation_might_trigger_static_asserts=False)
 
-    result_elem_expr, error_elem_expr = _create_metafunction_call(template_expr=functor_literal,
-                                                                  args=[source_variadic_arg_expr] + forwarded_exprs,
-                                                                  member_type=dest_type,
-                                                                  writer=template_specialization_writer)
-    if error_elem_expr:
+    type_expr, error_expr = _create_metafunction_call(template_expr=functor_literal,
+                                                      args=[source_variadic_arg_expr] + forwarded_exprs,
+                                                      member_type=dest_type,
+                                                      writer=template_specialization_writer)
+    if error_expr:
         error_expr, _ = _create_metafunction_call(template_expr=ir0_builtin_literals.GlobalLiterals.GET_FIRST_ERROR,
-                                                  args=[ir0.VariadicTypeExpansion(error_elem_expr)],
+                                                  args=[ir0.VariadicTypeExpansion(error_expr)],
                                                   member_type=ir0.TypeType(),
                                                   writer=template_specialization_writer)
-    else:
-        error_expr = None
 
-    result_list_expr = ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.LIST,
-                                                 args=[ir0.VariadicTypeExpansion(_wrap_list_elem_expr(result_elem_expr))],
-                                                 instantiation_might_trigger_static_asserts=False)
+    dest_list_literal = ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=dest_type_list_name,
+                                                                    args=[dest_variadic_arg_expr],
+                                                                    is_metafunction_that_may_return_error=False,
+                                                                    may_be_alias=False)
+    type_expr = ir0.TemplateInstantiation(template_expr=dest_list_literal,
+                                          args=[ir0.VariadicTypeExpansion(type_expr)],
+                                          instantiation_might_trigger_static_asserts=False)
 
-    template_specialization_writer.write_result_body_elements(result_expr=result_list_expr,
+    template_specialization_writer.write_result_body_elements(result_expr=type_expr,
                                                               error_expr=error_expr)
 
     writer.write_template_defn(ir0.TemplateDefn(main_definition=None,
@@ -715,6 +722,7 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
     assert not isinstance(expr.loop_var.expr_type, ir1.ParameterPackType)
     result_elem_type = type_to_ir0(expr.result_elem_expr.expr_type)
 
+
     template_arg_decl = ir0.TemplateArgDecl(expr_type=x_type,
                                             name=expr.loop_var.name,
                                             is_variadic=False)
@@ -722,8 +730,7 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
                                                      parent_arbitrary_arg=template_arg_decl,
                                                      parent_return_type=result_elem_type)
     result_expr, error_expr = function_call_to_ir0(expr.result_elem_expr, helper_template_body_writer)
-    helper_template_body_writer.write_result_body_elements(result_expr=result_expr,
-                                                           error_expr=error_expr)
+    helper_template_body_writer.write_result_body_elements(result_expr=result_expr, error_expr=error_expr)
     helper_template_defn = ir0.TemplateDefn(name=writer.new_id(),
                                             description='(meta)function wrapping the expression in a list comprehension',
                                             specializations=[],
@@ -993,10 +1000,17 @@ def list_to_set_expr_to_ir0(expr: ir1.ListToSetExpr):
     #
     # Becomes:
     #
-    # ListToSet<x>::type
+    # Int64ListToSet<x>::type
 
     var = var_reference_to_ir0(expr.var)
-    set_equals_instantiation = ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.LIST_TO_SET,
+
+    elem_kind = type_to_ir0(expr.elem_type).kind
+    list_to_set_template_literal = {
+        ir0.ExprKind.BOOL: ir0_builtin_literals.GlobalLiterals.BOOL_LIST_TO_SET,
+        ir0.ExprKind.INT64: ir0_builtin_literals.GlobalLiterals.INT64_LIST_TO_SET,
+        ir0.ExprKind.TYPE: ir0_builtin_literals.GlobalLiterals.TYPE_LIST_TO_SET,
+    }[elem_kind]
+    set_equals_instantiation = ir0.TemplateInstantiation(template_expr=list_to_set_template_literal,
                                                          args=[var],
                                                          instantiation_might_trigger_static_asserts=False)
 
@@ -1294,11 +1308,23 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
     lhs_var_names = {var.cpp_type for var in lhs_vars}
     rhs_var = var_reference_to_ir0(assignment.rhs)
 
+    elem_kind = lhs_vars[0].expr_type.kind
+    if elem_kind == ir0.ExprKind.BOOL:
+        list_literal = ir0_builtin_literals.GlobalLiterals.BOOL_LIST
+    elif elem_kind == ir0.ExprKind.INT64:
+        list_literal = ir0_builtin_literals.GlobalLiterals.INT_LIST
+    elif elem_kind == ir0.ExprKind.TYPE:
+        list_literal = ir0_builtin_literals.GlobalLiterals.LIST
+    else:
+        raise NotImplementedError('elem_kind: %s' % elem_kind)
+
     then_writer = writer.create_sibling_writer(writer.parent_arbitrary_arg, writer.parent_return_type)
-    then_writer.write_elem(ir0.Typedef(name=assignment.rhs.name,
-                                       expr=ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.LIST,
-                                                                      args=[_wrap_list_elem_expr(var) for var in lhs_vars],
-                                                                      instantiation_might_trigger_static_asserts=False)))
+    assignment_to_ir0(ir1.Assignment(lhs=assignment.rhs,
+                                     rhs=ir1.TemplateInstantiation(template_name=list_literal.cpp_type,
+                                                                   arg_exprs=assignment.lhs_list,
+                                                                   expr_type=ir1.ListType(assignment.lhs_list[0].expr_type),
+                                                                   instantiation_might_trigger_static_asserts=False)),
+                      then_writer)
     stmts_to_ir0(other_stmts, write_continuation_fun_call, then_writer)
 
     forwarded_vars = [var
@@ -1313,6 +1339,7 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
                                                             expr_type=var.expr_type,
                                                             is_variadic=var.is_variadic)
                             for var in forwarded_vars]
+
 
     # template <typename L, ...>
     # struct Id1 {
@@ -1337,14 +1364,14 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
                                                  is_metafunction=True)
 
     # template <int64_t n0, int64_t n1, int64_t n2, ...>
-    # struct Id1<Int64List<Int64<n0>, Int64<n1>, Int64<n2>>, ...> {
-    #   using L = Int64List<Int64<n0>, Int64<n1>, Int64<n2>>;
+    # struct Id1<Int64List<n0, n1, n2>, ...> {
+    #   using L = Int64List<n0, n1, n2>;
     #   ...
     # };
     lhs_vars_arg_decls = [ir0.TemplateArgDecl(expr_type=var.expr_type, name=var.cpp_type, is_variadic=var.is_variadic)
                           for var in lhs_vars]
-    list_pattern = ir0.TemplateInstantiation(ir0_builtin_literals.GlobalLiterals.LIST,
-                                             args=[_wrap_list_elem_expr(var) for var in lhs_vars],
+    list_pattern = ir0.TemplateInstantiation(list_literal,
+                                             args=lhs_vars,
                                              instantiation_might_trigger_static_asserts=False)
     specialization = ir0.TemplateSpecialization(args=lhs_vars_arg_decls + forwarded_vars_args,
                                                 patterns=[list_pattern] + forwarded_vars_exprs,
@@ -1418,8 +1445,12 @@ def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter
                 specialization_args.append(ir0.TemplateArgDecl(name=elems_literal.cpp_type,
                                                                expr_type=elems_literal.expr_type,
                                                                is_variadic=True))
-                template_instantiation = ir0.TemplateInstantiation(template_expr=ir0_builtin_literals.GlobalLiterals.LIST,
-                                                                   args=[ir0.VariadicTypeExpansion(_wrap_list_elem_expr(elems_literal))],
+                template_instantiation = ir0.TemplateInstantiation(template_expr=ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=list_template_name_for_type(elem_type),
+                                                                                                                             args=[ir0.TemplateArgType(expr_type=elem_type,
+                                                                                                                                                       is_variadic=True)],
+                                                                                                                             is_metafunction_that_may_return_error=False,
+                                                                                                                             may_be_alias=False),
+                                                                   args=[ir0.VariadicTypeExpansion(elems_literal)],
                                                                    instantiation_might_trigger_static_asserts=False)
                 patterns.append(template_instantiation)
                 extra_stmts.append(ir0.Typedef(name=arg.name,
@@ -1479,8 +1510,8 @@ def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter
                                                         specializations=[],
                                                         result_element_names=result_element_names))
     except (AssertionError, AttributeError, TypeError) as e:  # pragma: no cover
-        print('While converting a function defn to IR0:\n' + str(ir1.Module(body=[function_defn],
-                                                                            public_names=set())))
+        print('While converting a function defn to low IR:\n' + str(ir1.Module(body=[function_defn],
+                                                                               public_names=set())))
         raise e
 
 def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer: ToplevelWriter):

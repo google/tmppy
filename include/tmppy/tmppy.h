@@ -23,15 +23,11 @@
 template <typename...>
 struct List;
 
-template <bool b>
-struct Bool {
-  static constexpr bool value = b;
-};
+template <int64_t...>
+struct Int64List;
 
-template <int64_t n>
-struct Int64 {
-  static constexpr int64_t value = n;
-};
+template <bool...>
+struct BoolList;
 
 // This must be here because it's used in ir0_to_cpp.
 template <bool>

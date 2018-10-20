@@ -24,7 +24,13 @@ def BoolListAll(l: List[bool]):
 def BoolListAny(l: List[bool]):
     return l != [False for x in l]
 
-def IsInList(x: Type, l: List[Type]):
+def IsInBoolList(b: bool, l: List[bool]):
+    return any([b == x for x in l])
+
+def IsInInt64List(n: int, l: List[int]):
+    return any([n == x for x in l])
+
+def IsInTypeList(x: Type, l: List[Type]):
     return any([x == y for y in l])
 
 def AddToBoolSet(l: List[bool], b: bool):

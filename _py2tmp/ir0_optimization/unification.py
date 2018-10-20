@@ -229,53 +229,6 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
             expr_expr_equations.append((lhs_list, rhs_list))
             continue
 
-        terms = []
-        for expr in lhs_list:
-            if isinstance(expr, ListExpansion):
-                expr = expr.expr
-            if isinstance(expr, str):
-                break
-            terms.append(expr)
-        else:
-            for expr in rhs_list:
-                if isinstance(expr, ListExpansion):
-                    expr = expr.expr
-                if isinstance(expr, str):
-                    break
-                terms.append(expr)
-            else:
-                # If we arrive here, the lhs and rhs are all terms and/or ListExpansion(<term>).
-                if all(strategy.equality_requires_syntactical_equality(term)
-                        and strategy.is_same_term_excluding_args(term, terms[0])
-                        and len(strategy.get_term_args(term)) == len(strategy.get_term_args(terms[0]))
-                       for term in terms):
-                    # The lhs and rhs are all terms and/or ListExpansion(<term>), with the same term
-                    # (excluding args).
-                    # E.g. [*f(x1, x2)] = [f(y1, y2), *f(z1, z2)]
-                    # ->
-                    # [*x1] = [y1, *z1]
-                    # [*x2] = [y2, *z2]
-                    num_equations = len(strategy.get_term_args(terms[0]))
-                    lhs_list_list = [[] for _ in range(num_equations)]
-                    rhs_list_list = [[] for _ in range(num_equations)]
-                    for expr in lhs_list:
-                        if isinstance(expr, ListExpansion):
-                            for i, arg in enumerate(strategy.get_term_args(expr.expr)):
-                                lhs_list_list[i].append(ListExpansion(arg))
-                        else:
-                            for i, arg in enumerate(strategy.get_term_args(expr)):
-                                lhs_list_list[i].append(arg)
-                    for expr in rhs_list:
-                        if isinstance(expr, ListExpansion):
-                            for i, arg in enumerate(strategy.get_term_args(expr.expr)):
-                                rhs_list_list[i].append(ListExpansion(arg))
-                        else:
-                            for i, arg in enumerate(strategy.get_term_args(expr)):
-                                rhs_list_list[i].append(arg)
-                    for lhs_list, rhs_list in zip(lhs_list_list, rhs_list_list):
-                        expr_expr_equations.append((lhs_list, rhs_list))
-                    continue
-
         if not rhs_list:
             rhs_list, lhs_list = lhs_list, rhs_list
 
@@ -287,11 +240,9 @@ def unify(expr_expr_equations: List[Tuple[_Expr, _Expr]],
                     expr_expr_equations.append(([arg], []))
                 else:
                     if expanded_non_syntactically_comparable_expr:
-                        raise UnificationAmbiguousException('Deduced %s = %s' % (
-                            exprs_to_string(strategy, lhs_list), exprs_to_string(strategy, rhs_list)))
+                        raise UnificationAmbiguousException()
                     else:
-                        raise UnificationFailedException('Deduced %s = %s' % (
-                            exprs_to_string(strategy, lhs_list), exprs_to_string(strategy, rhs_list)))
+                        raise UnificationFailedException()
             continue
 
         # E.g. in these cases:
@@ -338,21 +289,15 @@ def canonicalize(var_expr_equations: Dict[str, _NonListExpr],
             # That's going to cause a cycle, but we'll deal with the cycle below once we know if any other vars are
             # part of the cycle.
             vars_dependency_graph.add_edge(rhs, lhs)
-        elif isinstance(rhs, ListExpansion) and isinstance(rhs.expr, str):
-            # Same, for the case var=ListExpansion(var2)
-            vars_dependency_graph.add_edge(rhs.expr, lhs)
     for lhs, rhs_list in expanded_var_expr_equations.items():
         vars_dependency_graph.add_node(lhs)
         for rhs_expr in rhs_list:
             for var in _get_free_variables(rhs_expr, strategy):
                 vars_dependency_graph.add_edge(lhs, var)
-        if len(rhs_list) == 1 and isinstance(rhs_list[0], str):
+        if len(rhs_list) == 1 and isinstance(rhs_list[0], ListExpansion) and isinstance(rhs_list[0].expr, str):
             # This is a var-var equation. We also add an edge for the flipped equation.
             # That's going to cause a cycle, but we'll deal with the cycle below once we know if any other vars are
             # part of the cycle.
-            vars_dependency_graph.add_edge(rhs_list[0], lhs)
-        if len(rhs_list) == 1 and isinstance(rhs_list[0], ListExpansion) and isinstance(rhs_list[0].expr, str):
-            # Same, for the case ListExpansion(var)=ListExpansion(var2)
             vars_dependency_graph.add_edge(rhs_list[0].expr, lhs)
 
     for vars_in_connected_component in reversed(list(utils.compute_condensation_in_topological_order(vars_dependency_graph))):

@@ -719,9 +719,6 @@ def link(object_file_content: ObjectFileContent,
 
 def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization):
     try:
-        _py2tmp.ConfigurationKnobs.verbose = _py2tmp.DEFAULT_VERBOSE_SETTING
-        _py2tmp.ConfigurationKnobs.max_num_optimization_steps = -1
-        _py2tmp.ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
         object_file_content = compile(tmppy_source)
         e = None
     except _py2tmp.CompilationError as e1:
