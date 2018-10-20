@@ -332,7 +332,9 @@ def test_is_same_optimization_void_double():
     from tmppy import Type
     assert Type('void') != Type('double')
 
-@assert_compilation_fails_with_generic_error('template instantiation depth exceeds maximum', allow_reaching_max_optimization_loops=True)
+@assert_compilation_fails_with_generic_error('template instantiation depth exceeds maximum'
+                                             '|constexpr variable .value. must be initialized by a constant expression',
+                                             allow_reaching_max_optimization_loops=True)
 def test_optimization_of_mutually_recursive_functions_infinite_loop():
     def f(n: int) -> int:
         return g(n)
