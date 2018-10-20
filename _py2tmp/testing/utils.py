@@ -681,6 +681,11 @@ def expect_cpp_code_success(tmppy_source: str,
     try_remove_temporary_file(output_file_name)
 
 def _get_function_body(f):
+    # The body of some tests is a multiline string because they would otherwise cause the pytest test file to fail
+    # parsing.
+    if f.__doc__:
+        return textwrap.dedent(f.__doc__)
+
     source_code, _ = inspect.getsourcelines(f)
 
     # Skip the annotation and the line where the function is defined.
@@ -689,10 +694,6 @@ def _get_function_body(f):
         source_code = source_code[1:]
     source_code = source_code[1:]
 
-    # The body of some tests is a multiline string because they would otherwise cause the pytest test file to fail
-    # parsing.
-    if source_code[0].strip() == '\'\'\'' and source_code[-1].strip() == '\'\'\'':
-        source_code = source_code[1:-1]
     return textwrap.dedent(''.join(source_code))
 
 @lru_cache()

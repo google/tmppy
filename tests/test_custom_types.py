@@ -138,7 +138,7 @@ def test_custom_type_match_error():
 @assert_conversion_fails
 def test_custom_type_declared_as_return_type_before_definition_error():
     '''
-    def f(b: bool) -> X:  # error: Unsupported \(or undefined\) type: X
+    def f(b: bool) -> X:  # error: Unsupported \\(or undefined\\) type: X
         return True
     class X:
         def __init__(self, x: bool):
