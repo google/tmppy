@@ -15,23 +15,20 @@
 from collections import defaultdict
 from typing import Dict
 import networkx as nx
-from _py2tmp import ir0, transform_ir0, ir0_builtin_literals
+from _py2tmp import ir0, transform_ir0, ir0_builtin_literals, visit_ir0
 from _py2tmp.ir0_optimization.template_dependency_graph import compute_template_dependency_graph
 
 def _is_global_literal_that_cannot_trigger_static_asserts(literal: ir0.AtomicTypeLiteral):
     return literal.cpp_type in ir0_builtin_literals.GLOBAL_LITERALS_BY_NAME and literal.cpp_type != 'CheckIfError'
 
-class _CanTriggerStaticAsserts(transform_ir0.Transformation):
+class _CanTriggerStaticAsserts(visit_ir0.Visitor):
     def __init__(self):
-        super().__init__(generates_transformed_ir=False)
         self.can_trigger_static_asserts = False
 
-    def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
+    def visit_static_assert(self, static_assert: ir0.StaticAssert):
         self.can_trigger_static_asserts = True
 
-    def transform_template_instantiation(self,
-                                         template_instantiation: ir0.TemplateInstantiation,
-                                         writer: transform_ir0.Writer):
+    def visit_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation):
         if (isinstance(template_instantiation.template_expr, ir0.AtomicTypeLiteral)
                 and _is_global_literal_that_cannot_trigger_static_asserts(template_instantiation.template_expr)):
             # Skip this instantiation, we'll set instantiation_might_trigger_static_asserts=False here later
@@ -39,28 +36,23 @@ class _CanTriggerStaticAsserts(transform_ir0.Transformation):
         else:
             self.can_trigger_static_asserts |= template_instantiation.instantiation_might_trigger_static_asserts
 
-    def transform_template_specialization(self,
-                                          specialization: ir0.TemplateSpecialization,
-                                          writer: transform_ir0.Writer):
+    def visit_template_specialization(self, specialization: ir0.TemplateSpecialization):
         # We don't recurse in inner templates, we assume that evaluating the template definition itself doesn't trigger
         # static asserts (even though the template might trigger assertions when instantiated).
-        return
+        pass
 
 def elem_can_trigger_static_asserts(stmt: ir0.TemplateBodyElement):
-    writer = transform_ir0.ToplevelWriter(identifier_generator=iter([]))
-    transformation = _CanTriggerStaticAsserts()
-    transformation.transform_template_body_elems([stmt], writer)
-    return transformation.can_trigger_static_asserts
+    visitor = _CanTriggerStaticAsserts()
+    visitor.visit_template_body_elems([stmt])
+    return visitor.can_trigger_static_asserts
 
 def expr_can_trigger_static_asserts(expr: ir0.Expr):
-    writer = transform_ir0.ToplevelWriter(identifier_generator=iter([]))
-    transformation = _CanTriggerStaticAsserts()
-    transformation.transform_expr(expr, writer)
-    return transformation.can_trigger_static_asserts
+    visitor = _CanTriggerStaticAsserts()
+    visitor.visit_expr(expr)
+    return visitor.can_trigger_static_asserts
 
 class _ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(transform_ir0.Transformation):
     def __init__(self, template_instantiation_can_trigger_static_asserts: Dict[str, bool]):
-        super().__init__()
         self.template_instantiation_can_trigger_static_asserts = template_instantiation_can_trigger_static_asserts
 
     def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: transform_ir0.Writer):
@@ -79,18 +71,17 @@ class _ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(transform_ir0.Trans
 def _apply_template_instantiation_can_trigger_static_asserts_info(header: ir0.Header, template_instantiation_can_trigger_static_asserts: Dict[str, bool]):
     return _ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(template_instantiation_can_trigger_static_asserts).transform_header(header, identifier_generator=iter([]))
 
-class _TemplateDefnContainsStaticAssertStmt(transform_ir0.Transformation):
+class _TemplateDefnContainsStaticAssertStmt(visit_ir0.Visitor):
     def __init__(self):
-        super().__init__(generates_transformed_ir=False)
         self.found_static_assert_stmt = False
 
-    def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: transform_ir0.Writer):
+    def visit_static_assert(self, static_assert: ir0.StaticAssert):
         self.found_static_assert_stmt = True
 
 def _template_defn_contains_static_assert_stmt(template_defn: ir0.TemplateDefn):
-    transformation = _TemplateDefnContainsStaticAssertStmt()
-    transformation.transform_template_defn(template_defn, transform_ir0.ToplevelWriter(identifier_generator=iter([])))
-    return transformation.found_static_assert_stmt
+    visitor = _TemplateDefnContainsStaticAssertStmt()
+    visitor.visit_template_defn(template_defn)
+    return visitor.found_static_assert_stmt
 
 def recalculate_template_instantiation_can_trigger_static_asserts_info(header: ir0.Header):
     if not header.template_defns:

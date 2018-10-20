@@ -13,7 +13,7 @@
 # limitations under the License.
 import itertools
 from typing import List, Iterator, Tuple, Union, Callable, Iterable
-from _py2tmp import ir0, transform_ir0, utils
+from _py2tmp import ir0, transform_ir0, utils, visit_ir0
 from _py2tmp.ir0_optimization import optimize_ir0
 
 class Writer:
@@ -542,39 +542,38 @@ def toplevel_elem_to_cpp_simple(elem: Union[ir0.StaticAssert, ir0.ConstantDef, i
         toplevel_elem_to_cpp(elem, writer)
     return ''.join(writer.strings)
 
-class ComputeTemplateDefnsThatMustComeBeforeTransformation(transform_ir0.Transformation):
+class ComputeTemplateDefnsThatMustComeBeforeVisitor(visit_ir0.Visitor):
     def __init__(self):
-        super().__init__(generates_transformed_ir=False)
         self.results = set()
         self.constant_var_names = set()
         self.is_current_expr_constant = True
         self.encountered_template_refs_must_come_before_transformation = False
 
-    def transform_template_body_elem(self, elem: ir0.TemplateBodyElement, writer: transform_ir0.TemplateBodyWriter):
+    def visit_template_body_elem(self, elem: ir0.TemplateBodyElement):
         self.is_current_expr_constant = True
-        super().transform_template_body_elem(elem, writer)
+        super().visit_template_body_elem(elem)
 
-    def transform_typedef(self, typedef: ir0.Typedef, writer: transform_ir0.Writer):
-        super().transform_typedef(typedef, writer)
+    def visit_typedef(self, typedef: ir0.Typedef):
+        super().visit_typedef(typedef)
         if self.is_current_expr_constant:
             self.constant_var_names.add(typedef.name)
 
-    def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: Writer):
-        super().transform_constant_def(constant_def, writer)
+    def visit_constant_def(self, constant_def: ir0.ConstantDef):
+        super().visit_constant_def(constant_def)
         if self.is_current_expr_constant:
             self.constant_var_names.add(constant_def.name)
 
-    def transform_exprs(self, exprs: List[ir0.Expr], original_parent_element, writer: transform_ir0.Writer):
+    def visit_exprs(self, exprs: List[ir0.Expr]):
         initial_is_current_expr_constant = self.is_current_expr_constant
         final_is_current_expr_constant = self.is_current_expr_constant
         for expr in exprs:
             self.is_current_expr_constant = initial_is_current_expr_constant
-            self.transform_expr(expr, writer)
+            self.visit_expr(expr)
             final_is_current_expr_constant &= self.is_current_expr_constant
 
         self.is_current_expr_constant = final_is_current_expr_constant
 
-    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: transform_ir0.Writer):
+    def visit_type_literal(self, type_literal: ir0.AtomicTypeLiteral):
         if type_literal.is_local:
             if type_literal.cpp_type not in self.constant_var_names:
                 self.is_current_expr_constant = False
@@ -582,35 +581,32 @@ class ComputeTemplateDefnsThatMustComeBeforeTransformation(transform_ir0.Transfo
             if isinstance(type_literal.expr_type, ir0.TemplateType) and self.encountered_template_refs_must_come_before_transformation:
                 self.results.add(type_literal.cpp_type)
 
-    def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: transform_ir0.Writer):
+    def visit_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation):
         initial_is_current_expr_constant = self.is_current_expr_constant
         initial_encountered_template_refs_must_come_before_transformation = self.encountered_template_refs_must_come_before_transformation
 
-        self.transform_exprs(template_instantiation.args, template_instantiation, writer)
+        self.visit_exprs(template_instantiation.args)
         final_is_current_expr_constant = self.is_current_expr_constant
         if final_is_current_expr_constant:
             self.encountered_template_refs_must_come_before_transformation = True
 
         self.is_current_expr_constant = initial_is_current_expr_constant
-        self.transform_expr(template_instantiation.template_expr, writer)
+        self.visit_expr(template_instantiation.template_expr)
         final_is_current_expr_constant &= self.is_current_expr_constant
 
         self.is_current_expr_constant = final_is_current_expr_constant
         self.encountered_template_refs_must_come_before_transformation = initial_encountered_template_refs_must_come_before_transformation
 
-    def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):
+    def visit_class_member_access(self, class_member_access: ir0.ClassMemberAccess):
         initial_encountered_template_refs_must_come_before_transformation = self.encountered_template_refs_must_come_before_transformation
         self.encountered_template_refs_must_come_before_transformation = False
-        self.transform_expr(class_member_access.expr, writer)
+        self.visit_expr(class_member_access.expr)
         self.encountered_template_refs_must_come_before_transformation = initial_encountered_template_refs_must_come_before_transformation
 
 def compute_template_defns_that_must_come_before_specialization(specialization: ir0.TemplateSpecialization):
-    transformation = ComputeTemplateDefnsThatMustComeBeforeTransformation()
-    transformation.transform_template_body_elems(
-        specialization.body,
-        transform_ir0.ToplevelWriter(
-            identifier_generator=iter([]), allow_toplevel_elems=False, allow_template_defns=False))
-    return transformation.results
+    visitor = ComputeTemplateDefnsThatMustComeBeforeVisitor()
+    visitor.visit_template_body_elems(specialization.body)
+    return visitor.results
 
 def compute_template_defns_that_must_come_before(template_defn: ir0.TemplateDefn):
     specializations = list(template_defn.specializations)

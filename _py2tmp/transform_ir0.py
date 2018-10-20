@@ -14,6 +14,8 @@
 
 from typing import List, Iterable, Union, Mapping
 from _py2tmp import ir0
+from _py2tmp.ir0_is_variadic import is_expr_variadic
+
 
 class Writer:
     def write(self, elem: Union[ir0.TemplateDefn, ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef]): ...  # pragma: no cover
@@ -75,9 +77,6 @@ class TemplateBodyWriter(Writer):
         return self.toplevel_writer
 
 class Transformation:
-    def __init__(self, generates_transformed_ir=True):
-        self.generates_transformed_ir = generates_transformed_ir
-
     def transform_header(self, header: ir0.Header, identifier_generator: Iterable[str]) -> ir0.Header:
         writer = ToplevelWriter(identifier_generator)
         for template_defn in header.template_defns:
@@ -86,12 +85,11 @@ class Transformation:
         for elem in header.toplevel_content:
             self.transform_toplevel_elem(elem, writer)
 
-        if self.generates_transformed_ir:
-            return ir0.Header(template_defns=writer.template_defns, toplevel_content=writer.toplevel_elems,
-                              public_names=header.public_names,
-                              split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name,
-                              check_if_error_specializations=[self.transform_template_specialization(specialization, writer)
-                                                              for specialization in header.check_if_error_specializations])
+        return ir0.Header(template_defns=writer.template_defns, toplevel_content=writer.toplevel_elems,
+                          public_names=header.public_names,
+                          split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name,
+                          check_if_error_specializations=[self.transform_template_specialization(specialization, writer)
+                                                          for specialization in header.check_if_error_specializations])
 
     def transform_toplevel_elem(self, elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef], writer: Writer):
         if isinstance(elem, ir0.StaticAssert):
@@ -109,33 +107,28 @@ class Transformation:
                                                                          writer) if template_defn.main_definition is not None else None
         specializations = [self.transform_template_specialization(specialization, writer)
                            for specialization in template_defn.specializations]
-        if self.generates_transformed_ir:
-            writer.write(ir0.TemplateDefn(args=args,
-                                          main_definition=template_specialization,
-                                          specializations=specializations,
-                                          name=template_defn.name,
-                                          description=template_defn.description,
-                                          result_element_names=template_defn.result_element_names))
+        writer.write(ir0.TemplateDefn(args=args,
+                                      main_definition=template_specialization,
+                                      specializations=specializations,
+                                      name=template_defn.name,
+                                      description=template_defn.description,
+                                      result_element_names=template_defn.result_element_names))
 
     def transform_static_assert(self, static_assert: ir0.StaticAssert, writer: Writer):
         expr = self.transform_expr(static_assert.expr, writer)
-        if self.generates_transformed_ir:
-            writer.write(ir0.StaticAssert(expr=expr,
-                                          message=static_assert.message))
+        writer.write(ir0.StaticAssert(expr=expr,
+                                      message=static_assert.message))
 
     def transform_constant_def(self, constant_def: ir0.ConstantDef, writer: Writer):
         expr = self.transform_expr(constant_def.expr, writer)
-        if self.generates_transformed_ir:
-            writer.write(ir0.ConstantDef(name=constant_def.name, expr=expr))
+        writer.write(ir0.ConstantDef(name=constant_def.name, expr=expr))
 
     def transform_typedef(self, typedef: ir0.Typedef, writer: Writer):
         expr = self.transform_expr(typedef.expr, writer)
-        if self.generates_transformed_ir:
-            writer.write(ir0.Typedef(name=typedef.name, expr=expr))
+        writer.write(ir0.Typedef(name=typedef.name, expr=expr))
 
     def transform_template_arg_decl(self, arg_decl: ir0.TemplateArgDecl) -> ir0.TemplateArgDecl:
-        if self.generates_transformed_ir:
-            return arg_decl
+        return arg_decl
 
     def transform_template_body_elems(self,
                                       elems: List[ir0.TemplateBodyElement],
@@ -143,8 +136,7 @@ class Transformation:
         body_writer = TemplateBodyWriter(writer)
         for elem in elems:
             self.transform_template_body_elem(elem, body_writer)
-        if self.generates_transformed_ir:
-            return body_writer.elems
+        return body_writer.elems
 
     def transform_template_specialization(self, specialization: ir0.TemplateSpecialization, writer: Writer) -> ir0.TemplateSpecialization:
         toplevel_writer = writer.get_toplevel_writer()
@@ -157,11 +149,10 @@ class Transformation:
 
         args = [self.transform_template_arg_decl(arg_decl) for arg_decl in specialization.args]
         body = self.transform_template_body_elems(specialization.body, toplevel_writer)
-        if self.generates_transformed_ir:
-            return ir0.TemplateSpecialization(args=args,
-                                              patterns=patterns,
-                                              body=body,
-                                              is_metafunction=specialization.is_metafunction)
+        return ir0.TemplateSpecialization(args=args,
+                                          patterns=patterns,
+                                          body=body,
+                                          is_metafunction=specialization.is_metafunction)
 
     def transform_pattern(self, expr: ir0.Expr, writer: Writer) -> ir0.Expr:
         return self.transform_expr(expr, writer)
@@ -203,9 +194,7 @@ class Transformation:
             raise NotImplementedError('Unexpected expr: ' + expr.__class__.__name__)
 
     def transform_exprs(self, exprs: List[ir0.Expr], original_parent_element: ir0.Expr, writer: Writer) -> List[ir0.Expr]:
-        exprs = [self.transform_expr(expr, writer) for expr in exprs]
-        if self.generates_transformed_ir:
-            return exprs
+        return [self.transform_expr(expr, writer) for expr in exprs]
 
     def transform_template_body_elem(self, elem: ir0.TemplateBodyElement, writer: TemplateBodyWriter):
         if isinstance(elem, ir0.TemplateDefn):
@@ -220,108 +209,87 @@ class Transformation:
             raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 
     def transform_literal(self, literal: ir0.Literal, writer: Writer) -> ir0.Expr:
-        if self.generates_transformed_ir:
-            return literal
+        return literal
 
     def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: Writer) -> ir0.Expr:
         return self._transform_type_literal_default_impl(type_literal, writer)
 
     def _transform_type_literal_default_impl(self, type_literal: ir0.AtomicTypeLiteral, writer: Writer) -> ir0.AtomicTypeLiteral:
-        if self.generates_transformed_ir:
-            return ir0.AtomicTypeLiteral(cpp_type=type_literal.cpp_type,
-                                         is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
-                                         expr_type=type_literal.expr_type,
-                                         is_local=type_literal.is_local,
-                                         may_be_alias=type_literal.may_be_alias,
-                                         is_variadic=type_literal.is_variadic)
+        return ir0.AtomicTypeLiteral(cpp_type=type_literal.cpp_type,
+                                     is_metafunction_that_may_return_error=type_literal.is_metafunction_that_may_return_error,
+                                     expr_type=type_literal.expr_type,
+                                     is_local=type_literal.is_local,
+                                     may_be_alias=type_literal.may_be_alias,
+                                     is_variadic=type_literal.is_variadic)
 
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: Writer) -> ir0.Expr:
         class_type_expr = self.transform_expr(class_member_access.expr, writer)
-        if self.generates_transformed_ir:
-            return ir0.ClassMemberAccess(class_type_expr=class_type_expr,
-                                         member_name=class_member_access.member_name,
-                                         member_type=class_member_access.expr_type)
+        return ir0.ClassMemberAccess(class_type_expr=class_type_expr,
+                                     member_name=class_member_access.member_name,
+                                     member_type=class_member_access.expr_type)
 
     def transform_not_expr(self, not_expr: ir0.NotExpr, writer: Writer) -> ir0.Expr:
         expr = self.transform_expr(not_expr.expr, writer)
-        if self.generates_transformed_ir:
-            return ir0.NotExpr(expr)
+        return ir0.NotExpr(expr)
 
     def transform_unary_minus_expr(self, unary_minus: ir0.UnaryMinusExpr, writer: Writer) -> ir0.Expr:
         expr = self.transform_expr(unary_minus.expr, writer)
-        if self.generates_transformed_ir:
-            return ir0.UnaryMinusExpr(expr)
+        return ir0.UnaryMinusExpr(expr)
 
     def transform_comparison_expr(self, comparison: ir0.ComparisonExpr, writer: Writer) -> ir0.Expr:
-        exprs = self.transform_exprs([comparison.lhs, comparison.rhs], comparison, writer)
-        if self.generates_transformed_ir:
-            lhs, rhs = exprs
-            return ir0.ComparisonExpr(lhs=lhs, rhs=rhs, op=comparison.op)
+        lhs, rhs = self.transform_exprs([comparison.lhs, comparison.rhs], comparison, writer)
+        return ir0.ComparisonExpr(lhs=lhs, rhs=rhs, op=comparison.op)
 
     def transform_int64_binary_op_expr(self, binary_op: ir0.Int64BinaryOpExpr, writer: Writer) -> ir0.Expr:
-        exprs = self.transform_exprs([binary_op.lhs, binary_op.rhs], binary_op, writer)
-        if self.generates_transformed_ir:
-            lhs, rhs = exprs
-            return ir0.Int64BinaryOpExpr(lhs=lhs, rhs=rhs, op=binary_op.op)
+        lhs, rhs = self.transform_exprs([binary_op.lhs, binary_op.rhs], binary_op, writer)
+        return ir0.Int64BinaryOpExpr(lhs=lhs, rhs=rhs, op=binary_op.op)
 
     def transform_bool_binary_op_expr(self, binary_op: ir0.BoolBinaryOpExpr, writer: Writer) -> ir0.Expr:
-        exprs = self.transform_exprs([binary_op.lhs, binary_op.rhs], binary_op, writer)
-        if self.generates_transformed_ir:
-            lhs, rhs = exprs
-            return ir0.BoolBinaryOpExpr(lhs=lhs, rhs=rhs, op=binary_op.op)
+        lhs, rhs = self.transform_exprs([binary_op.lhs, binary_op.rhs], binary_op, writer)
+        return ir0.BoolBinaryOpExpr(lhs=lhs, rhs=rhs, op=binary_op.op)
 
     def transform_template_instantiation(self, template_instantiation: ir0.TemplateInstantiation, writer: Writer) -> ir0.Expr:
-        result = self.transform_exprs([template_instantiation.template_expr, *template_instantiation.args], template_instantiation, writer)
-        if self.generates_transformed_ir:
-            [template_expr, *args] = result
-            return ir0.TemplateInstantiation(template_expr=template_expr,
-                                             args=args,
-                                             instantiation_might_trigger_static_asserts=template_instantiation.instantiation_might_trigger_static_asserts)
+        [template_expr, *args] = self.transform_exprs([template_instantiation.template_expr, *template_instantiation.args], template_instantiation, writer)
+        return ir0.TemplateInstantiation(template_expr=template_expr,
+                                         args=args,
+                                         instantiation_might_trigger_static_asserts=template_instantiation.instantiation_might_trigger_static_asserts)
 
     def transform_pointer_type_expr(self, expr: ir0.PointerTypeExpr, writer: Writer):
         expr = self.transform_expr(expr.type_expr, writer)
-        if self.generates_transformed_ir:
-            return ir0.PointerTypeExpr(expr)
+        return ir0.PointerTypeExpr(expr)
 
     def transform_reference_type_expr(self, expr: ir0.ReferenceTypeExpr, writer: Writer):
         expr = self.transform_expr(expr.type_expr, writer)
-        if self.generates_transformed_ir:
-            return ir0.ReferenceTypeExpr(expr)
+        return ir0.ReferenceTypeExpr(expr)
 
     def transform_rvalue_reference_type_expr(self, expr: ir0.RvalueReferenceTypeExpr, writer: Writer):
         expr = self.transform_expr(expr.type_expr, writer)
-        if self.generates_transformed_ir:
-            return ir0.RvalueReferenceTypeExpr(expr)
+        return ir0.RvalueReferenceTypeExpr(expr)
 
     def transform_const_type_expr(self, expr: ir0.ConstTypeExpr, writer: Writer):
         expr = self.transform_expr(expr.type_expr, writer)
-        if self.generates_transformed_ir:
-            return ir0.ConstTypeExpr(expr)
+        return ir0.ConstTypeExpr(expr)
 
     def transform_array_type_expr(self, expr: ir0.ArrayTypeExpr, writer: Writer):
         expr = self.transform_expr(expr.type_expr, writer)
-        if self.generates_transformed_ir:
-            return ir0.ArrayTypeExpr(expr)
+        return ir0.ArrayTypeExpr(expr)
 
     def transform_function_type_expr(self, expr: ir0.FunctionTypeExpr, writer: Writer):
         result = self.transform_exprs([expr.return_type_expr, *expr.arg_exprs], expr, writer)
-        if self.generates_transformed_ir:
-            [return_type_expr, *arg_exprs] = result
-            return ir0.FunctionTypeExpr(return_type_expr=return_type_expr, arg_exprs=arg_exprs)
+        [return_type_expr, *arg_exprs] = result
+        return ir0.FunctionTypeExpr(return_type_expr=return_type_expr, arg_exprs=arg_exprs)
 
     def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: Writer):
         expr = self.transform_expr(expr.expr, writer)
-        if self.generates_transformed_ir:
-            if is_expr_variadic(expr):
-                return ir0.VariadicTypeExpansion(expr)
-            else:
-                # This is not just an optimization, it's an error to have a VariadicTypeExpansion() that doesn't contain
-                # any variadic var refs.
-                return expr
+        if is_expr_variadic(expr):
+            return ir0.VariadicTypeExpansion(expr)
+        else:
+            # This is not just an optimization, it's an error to have a VariadicTypeExpansion() that doesn't contain
+            # any variadic var refs.
+            return expr
 
 class NameReplacementTransformation(Transformation):
     def __init__(self, replacements: Mapping[str, str]):
-        super().__init__()
         self.replacements = replacements
 
     def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: Writer):
@@ -360,20 +328,3 @@ class NameReplacementTransformation(Transformation):
             return self.replacements[name]
         else:
             return name
-
-class ComputeIsVariadicTransformation(Transformation):
-    def __init__(self):
-        super().__init__(generates_transformed_ir=False)
-        self.is_variadic = False
-
-    def transform_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion, writer: Writer):
-        # No need to visit `expr`. Any variadic var inside it is already expanded anyway.
-        return
-
-    def transform_type_literal(self, type_literal: ir0.AtomicTypeLiteral, writer: Writer):
-        self.is_variadic |= type_literal.is_variadic
-
-def is_expr_variadic(expr: ir0.Expr):
-    transformation = ComputeIsVariadicTransformation()
-    transformation.transform_expr(expr, ToplevelWriter(iter([])))
-    return transformation.is_variadic

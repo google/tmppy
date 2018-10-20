@@ -83,7 +83,6 @@ def split_template_defn_with_multiple_outputs(template_defn: ir0.TemplateDefn,
 
 class ReplaceMetafunctionCallWithSplitTemplateCallTransformation(transform_ir0.Transformation):
     def __init__(self, split_template_name_by_old_name_and_result_element_name: Dict[Tuple[str, str], str]):
-        super().__init__()
         self.split_template_name_by_old_name_and_result_element_name = split_template_name_by_old_name_and_result_element_name
 
     def transform_class_member_access(self, class_member_access: ir0.ClassMemberAccess, writer: transform_ir0.Writer):

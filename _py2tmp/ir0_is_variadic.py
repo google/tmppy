@@ -14,20 +14,18 @@
 
 from _py2tmp import ir0, visit_ir0
 
-class _ComputeNonExpandedVariadicVarsVisitor(visit_ir0.Visitor):
+class ComputeIsVariadicVisitor(visit_ir0.Visitor):
     def __init__(self):
-        self.result = dict()
-
+        self.is_variadic = False
+        
     def visit_variadic_type_expansion(self, expr: ir0.VariadicTypeExpansion):
         # No need to visit `expr`. Any variadic var inside it is already expanded anyway.
-        return
+        pass
 
     def visit_type_literal(self, type_literal: ir0.AtomicTypeLiteral):
-        if type_literal.is_variadic:
-            self.result[type_literal.cpp_type] = type_literal
+        self.is_variadic |= type_literal.is_variadic
 
-def compute_non_expanded_variadic_vars(expr: ir0.Expr):
-    visitor = _ComputeNonExpandedVariadicVarsVisitor()
+def is_expr_variadic(expr: ir0.Expr):
+    visitor = ComputeIsVariadicVisitor()
     visitor.visit_expr(expr)
-    return visitor.result
-
+    return visitor.is_variadic

@@ -16,9 +16,6 @@ from typing import List, Union, Iterator
 from _py2tmp import ir0, transform_ir0
 
 class NormalizeExpressionsTransformation(transform_ir0.Transformation):
-    def __init__(self):
-        super().__init__()
-
     def transform_expr(self, expr: ir0.Expr, writer: transform_ir0.Writer, split_nontrivial_exprs=True) -> ir0.Expr:
         if split_nontrivial_exprs and not isinstance(expr, ir0.AtomicTypeLiteral):
             expr = super().transform_expr(expr, writer)

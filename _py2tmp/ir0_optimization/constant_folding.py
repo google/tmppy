@@ -20,7 +20,6 @@ from _py2tmp.ir0_optimization.replace_var_with_expr import replace_var_with_expr
 
 class ConstantFoldingTransformation(transform_ir0.Transformation):
     def __init__(self, inline_template_instantiations_with_multiple_references: bool):
-        super().__init__()
         self.inline_template_instantiations_with_multiple_references = inline_template_instantiations_with_multiple_references
 
     def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):

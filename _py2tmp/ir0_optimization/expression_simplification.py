@@ -14,12 +14,12 @@
 
 from typing import List, Union
 from _py2tmp import ir0, transform_ir0, ir0_builtin_literals, ir0_to_cpp
+from _py2tmp.ir0_is_variadic import is_expr_variadic
 from _py2tmp.ir0_optimization.compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
 from _py2tmp.ir0_optimization.recalculate_template_instantiation_can_trigger_static_asserts_info import expr_can_trigger_static_asserts
 
 class ExpressionSimplificationTransformation(transform_ir0.Transformation):
     def __init__(self):
-        super().__init__()
         self.in_variadic_type_expansion = False
 
     def transform_not_expr(self, not_expr: ir0.NotExpr, writer: transform_ir0.Writer) -> ir0.Expr:
@@ -282,7 +282,7 @@ class ExpressionSimplificationTransformation(transform_ir0.Transformation):
     def _can_remove_subexpression(self, expr: ir0.Expr):
         # If we're in a variadic type expr, we can't remove variadic sub-exprs (not in general at least).
         # E.g. BoolList<(F<Ts>::value || true)...> can't be optimized to BoolList<true>
-        if self.in_variadic_type_expansion and transform_ir0.is_expr_variadic(expr):
+        if self.in_variadic_type_expansion and is_expr_variadic(expr):
             return False
 
         return True

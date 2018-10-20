@@ -30,9 +30,6 @@ def _create_var_to_var_assignment(lhs: str, rhs: str, expr_type: ir0.ExprType):
         raise NotImplementedError('Unexpected kind: %s' % str(expr_type.kind))
 
 class CommonSubexpressionEliminationTransformation(transform_ir0.Transformation):
-    def __init__(self):
-        super().__init__()
-
     def transform_template_defn(self, template_defn: ir0.TemplateDefn, writer: transform_ir0.Writer):
         writer.write(ir0.TemplateDefn(args=template_defn.args,
                                       main_definition=self._transform_template_specialization(template_defn.main_definition, template_defn.result_element_names, writer) if template_defn.main_definition is not None else None,

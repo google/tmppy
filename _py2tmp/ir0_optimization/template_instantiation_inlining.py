@@ -151,7 +151,6 @@ class _TemplateInstantiationInliningTransformation(transform_ir0.Transformation)
     def __init__(self,
                  local_inlineable_templates: List[ir0.TemplateDefn],
                  context_object_file_content: ObjectFileContent):
-        super().__init__()
         self.needs_another_loop = False
         self.inlineable_templates_by_name = _with_global_inlineable_templates(context_object_file_content, local_inlineable_templates)
         self.parent_template_specialization_definitions = dict()
