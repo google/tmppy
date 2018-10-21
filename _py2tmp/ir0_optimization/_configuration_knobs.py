@@ -12,3 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+DEFAULT_VERBOSE_SETTING = False
+
+class ConfigurationKnobs:
+    # If this is >=0, the number of ir0_optimization steps is capped to this value.
+    max_num_optimization_steps = -1
+    optimization_step_counter = 0
+    reached_max_num_remaining_loops_counter = 0
+    verbose = DEFAULT_VERBOSE_SETTING

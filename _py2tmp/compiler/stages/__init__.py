@@ -12,3 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._ast_to_ir3 import module_ast_to_ir3, CompilationError
+from ._ir3_to_ir2 import module_to_ir2
+from ._ir2_to_ir1 import module_to_ir1
+from ._ir1_to_ir0 import module_to_ir0
+from ._ir0_to_cpp import header_to_cpp, expr_to_cpp_simple, template_defn_to_cpp_simple, type_expr_to_cpp_simple, toplevel_elem_to_cpp_simple

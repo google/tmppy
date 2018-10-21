@@ -12,3 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from _py2tmp.compiler.testing import main, assert_conversion_fails
+
+@assert_conversion_fails
+def test_unsupported_type():
+    def f(x: str): # error: Unsupported \(or undefined\) type: str
+        return x
+
+@assert_conversion_fails
+def test_unsupported_type_declaration_int_literal():
+    def f(x: 1): # error: Unsupported type declaration.
+        return x
+
+@assert_conversion_fails
+def test_unsupported_type_declaration_int_with_bracket():
+    def f(x: int[int]): # error: Unsupported type declaration.
+        return x
+
+if __name__== '__main__':
+    main(__file__)

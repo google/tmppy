@@ -12,3 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from . import ir as ir0
+from ._visitor import Visitor
+from ._transformation import Transformation, Writer, ToplevelWriter, TemplateBodyWriter, NameReplacementTransformation
+from ._is_variadic import is_expr_variadic
+from ._builtin_literals import GlobalLiterals, GLOBAL_LITERALS_BY_NAME, select1st_literal
+from ._template_dependency_graph import compute_template_dependency_graph

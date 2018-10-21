@@ -11,4 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import networkx as nx
 
+
+def compute_condensation_in_topological_order(dependency_graph: nx.DiGraph, sort_by = lambda x: x):
+    if not dependency_graph.number_of_nodes():
+        return
+
+    condensed_graph = nx.condensation(dependency_graph)
+    assert isinstance(condensed_graph, nx.DiGraph)
+
+    for connected_component_index in nx.lexicographical_topological_sort(condensed_graph, key=sort_by):
+        yield list(sorted(condensed_graph.node[connected_component_index]['members'], key=sort_by))

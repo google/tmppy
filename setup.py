@@ -26,13 +26,13 @@ with codecs.open(os.path.join(parent_path, 'README.md'), encoding='utf-8') as f:
 setuptools.setup(
     name='TMPPy',
     version='0.1.3',
-    description='A subset of Python that can be compiled to C++ meta-functions using the py2tmp compiler',
+    description='A subset of Python that can be compiled to C++ meta-functions using the py2tmp _compiler',
     long_description=long_description,
     url='https://github.com/google/tmppy',
     author='Marco Poletti',
     author_email='poletti.marco@gmail.com',
     license='Apache 2.0',
-    keywords='C++ metaprogramming compiler templates',
+    keywords='C++ metaprogramming _compiler templates',
     python_requires='>=3',
     classifiers=[
         'Development Status :: 3 - Alpha',

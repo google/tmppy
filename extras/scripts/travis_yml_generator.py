@@ -25,7 +25,7 @@ def determine_compiler_kind(compiler):
   elif compiler.startswith('clang'):
     return 'clang'
   else:
-    raise Exception('Unexpected compiler: %s' % compiler)
+    raise Exception('Unexpected _compiler: %s' % compiler)
 
 def determine_tests(smoke_tests, exclude_tests, include_only_tests):
   tests = ['ReleasePlain', 'DebugPlain']
@@ -61,7 +61,7 @@ def add_ubuntu_tests(ubuntu_version, compiler, stl=None, smoke_tests=[], exclude
     env['STL'] = stl
   compiler_kind = determine_compiler_kind(compiler)
   export_statements = 'export OS=linux; ' + generate_export_statements_for_env(env=env)
-  test_environment_template = {'os': 'linux', 'compiler': compiler_kind,
+  test_environment_template = {'os': 'linux', '_compiler': compiler_kind,
                                'install': '%s extras/scripts/travis_ci_install_linux.sh' % export_statements}
   tests = determine_tests(smoke_tests,
                           exclude_tests=exclude_tests,
@@ -83,7 +83,7 @@ def add_osx_tests(compiler, xcode_version=None, stl=None, smoke_tests=[], exclud
     env['STL'] = stl
   compiler_kind = determine_compiler_kind(compiler)
   export_statements = 'export OS=osx; ' + generate_export_statements_for_env(env=env)
-  test_environment_template = {'os': 'osx', 'compiler': compiler_kind,
+  test_environment_template = {'os': 'osx', '_compiler': compiler_kind,
                                'install': '%s extras/scripts/travis_ci_install_osx.sh' % export_statements}
   if xcode_version is not None:
     test_environment_template['osx_image'] = 'xcode%s' % xcode_version

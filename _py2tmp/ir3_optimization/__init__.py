@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _py2tmp.ir3_optimization.optimize_ir3 import optimize_module
+from ._optimize import optimize_module
