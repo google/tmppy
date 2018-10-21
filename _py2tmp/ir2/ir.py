@@ -88,6 +88,15 @@ class ListType(ExprType):
     def __str__(self):
         return 'List[%s]' % str(self.elem_type)
 
+class ParameterPackType(ExprType):
+    def __init__(self, element_type: Union[BoolType, IntType, TypeType, ErrorOrVoidType]):
+        assert not isinstance(element_type, (FunctionType, ParameterPackType, BottomType))
+        self.element_type = element_type
+
+    def __str__(self):
+        return 'Sequence[%s]' % (
+            str(self.element_type))
+
 class CustomTypeArgDecl(ValueType):
     def __init__(self, name: str, expr_type: ExprType):
         self.name = name
@@ -402,6 +411,18 @@ class FunctionTypePatternExpr(PatternExpr):
     def describe_other_fields(self):
         return 'return_type: %s; arg_type_list: %s' % (str(self.return_type_expr.describe_other_fields()),
                                                        str(self.arg_list_expr.describe_other_fields()))
+
+class ParameterPackExpansion(Expr):
+    def __init__(self, expr: VarReference):
+        assert isinstance(expr.expr_type, ParameterPackType)
+        super().__init__(expr.expr_type.element_type)
+        self.expr = expr
+
+    def __str__(self):
+        return '*(%s)' % str(self.expr)
+
+    def describe_other_fields(self):
+        return self.expr.describe_other_fields()
 
 # E.g. TemplateInstantiationExpr('std::vector', [AtomicTypeLiteral('int')]) is the type 'std::vector<int>'.
 class TemplateInstantiationExpr(Expr):

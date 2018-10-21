@@ -175,4 +175,5 @@ def optimize_header(header: ir.Header,
     header = _optimize_header_first_pass(header, identifier_generator, context_object_file_content)
     header = _optimize_header_second_pass(header, identifier_generator, context_object_file_content)
     header = _optimize_header_third_pass(header, identifier_generator, linking_final_header)
+
     return header

@@ -17,7 +17,6 @@ from typing import List, Set, Dict
 
 from _py2tmp.ir2 import ir
 from _py2tmp.ir2._visitor import Visitor
-from _py2tmp.utils import ir_to_string
 
 
 class _GetFreeVariablesVisitor(Visitor):
@@ -68,4 +67,9 @@ class _GetFreeVariablesVisitor(Visitor):
 def get_unique_free_variables_in_stmts(stmts: List[ir.Stmt]) -> List[ir.VarReference]:
     visitor = _GetFreeVariablesVisitor()
     visitor.visit_stmts(stmts)
+    return list(sorted(visitor.free_vars_by_name.values(), key=lambda var: var.name))
+
+def get_unique_free_variables_in_expr(expr: ir.Expr) -> List[ir.VarReference]:
+    visitor = _GetFreeVariablesVisitor()
+    visitor.visit_expr(expr)
     return list(sorted(visitor.free_vars_by_name.values(), key=lambda var: var.name))
