@@ -19,18 +19,18 @@ from typing import List, Tuple, Dict, Optional, Union, Callable, Iterator, Set
 import typed_ast.ast3 as ast
 
 from _py2tmp.compiler.output_files import ObjectFileContent
-from _py2tmp.ir3 import ir3, get_free_variables
-from _py2tmp.ir3._return_type import get_return_type
+from _py2tmp.ir2 import ir2, get_free_variables
+from _py2tmp.ir2._return_type import get_return_type
 
 
 class Symbol:
     def __init__(self,
                  name: str,
-                 expr_type: ir3.ExprType,
+                 expr_type: ir2.ExprType,
                  is_function_that_may_throw: bool,
                  source_module: Optional[str]):
         if is_function_that_may_throw:
-            assert isinstance(expr_type, ir3.FunctionType)
+            assert isinstance(expr_type, ir2.FunctionType)
         self.expr_type = expr_type
         self.name = name
         self.is_function_that_may_throw = is_function_that_may_throw
@@ -59,13 +59,13 @@ class SymbolTable:
 
     def add_symbol(self,
                    name: str,
-                   expr_type: ir3.ExprType,
+                   expr_type: ir2.ExprType,
                    definition_ast_node: ast.AST,
                    is_only_partially_defined: bool,
                    is_function_that_may_throw: bool,
                    source_module: Optional[str]):
         if is_function_that_may_throw:
-            assert isinstance(expr_type, ir3.FunctionType)
+            assert isinstance(expr_type, ir2.FunctionType)
         self.symbols_by_name[name] = (Symbol(name, expr_type, is_function_that_may_throw, source_module),
                                       definition_ast_node,
                                       is_only_partially_defined)
@@ -74,7 +74,7 @@ class CompilationContext:
     def __init__(self,
                  symbol_table: SymbolTable,
                  custom_types_symbol_table: SymbolTable,
-                 external_ir3_symbols_by_name_by_module: Dict[str, Dict[str, Union[ir3.FunctionDefn, ir3.CustomType]]],
+                 external_ir2_symbols_by_name_by_module: Dict[str, Dict[str, Union[ir2.FunctionDefn, ir2.CustomType]]],
                  filename: str,
                  source_lines: List[str],
                  identifier_generator: Iterator[str],
@@ -82,7 +82,7 @@ class CompilationContext:
                  partially_typechecked_function_definitions_by_name: Dict[str, ast.FunctionDef] = None):
         self.symbol_table = symbol_table
         self.custom_types_symbol_table = custom_types_symbol_table
-        self.external_ir3_symbols_by_name_by_module = external_ir3_symbols_by_name_by_module
+        self.external_ir2_symbols_by_name_by_module = external_ir2_symbols_by_name_by_module
         self.partially_typechecked_function_definitions_by_name = partially_typechecked_function_definitions_by_name or dict()
         self.filename = filename
         self.source_lines = source_lines
@@ -92,7 +92,7 @@ class CompilationContext:
     def create_child_context(self, function_name=None):
         return CompilationContext(SymbolTable(parent=self.symbol_table),
                                   self.custom_types_symbol_table,
-                                  self.external_ir3_symbols_by_name_by_module,
+                                  self.external_ir2_symbols_by_name_by_module,
                                   self.filename,
                                   self.source_lines,
                                   self.identifier_generator,
@@ -101,7 +101,7 @@ class CompilationContext:
 
     def add_symbol(self,
                    name: str,
-                   expr_type: ir3.ExprType,
+                   expr_type: ir2.ExprType,
                    definition_ast_node: ast.AST,
                    is_only_partially_defined: bool,
                    is_function_that_may_throw: bool,
@@ -113,7 +113,7 @@ class CompilationContext:
         same name and different type was already defined in this scope.
         """
         if is_function_that_may_throw:
-            assert isinstance(expr_type, ir3.FunctionType)
+            assert isinstance(expr_type, ir2.FunctionType)
 
         self._check_not_already_defined(name, definition_ast_node)
 
@@ -125,11 +125,11 @@ class CompilationContext:
                                      source_module=source_module)
 
     def add_custom_type_symbol(self,
-                               custom_type: ir3.CustomType,
+                               custom_type: ir2.CustomType,
                                definition_ast_node: Union[ast.ClassDef, ast.ImportFrom, None],
                                source_module: Optional[str] = None):
         self.add_symbol(name=custom_type.name,
-                        expr_type=ir3.FunctionType(argtypes=[arg.expr_type for arg in custom_type.arg_types],
+                        expr_type=ir2.FunctionType(argtypes=[arg.expr_type for arg in custom_type.arg_types],
                                                    returns=custom_type),
                         definition_ast_node=definition_ast_node,
                         is_only_partially_defined=False,
@@ -149,18 +149,18 @@ class CompilationContext:
         self.partially_typechecked_function_definitions_by_name[name] = definition_ast_node
 
     def add_symbol_for_external_elem(self,
-                                     elem: Union[ir3.FunctionDefn, ir3.CustomType],
+                                     elem: Union[ir2.FunctionDefn, ir2.CustomType],
                                      import_from_ast_node: ast.ImportFrom,
                                      source_module: str):
-        if isinstance(elem, ir3.FunctionDefn):
+        if isinstance(elem, ir2.FunctionDefn):
             self.add_symbol(name=elem.name,
-                            expr_type=ir3.FunctionType(argtypes=[arg.expr_type for arg in elem.args],
+                            expr_type=ir2.FunctionType(argtypes=[arg.expr_type for arg in elem.args],
                                                        returns=elem.return_type),
                             definition_ast_node=import_from_ast_node,
                             is_only_partially_defined=False,
                             is_function_that_may_throw=True,
                             source_module=source_module)
-        elif isinstance(elem, ir3.CustomType):
+        elif isinstance(elem, ir2.CustomType):
             self.add_custom_type_symbol(custom_type=elem,
                                         definition_ast_node=import_from_ast_node,
                                         source_module=source_module)
@@ -176,7 +176,7 @@ class CompilationContext:
     def get_type_symbol_definition(self, name: str):
         return self.custom_types_symbol_table.get_symbol_definition(name)
 
-    def set_function_type(self, name: str, expr_type: ir3.FunctionType):
+    def set_function_type(self, name: str, expr_type: ir2.FunctionType):
         if name in self.partially_typechecked_function_definitions_by_name:
             ast_node = self.partially_typechecked_function_definitions_by_name[name]
             del self.partially_typechecked_function_definitions_by_name[name]
@@ -240,19 +240,19 @@ class CompilationError(Exception):
                         line=compilation_context.source_lines[first_line_number - 1],
                         error_marker=error_marker)
 
-def module_ast_to_ir3(module_ast_node: ast.Module,
+def module_ast_to_ir2(module_ast_node: ast.Module,
                       filename: str,
                       source_lines: List[str],
                       identifier_generator: Iterator[str],
                       context_object_files: ObjectFileContent):
-    external_ir3_symbols_by_name_by_module = {module_name: {elem.name: elem
-                                                            for elem in itertools.chain(module_info.ir3_module.function_defns, module_info.ir3_module.custom_types)
-                                                            if elem.name in module_info.ir3_module.public_names}
+    external_ir2_symbols_by_name_by_module = {module_name: {elem.name: elem
+                                                            for elem in itertools.chain(module_info.ir2_module.function_defns, module_info.ir2_module.custom_types)
+                                                            if elem.name in module_info.ir2_module.public_names}
                                               for module_name, module_info in context_object_files.modules_by_name.items()
-                                              if module_info.ir3_module}
+                                              if module_info.ir2_module}
     compilation_context = CompilationContext(SymbolTable(),
                                              SymbolTable(),
-                                             external_ir3_symbols_by_name_by_module,
+                                             external_ir2_symbols_by_name_by_module,
                                              filename,
                                              source_lines,
                                              identifier_generator)
@@ -268,7 +268,7 @@ def module_ast_to_ir3(module_ast_node: ast.Module,
             if return_type:
                 compilation_context.add_symbol(
                     name=function_name,
-                    expr_type=ir3.FunctionType(argtypes=arg_types,
+                    expr_type=ir2.FunctionType(argtypes=arg_types,
                                                returns=return_type),
                     definition_ast_node=ast_node,
                     is_only_partially_defined=False,
@@ -278,12 +278,12 @@ def module_ast_to_ir3(module_ast_node: ast.Module,
                     name=function_name,
                     definition_ast_node=ast_node)
         elif isinstance(ast_node, ast.ImportFrom):
-            _import_from_ast_to_ir3(ast_node, compilation_context)
+            _import_from_ast_to_ir2(ast_node, compilation_context)
         elif isinstance(ast_node, ast.Import):
             raise CompilationError(compilation_context, ast_node,
                                    'TMPPy only supports imports of the form "from some_module import some_symbol, some_other_symbol".')
         elif isinstance(ast_node, ast.ClassDef):
-            custom_type = class_definition_ast_to_ir3(ast_node, compilation_context)
+            custom_type = class_definition_ast_to_ir2(ast_node, compilation_context)
             compilation_context.add_custom_type_symbol(custom_type=custom_type,
                                                        definition_ast_node=ast_node)
             custom_types.append(custom_type)
@@ -299,29 +299,29 @@ def module_ast_to_ir3(module_ast_node: ast.Module,
     # 2nd pass: process function bodies and toplevel assertions
     for ast_node in module_ast_node.body:
         if isinstance(ast_node, ast.FunctionDef):
-            new_function_defn = function_def_ast_to_ir3(ast_node, compilation_context)
+            new_function_defn = function_def_ast_to_ir2(ast_node, compilation_context)
             function_defns.append(new_function_defn)
 
             compilation_context.set_function_type(
                 name=ast_node.name,
-                expr_type=ir3.FunctionType(returns=new_function_defn.return_type,
+                expr_type=ir2.FunctionType(returns=new_function_defn.return_type,
                                            argtypes=[arg.expr_type
                                                    for arg in new_function_defn.args]))
         elif isinstance(ast_node, ast.Assert):
-            toplevel_assertions.append(assert_ast_to_ir3(ast_node, compilation_context))
+            toplevel_assertions.append(assert_ast_to_ir2(ast_node, compilation_context))
 
     public_names = set()
     for function_defn in function_defns:
       if not function_defn.name.startswith('_'):
         public_names.add(function_defn.name)
 
-    return ir3.Module(function_defns=function_defns,
+    return ir2.Module(function_defns=function_defns,
                       assertions=toplevel_assertions,
                       custom_types=custom_types,
                       public_names=public_names)
 
 
-def _import_from_ast_to_ir3(ast_node: ast.ImportFrom, compilation_context: CompilationContext):
+def _import_from_ast_to_ir2(ast_node: ast.ImportFrom, compilation_context: CompilationContext):
     if len(ast_node.names) == 0:
         raise CompilationError(compilation_context, ast_node,
                                'Imports must import at least 1 symbol.')  # pragma: no cover
@@ -341,10 +341,10 @@ def _import_from_ast_to_ir3(ast_node: ast.ImportFrom, compilation_context: Compi
     if not importable_names:
         # TODO: require all directly imported modules to be specified directly instead of allowing transitively-present
         # modules.
-        symbols_by_name = compilation_context.external_ir3_symbols_by_name_by_module.get(ast_node.module)
+        symbols_by_name = compilation_context.external_ir2_symbols_by_name_by_module.get(ast_node.module)
         if symbols_by_name is not None:
             importable_names = symbols_by_name.keys()
-            action = lambda imported_name: compilation_context.add_symbol_for_external_elem(elem=compilation_context.external_ir3_symbols_by_name_by_module[ast_node.module][imported_name.name],
+            action = lambda imported_name: compilation_context.add_symbol_for_external_elem(elem=compilation_context.external_ir2_symbols_by_name_by_module[ast_node.module][imported_name.name],
                                                                                             import_from_ast_node=ast_node,
                                                                                             source_module=ast_node.module)
 
@@ -353,7 +353,7 @@ def _import_from_ast_to_ir3(ast_node: ast.ImportFrom, compilation_context: Compi
                                'Module not found. The only modules that can be imported are the builtin modules ('
                                + ', '.join(sorted(builtin_imports_by_module.keys()))
                                + ') and the modules in the specified object files ('
-                               + (', '.join(sorted(name for name in compilation_context.external_ir3_symbols_by_name_by_module.keys() if name != '_py2tmp.compiler._tmppy_builtins')) or 'none')
+                               + (', '.join(sorted(name for name in compilation_context.external_ir2_symbols_by_name_by_module.keys() if name != '_py2tmp.compiler._tmppy_builtins')) or 'none')
                                + ')')
 
 
@@ -364,7 +364,7 @@ def _import_from_ast_to_ir3(ast_node: ast.ImportFrom, compilation_context: Compi
         action(imported_name)
 
 
-def match_expression_ast_to_ir3(ast_node: ast.Call,
+def match_expression_ast_to_ir2(ast_node: ast.Call,
                                 compilation_context: CompilationContext,
                                 in_match_pattern: bool,
                                 check_var_reference: Callable[[ast.Name], None],
@@ -378,8 +378,8 @@ def match_expression_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, ast_node.func, 'Found match() with no arguments; it must have at least 1 argument.')
     matched_exprs = []
     for expr_ast in ast_node.func.args:
-        expr = expression_ast_to_ir3(expr_ast, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-        if expr.expr_type != ir3.TypeType():
+        expr = expression_ast_to_ir2(expr_ast, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        if expr.expr_type != ir2.TypeType():
             raise CompilationError(compilation_context, expr_ast,
                                    'All arguments passed to match must have type Type, but an argument with type %s was specified.' % str(expr.expr_type))
         matched_exprs.append(expr)
@@ -433,13 +433,13 @@ def match_expression_ast_to_ir3(ast_node: ast.Call,
 
         pattern_exprs = []
         for pattern_ast_node in pattern_ast_nodes:
-            pattern_expr = expression_ast_to_ir3(pattern_ast_node,
+            pattern_expr = expression_ast_to_ir2(pattern_ast_node,
                                                  match_case_compilation_context,
                                                  in_match_pattern=True,
                                                  check_var_reference=check_var_reference,
                                                  match_lambda_argument_names=lambda_arg_names)
             pattern_exprs.append(pattern_expr)
-            if pattern_expr.expr_type != ir3.TypeType():
+            if pattern_expr.expr_type != ir2.TypeType():
                 raise CompilationError(match_case_compilation_context, pattern_ast_node,
                                        'Type patterns must have type Type but this pattern has type %s' % str(pattern_expr.expr_type),
                                        [(ast_node.func, 'The corresponding match() was here')])
@@ -457,7 +457,7 @@ def match_expression_ast_to_ir3(ast_node: ast.Call,
                 raise CompilationError(match_case_compilation_context, ast_node,
                                        '%s was used in the result of this match branch but not in any of its patterns' % ast_node.id)
 
-        result_expr = expression_ast_to_ir3(value_expr_ast, match_case_compilation_context,
+        result_expr = expression_ast_to_ir2(value_expr_ast, match_case_compilation_context,
                                             in_match_pattern=in_match_pattern,
                                             check_var_reference=check_var_reference_in_result_expr,
                                             match_lambda_argument_names=match_lambda_argument_names)
@@ -475,14 +475,14 @@ def match_expression_ast_to_ir3(ast_node: ast.Call,
         matched_var_names = set()
         matched_variadic_var_names = set()
         for arg, arg_type in lambda_args_used_in_pattern.items():
-            if arg_type == ir3.TypeType():
+            if arg_type == ir2.TypeType():
                 matched_var_names.add(arg)
-            elif arg_type == ir3.ListType(ir3.TypeType()):
+            elif arg_type == ir2.ListType(ir2.TypeType()):
                 matched_variadic_var_names.add(arg)
             else:
                 raise NotImplementedError('Unexpected arg type: %s' % str(arg_type))
 
-        match_case = ir3.MatchCase(matched_var_names=matched_var_names,
+        match_case = ir2.MatchCase(matched_var_names=matched_var_names,
                                    matched_variadic_var_names=matched_variadic_var_names,
                                    type_patterns=pattern_exprs,
                                    expr=result_expr)
@@ -503,31 +503,31 @@ def match_expression_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, unused_arg_ast_node,
                                'The lambda argument %s was not used in any pattern, it should be removed.' % unused_arg_name)
 
-    return ir3.MatchExpr(matched_exprs=matched_exprs,
+    return ir2.MatchExpr(matched_exprs=matched_exprs,
                          match_cases=match_cases)
 
-def return_stmt_ast_to_ir3(ast_node: ast.Return,
+def return_stmt_ast_to_ir2(ast_node: ast.Return,
                            compilation_context: CompilationContext):
     expression = ast_node.value
     if not expression:
         raise CompilationError(compilation_context, ast_node,
                                'Return statements with no returned expression are not supported.')
 
-    expression = expression_ast_to_ir3(expression, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
+    expression = expression_ast_to_ir2(expression, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
 
-    return ir3.ReturnStmt(expr=expression)
+    return ir2.ReturnStmt(expr=expression)
 
-def if_stmt_ast_to_ir3(ast_node: ast.If,
+def if_stmt_ast_to_ir2(ast_node: ast.If,
                        compilation_context: CompilationContext,
-                       previous_return_stmt: Optional[Tuple[ir3.ExprType, ast.Return]],
+                       previous_return_stmt: Optional[Tuple[ir2.ExprType, ast.Return]],
                        check_always_returns: bool):
-    cond_expr = expression_ast_to_ir3(ast_node.test, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
-    if cond_expr.expr_type != ir3.BoolType():
+    cond_expr = expression_ast_to_ir2(ast_node.test, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
+    if cond_expr.expr_type != ir2.BoolType():
         raise CompilationError(compilation_context, ast_node,
                                'The condition in an if statement must have type bool, but was: %s' % str(cond_expr.expr_type))
 
     if_branch_compilation_context = compilation_context.create_child_context()
-    if_stmts, first_return_stmt = statements_ast_to_ir3(ast_node.body, if_branch_compilation_context,
+    if_stmts, first_return_stmt = statements_ast_to_ir2(ast_node.body, if_branch_compilation_context,
                                                         previous_return_stmt=previous_return_stmt,
                                                         check_block_always_returns=check_always_returns,
                                                         stmts_are_toplevel_in_function=False)
@@ -538,7 +538,7 @@ def if_stmt_ast_to_ir3(ast_node: ast.If,
     else_branch_compilation_context = compilation_context.create_child_context()
 
     if ast_node.orelse:
-        else_stmts, first_return_stmt = statements_ast_to_ir3(ast_node.orelse, else_branch_compilation_context,
+        else_stmts, first_return_stmt = statements_ast_to_ir2(ast_node.orelse, else_branch_compilation_context,
                                                               previous_return_stmt=previous_return_stmt,
                                                               check_block_always_returns=check_always_returns,
                                                               stmts_are_toplevel_in_function=False)
@@ -557,13 +557,13 @@ def if_stmt_ast_to_ir3(ast_node: ast.If,
                                   else_branch_compilation_context,
                                   else_stmts)
 
-    return ir3.IfStmt(cond_expr=cond_expr, if_stmts=if_stmts, else_stmts=else_stmts), previous_return_stmt
+    return ir2.IfStmt(cond_expr=cond_expr, if_stmts=if_stmts, else_stmts=else_stmts), previous_return_stmt
 
 def _join_definitions_in_branches(parent_context: CompilationContext,
                                   branch1_context: CompilationContext,
-                                  branch1_stmts: List[ir3.Stmt],
+                                  branch1_stmts: List[ir2.Stmt],
                                   branch2_context: CompilationContext,
-                                  branch2_stmts: List[ir3.Stmt]):
+                                  branch2_stmts: List[ir2.Stmt]):
     branch1_return_info = get_return_type(branch1_stmts)
     branch2_return_info = get_return_type(branch2_stmts)
 
@@ -617,15 +617,15 @@ def _join_definitions_in_branches(parent_context: CompilationContext,
                                   expr_type=symbol.expr_type,
                                   definition_ast_node=definition_ast_node,
                                   is_only_partially_defined=is_only_partially_defined,
-                                  is_function_that_may_throw=isinstance(symbol.expr_type, ir3.FunctionType))
+                                  is_function_that_may_throw=isinstance(symbol.expr_type, ir2.FunctionType))
 
-def raise_stmt_ast_to_ir3(ast_node: ast.Raise, compilation_context: CompilationContext):
+def raise_stmt_ast_to_ir2(ast_node: ast.Raise, compilation_context: CompilationContext):
     if ast_node.cause:
         raise CompilationError(compilation_context, ast_node.cause,
                                '"raise ... from ..." is not supported. Use a plain "raise ..." instead.')
-    exception_expr = expression_ast_to_ir3(ast_node.exc, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
-    if not (isinstance(exception_expr.expr_type, ir3.CustomType) and exception_expr.expr_type.is_exception_class):
-        if isinstance(exception_expr.expr_type, ir3.CustomType):
+    exception_expr = expression_ast_to_ir2(ast_node.exc, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
+    if not (isinstance(exception_expr.expr_type, ir2.CustomType) and exception_expr.expr_type.is_exception_class):
+        if isinstance(exception_expr.expr_type, ir2.CustomType):
             custom_type_defn = compilation_context.get_type_symbol_definition(exception_expr.expr_type.name).ast_node
             notes = [(custom_type_defn, 'The type %s was defined here.' % exception_expr.expr_type.name)]
         else:
@@ -633,11 +633,11 @@ def raise_stmt_ast_to_ir3(ast_node: ast.Raise, compilation_context: CompilationC
         raise CompilationError(compilation_context, ast_node.exc,
                                'Can\'t raise an exception of type "%s", because it\'s not a subclass of Exception.' % str(exception_expr.expr_type),
                                notes=notes)
-    return ir3.RaiseStmt(expr=exception_expr)
+    return ir2.RaiseStmt(expr=exception_expr)
 
-def try_stmt_ast_to_ir3(ast_node: ast.Try,
+def try_stmt_ast_to_ir2(ast_node: ast.Try,
                         compilation_context: CompilationContext,
-                        previous_return_stmt: Optional[Tuple[ir3.ExprType, ast.Return]],
+                        previous_return_stmt: Optional[Tuple[ir2.ExprType, ast.Return]],
                         check_always_returns: bool,
                         is_toplevel_in_function: bool):
 
@@ -646,7 +646,7 @@ def try_stmt_ast_to_ir3(ast_node: ast.Try,
                                'try-except blocks are only supported at top-level in functions (not e.g. inside if-else statements).')
 
     body_compilation_context = compilation_context.create_child_context()
-    body_stmts, body_first_return_stmt = statements_ast_to_ir3(ast_node.body,
+    body_stmts, body_first_return_stmt = statements_ast_to_ir2(ast_node.body,
                                                               body_compilation_context,
                                                               check_block_always_returns=check_always_returns,
                                                               previous_return_stmt=previous_return_stmt,
@@ -674,7 +674,7 @@ def try_stmt_ast_to_ir3(ast_node: ast.Try,
         raise CompilationError(compilation_context, handler.type,
                                'Catching all exceptions is not supported, you must catch a specific exception type.')
 
-    caught_exception_type = type_declaration_ast_to_ir3_expression_type(handler.type, compilation_context)
+    caught_exception_type = type_declaration_ast_to_ir2_expression_type(handler.type, compilation_context)
 
     if ast_node.orelse:
         raise CompilationError(compilation_context, ast_node.orelse[0], '"else" clauses are not supported in try-except.')
@@ -688,7 +688,7 @@ def try_stmt_ast_to_ir3(ast_node: ast.Try,
                                                definition_ast_node=handler,
                                                is_only_partially_defined=False,
                                                is_function_that_may_throw=False)
-    except_body_stmts, except_body_first_return_stmt = statements_ast_to_ir3(handler.body,
+    except_body_stmts, except_body_first_return_stmt = statements_ast_to_ir2(handler.body,
                                                                             except_body_compilation_context,
                                                                             check_block_always_returns=check_always_returns,
                                                                             previous_return_stmt=previous_return_stmt,
@@ -702,16 +702,16 @@ def try_stmt_ast_to_ir3(ast_node: ast.Try,
                                   except_body_compilation_context,
                                   except_body_stmts)
 
-    try_except_stmt = ir3.TryExcept(try_body=body_stmts,
+    try_except_stmt = ir2.TryExcept(try_body=body_stmts,
                                     caught_exception_type=caught_exception_type,
                                     caught_exception_name=handler.name,
                                     except_body=except_body_stmts)
 
     return try_except_stmt, previous_return_stmt
 
-def statements_ast_to_ir3(ast_nodes: List[ast.AST],
+def statements_ast_to_ir2(ast_nodes: List[ast.AST],
                           compilation_context: CompilationContext,
-                          previous_return_stmt: Optional[Tuple[ir3.ExprType, ast.Return]],
+                          previous_return_stmt: Optional[Tuple[ir2.ExprType, ast.Return]],
                           check_block_always_returns: bool,
                           stmts_are_toplevel_in_function: bool):
     assert ast_nodes
@@ -725,11 +725,11 @@ def statements_ast_to_ir3(ast_nodes: List[ast.AST],
         check_stmt_always_returns = check_block_always_returns and statement_node is ast_nodes[-1]
 
         if isinstance(statement_node, ast.Assert):
-            statements.append(assert_ast_to_ir3(statement_node, compilation_context))
+            statements.append(assert_ast_to_ir2(statement_node, compilation_context))
         elif isinstance(statement_node, ast.Assign) or isinstance(statement_node, ast.AnnAssign) or isinstance(statement_node, ast.AugAssign):
-            statements.append(assignment_ast_to_ir3(statement_node, compilation_context))
+            statements.append(assignment_ast_to_ir2(statement_node, compilation_context))
         elif isinstance(statement_node, ast.Return):
-            return_stmt = return_stmt_ast_to_ir3(statement_node, compilation_context)
+            return_stmt = return_stmt_ast_to_ir2(statement_node, compilation_context)
             if previous_return_stmt:
                 previous_return_stmt_type, previous_return_stmt_ast_node = previous_return_stmt
                 if return_stmt.expr.expr_type != previous_return_stmt_type:
@@ -744,7 +744,7 @@ def statements_ast_to_ir3(ast_nodes: List[ast.AST],
                 previous_return_stmt = first_return_stmt
             statements.append(return_stmt)
         elif isinstance(statement_node, ast.If):
-            if_stmt, first_return_stmt_in_if = if_stmt_ast_to_ir3(statement_node,
+            if_stmt, first_return_stmt_in_if = if_stmt_ast_to_ir2(statement_node,
                                                                  compilation_context,
                                                                  previous_return_stmt,
                                                                  check_stmt_always_returns)
@@ -754,9 +754,9 @@ def statements_ast_to_ir3(ast_nodes: List[ast.AST],
                 previous_return_stmt = first_return_stmt
             statements.append(if_stmt)
         elif isinstance(statement_node, ast.Raise):
-            statements.append(raise_stmt_ast_to_ir3(statement_node, compilation_context))
+            statements.append(raise_stmt_ast_to_ir2(statement_node, compilation_context))
         elif isinstance(statement_node, ast.Try):
-            try_except_stmt, first_return_stmt_in_try_except = try_stmt_ast_to_ir3(statement_node,
+            try_except_stmt, first_return_stmt_in_try_except = try_stmt_ast_to_ir2(statement_node,
                                                                                   compilation_context,
                                                                                   previous_return_stmt=previous_return_stmt,
                                                                                   check_always_returns=check_stmt_always_returns,
@@ -769,7 +769,7 @@ def statements_ast_to_ir3(ast_nodes: List[ast.AST],
         elif isinstance(statement_node, ast.Pass):
             pass
         elif isinstance(statement_node, ast.Expr):
-            statements.append(expression_stmt_to_ir3(statement_node, compilation_context))
+            statements.append(expression_stmt_to_ir2(statement_node, compilation_context))
         else:
             raise CompilationError(compilation_context, statement_node, 'Unsupported statement.')
 
@@ -788,12 +788,12 @@ def function_def_ast_to_symbol_info(ast_node: ast.FunctionDef, compilation_conte
                 raise CompilationError(compilation_context, arg, 'All function arguments must have a type annotation. Note that type comments are not supported.')
             else:
                 raise CompilationError(compilation_context, arg, 'All function arguments must have a type annotation.')
-        arg_type = type_declaration_ast_to_ir3_expression_type(arg.annotation, compilation_context)
+        arg_type = type_declaration_ast_to_ir2_expression_type(arg.annotation, compilation_context)
         function_body_compilation_context.add_symbol(name=arg.arg,
                                                      expr_type=arg_type,
                                                      definition_ast_node=arg,
                                                      is_only_partially_defined=False,
-                                                     is_function_that_may_throw=isinstance(arg_type, ir3.FunctionType))
+                                                     is_function_that_may_throw=isinstance(arg_type, ir2.FunctionType))
         arg_types.append(arg_type)
     if not arg_types:
         raise CompilationError(compilation_context, ast_node, 'Functions with no arguments are not supported.')
@@ -810,25 +810,25 @@ def function_def_ast_to_symbol_info(ast_node: ast.FunctionDef, compilation_conte
         raise CompilationError(compilation_context, ast_node, 'Function decorators are not supported.')
 
     if ast_node.returns:
-        return_type = type_declaration_ast_to_ir3_expression_type(ast_node.returns, compilation_context)
+        return_type = type_declaration_ast_to_ir2_expression_type(ast_node.returns, compilation_context)
     else:
         return_type = None
 
     return ast_node.name, arg_types, return_type
 
-def function_def_ast_to_ir3(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
+def function_def_ast_to_ir2(ast_node: ast.FunctionDef, compilation_context: CompilationContext):
     function_body_compilation_context = compilation_context.create_child_context(function_name=ast_node.name)
     args = []
     for arg in ast_node.args.args:
-        arg_type = type_declaration_ast_to_ir3_expression_type(arg.annotation, compilation_context)
+        arg_type = type_declaration_ast_to_ir2_expression_type(arg.annotation, compilation_context)
         function_body_compilation_context.add_symbol(name=arg.arg,
                                                      expr_type=arg_type,
                                                      definition_ast_node=arg,
                                                      is_only_partially_defined=False,
-                                                     is_function_that_may_throw=isinstance(arg_type, ir3.FunctionType))
-        args.append(ir3.FunctionArgDecl(expr_type=arg_type, name=arg.arg))
+                                                     is_function_that_may_throw=isinstance(arg_type, ir2.FunctionType))
+        args.append(ir2.FunctionArgDecl(expr_type=arg_type, name=arg.arg))
 
-    statements, first_return_stmt = statements_ast_to_ir3(ast_node.body, function_body_compilation_context,
+    statements, first_return_stmt = statements_ast_to_ir2(ast_node.body, function_body_compilation_context,
                                                           previous_return_stmt=None,
                                                           check_block_always_returns=True,
                                                           stmts_are_toplevel_in_function=True)
@@ -837,7 +837,7 @@ def function_def_ast_to_ir3(ast_node: ast.FunctionDef, compilation_context: Comp
         return_type, first_return_stmt_ast_node = first_return_stmt
 
     if ast_node.returns:
-        declared_return_type = type_declaration_ast_to_ir3_expression_type(ast_node.returns, compilation_context)
+        declared_return_type = type_declaration_ast_to_ir2_expression_type(ast_node.returns, compilation_context)
 
         # first_return_stmt can be None if the function raises an exception instead of returning in all branches.
         if first_return_stmt:
@@ -850,17 +850,17 @@ def function_def_ast_to_ir3(ast_node: ast.FunctionDef, compilation_context: Comp
         return_type = declared_return_type
 
     if not first_return_stmt and not ast_node.returns:
-        return_type = ir3.BottomType()
+        return_type = ir2.BottomType()
 
-    return ir3.FunctionDefn(name=ast_node.name,
+    return ir2.FunctionDefn(name=ast_node.name,
                             args=args,
                             body=statements,
                             return_type=return_type)
 
-def assert_ast_to_ir3(ast_node: ast.Assert, compilation_context: CompilationContext):
-    expr = expression_ast_to_ir3(ast_node.test, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
+def assert_ast_to_ir2(ast_node: ast.Assert, compilation_context: CompilationContext):
+    expr = expression_ast_to_ir2(ast_node.test, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
 
-    if not isinstance(expr.expr_type, ir3.BoolType):
+    if not isinstance(expr.expr_type, ir2.BoolType):
         raise CompilationError(compilation_context, ast_node.test,
                                'The value passed to assert must have type bool, but got a value with type %s.' % expr.expr_type)
 
@@ -878,9 +878,9 @@ def assert_ast_to_ir3(ast_node: ast.Assert, compilation_context: CompilationCont
         line=compilation_context.source_lines[first_line_number - 1])
     message = message.replace('\\', '\\\\').replace('"', '\"').replace('\n', '\\n')
 
-    return ir3.Assert(expr=expr, message=message)
+    return ir2.Assert(expr=expr, message=message)
 
-def assignment_ast_to_ir3(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssign],
+def assignment_ast_to_ir2(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssign],
                           compilation_context: CompilationContext):
     if isinstance(ast_node, ast.AugAssign):
         raise CompilationError(compilation_context, ast_node, 'Augmented assignments are not supported.')
@@ -899,8 +899,8 @@ def assignment_ast_to_ir3(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssi
                 raise CompilationError(compilation_context, lhs_elem_ast_node,
                                        'This kind of unpacking assignment is not supported. Only unpacking assignments of the form x,y=... or [x,y]=... are supported.')
 
-        expr = expression_ast_to_ir3(ast_node.value, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
-        if not isinstance(expr.expr_type, ir3.ListType):
+        expr = expression_ast_to_ir2(ast_node.value, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
+        if not isinstance(expr.expr_type, ir2.ListType):
             raise CompilationError(compilation_context, ast_node,
                                    'Unpacking requires a list on the RHS, but the value on the RHS has type %s' % str(expr.expr_type))
         elem_type = expr.expr_type.elem_type
@@ -914,12 +914,12 @@ def assignment_ast_to_ir3(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssi
                                            expr_type=elem_type,
                                            definition_ast_node=lhs_elem_ast_node,
                                            is_only_partially_defined=False,
-                                           is_function_that_may_throw=isinstance(elem_type, ir3.FunctionType))
+                                           is_function_that_may_throw=isinstance(elem_type, ir2.FunctionType))
 
-            var_ref = ir3.VarReference(expr_type=elem_type,
+            var_ref = ir2.VarReference(expr_type=elem_type,
                                        name=lhs_var_name,
                                        is_global_function=False,
-                                       is_function_that_may_throw=isinstance(elem_type, ir3.FunctionType))
+                                       is_function_that_may_throw=isinstance(elem_type, ir2.FunctionType))
             var_refs.append(var_ref)
 
         first_line_number = ast_node.lineno
@@ -929,13 +929,13 @@ def assignment_ast_to_ir3(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssi
             line=compilation_context.source_lines[first_line_number - 1])
         message = message.replace('\\', '\\\\').replace('"', '\"').replace('\n', '\\n')
 
-        return ir3.UnpackingAssignment(lhs_list=var_refs,
+        return ir2.UnpackingAssignment(lhs_list=var_refs,
                                        rhs=expr,
                                        error_message=message)
 
     elif isinstance(target, ast.Name):
         # This is a "normal" assignment
-        expr = expression_ast_to_ir3(ast_node.value, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
+        expr = expression_ast_to_ir2(ast_node.value, compilation_context, in_match_pattern=False, check_var_reference=lambda ast_node: None, match_lambda_argument_names=set())
 
         lhs_var_name = target.id
         if lhs_var_name == '_':
@@ -944,18 +944,18 @@ def assignment_ast_to_ir3(ast_node: Union[ast.Assign, ast.AnnAssign, ast.AugAssi
                                        expr_type=expr.expr_type,
                                        definition_ast_node=target,
                                        is_only_partially_defined=False,
-                                       is_function_that_may_throw=isinstance(expr.expr_type, ir3.FunctionType))
+                                       is_function_that_may_throw=isinstance(expr.expr_type, ir2.FunctionType))
 
-        return ir3.Assignment(lhs=ir3.VarReference(expr_type=expr.expr_type,
+        return ir2.Assignment(lhs=ir2.VarReference(expr_type=expr.expr_type,
                                                    name=lhs_var_name,
                                                    is_global_function=False,
-                                                   is_function_that_may_throw=isinstance(expr.expr_type, ir3.FunctionType)),
+                                                   is_function_that_may_throw=isinstance(expr.expr_type, ir2.FunctionType)),
                               rhs=expr)
     else:
         raise CompilationError(compilation_context, ast_node, 'Assignment not supported.')
 
-def expression_stmt_to_ir3(stmt: ast.Expr, compilation_context: CompilationContext):
-    expr = expression_ast_to_ir3(stmt.value,
+def expression_stmt_to_ir2(stmt: ast.Expr, compilation_context: CompilationContext):
+    expr = expression_ast_to_ir2(stmt.value,
                                  compilation_context,
                                  in_match_pattern=False,
                                  check_var_reference=lambda ast_node: None,
@@ -966,33 +966,33 @@ def expression_stmt_to_ir3(stmt: ast.Expr, compilation_context: CompilationConte
                                    expr_type=expr.expr_type,
                                    definition_ast_node=stmt,
                                    is_only_partially_defined=False,
-                                   is_function_that_may_throw=isinstance(expr.expr_type, ir3.FunctionType))
+                                   is_function_that_may_throw=isinstance(expr.expr_type, ir2.FunctionType))
 
-    return ir3.Assignment(lhs=ir3.VarReference(expr_type=expr.expr_type,
+    return ir2.Assignment(lhs=ir2.VarReference(expr_type=expr.expr_type,
                                                name=lhs_var_name,
                                                is_global_function=False,
-                                               is_function_that_may_throw=isinstance(expr.expr_type, ir3.FunctionType)),
+                                               is_function_that_may_throw=isinstance(expr.expr_type, ir2.FunctionType)),
                           rhs=expr)
 
-def int_comparison_ast_to_ir3(lhs_ast_node: ast.AST,
+def int_comparison_ast_to_ir2(lhs_ast_node: ast.AST,
                               rhs_ast_node: ast.AST,
                               op: str,
                               compilation_context: CompilationContext,
                               in_match_pattern: bool,
                               check_var_reference: Callable[[ast.Name], None]):
-    lhs = expression_ast_to_ir3(lhs_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
-    rhs = expression_ast_to_ir3(rhs_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    lhs = expression_ast_to_ir2(lhs_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    rhs = expression_ast_to_ir2(rhs_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
 
-    if lhs.expr_type != ir3.IntType():
+    if lhs.expr_type != ir2.IntType():
         raise CompilationError(compilation_context, lhs_ast_node,
                                'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(lhs.expr_type)))
-    if rhs.expr_type != ir3.IntType():
+    if rhs.expr_type != ir2.IntType():
         raise CompilationError(compilation_context, rhs_ast_node,
                                'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(rhs.expr_type)))
 
-    return ir3.IntComparisonExpr(lhs=lhs, rhs=rhs, op=op)
+    return ir2.IntComparisonExpr(lhs=lhs, rhs=rhs, op=op)
 
-def compare_ast_to_ir3(ast_node: ast.Compare,
+def compare_ast_to_ir2(ast_node: ast.Compare,
                        compilation_context: CompilationContext,
                        in_match_pattern: bool,
                        check_var_reference: Callable[[ast.Name], None],
@@ -1009,23 +1009,23 @@ def compare_ast_to_ir3(ast_node: ast.Compare,
     rhs = ast_node.comparators[0]
 
     if isinstance(op, ast.Eq):
-        return eq_ast_to_ir3(lhs, rhs, compilation_context, in_match_pattern, check_var_reference)
+        return eq_ast_to_ir2(lhs, rhs, compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(op, ast.NotEq):
-        return not_eq_ast_to_ir3(lhs, rhs, compilation_context, in_match_pattern, check_var_reference)
+        return not_eq_ast_to_ir2(lhs, rhs, compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(op, ast.In):
-        return in_ast_to_ir3(lhs, rhs, compilation_context, in_match_pattern, check_var_reference)
+        return in_ast_to_ir2(lhs, rhs, compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(op, ast.Lt):
-        return int_comparison_ast_to_ir3(lhs, rhs, '<', compilation_context, in_match_pattern, check_var_reference)
+        return int_comparison_ast_to_ir2(lhs, rhs, '<', compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(op, ast.LtE):
-        return int_comparison_ast_to_ir3(lhs, rhs, '<=', compilation_context, in_match_pattern, check_var_reference)
+        return int_comparison_ast_to_ir2(lhs, rhs, '<=', compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(op, ast.Gt):
-        return int_comparison_ast_to_ir3(lhs, rhs, '>', compilation_context, in_match_pattern, check_var_reference)
+        return int_comparison_ast_to_ir2(lhs, rhs, '>', compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(op, ast.GtE):
-        return int_comparison_ast_to_ir3(lhs, rhs, '>=', compilation_context, in_match_pattern, check_var_reference)
+        return int_comparison_ast_to_ir2(lhs, rhs, '>=', compilation_context, in_match_pattern, check_var_reference)
     else:
         raise CompilationError(compilation_context, ast_node, 'Comparison not supported.')  # pragma: no cover
 
-def attribute_expression_ast_to_ir3(ast_node: ast.Attribute,
+def attribute_expression_ast_to_ir2(ast_node: ast.Attribute,
                                     compilation_context: CompilationContext,
                                     in_match_pattern: bool,
                                     check_var_reference: Callable[[ast.Name], None],
@@ -1034,15 +1034,15 @@ def attribute_expression_ast_to_ir3(ast_node: ast.Attribute,
         raise CompilationError(compilation_context, ast_node,
                                'Attribute access is not allowed in match patterns')
 
-    value_expr = expression_ast_to_ir3(ast_node.value, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if isinstance(value_expr.expr_type, ir3.TypeType):
-        return ir3.AttributeAccessExpr(expr=value_expr,
+    value_expr = expression_ast_to_ir2(ast_node.value, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if isinstance(value_expr.expr_type, ir2.TypeType):
+        return ir2.AttributeAccessExpr(expr=value_expr,
                                        attribute_name=ast_node.attr,
-                                       expr_type=ir3.TypeType())
-    elif isinstance(value_expr.expr_type, ir3.CustomType):
+                                       expr_type=ir2.TypeType())
+    elif isinstance(value_expr.expr_type, ir2.CustomType):
         for arg in value_expr.expr_type.arg_types:
             if arg.name == ast_node.attr:
-                return ir3.AttributeAccessExpr(expr=value_expr,
+                return ir2.AttributeAccessExpr(expr=value_expr,
                                                attribute_name=ast_node.attr,
                                                expr_type=arg.expr_type)
         else:
@@ -1057,7 +1057,7 @@ def attribute_expression_ast_to_ir3(ast_node: ast.Attribute,
         raise CompilationError(compilation_context, ast_node.value,
                                'Attribute access is not supported for values of type %s.' % str(value_expr.expr_type))
 
-def number_literal_expression_ast_to_ir3(ast_node: ast.Num,
+def number_literal_expression_ast_to_ir2(ast_node: ast.Num,
                                          compilation_context: CompilationContext,
                                          in_match_pattern: bool,
                                          check_var_reference: Callable[[ast.Name], None],
@@ -1077,9 +1077,9 @@ def number_literal_expression_ast_to_ir3(ast_node: ast.Num,
     if n >= 2**63:
         raise CompilationError(compilation_context, ast_node,
                                'int value out of bounds: values greater than 2^63-1 are not supported.')
-    return ir3.IntLiteral(value=n)
+    return ir2.IntLiteral(value=n)
 
-def and_expression_ast_to_ir3(ast_node: ast.BoolOp,
+def and_expression_ast_to_ir2(ast_node: ast.BoolOp,
                               compilation_context: CompilationContext,
                               in_match_pattern: bool,
                               check_var_reference: Callable[[ast.Name], None],
@@ -1098,19 +1098,19 @@ def and_expression_ast_to_ir3(ast_node: ast.BoolOp,
 
     exprs = []
     for expr_ast_node in ast_node.values:
-        expr = expression_ast_to_ir3(expr_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-        if expr.expr_type != ir3.BoolType():
+        expr = expression_ast_to_ir2(expr_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        if expr.expr_type != ir2.BoolType():
             raise CompilationError(compilation_context, expr_ast_node,
                                    'The "and" operator is only supported for booleans, but this value has type %s.' % str(expr.expr_type))
         exprs.append(expr)
 
     final_expr = exprs[-1]
     for expr in reversed(exprs[:-1]):
-        final_expr = ir3.AndExpr(lhs=expr, rhs=final_expr)
+        final_expr = ir2.AndExpr(lhs=expr, rhs=final_expr)
 
     return final_expr
 
-def or_expression_ast_to_ir3(ast_node: ast.BoolOp,
+def or_expression_ast_to_ir2(ast_node: ast.BoolOp,
                              compilation_context: CompilationContext,
                              in_match_pattern: bool,
                              check_var_reference: Callable[[ast.Name], None],
@@ -1129,19 +1129,19 @@ def or_expression_ast_to_ir3(ast_node: ast.BoolOp,
 
     exprs = []
     for expr_ast_node in ast_node.values:
-        expr = expression_ast_to_ir3(expr_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-        if expr.expr_type != ir3.BoolType():
+        expr = expression_ast_to_ir2(expr_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        if expr.expr_type != ir2.BoolType():
             raise CompilationError(compilation_context, expr_ast_node,
                                    'The "or" operator is only supported for booleans, but this value has type %s.' % str(expr.expr_type))
         exprs.append(expr)
 
     final_expr = exprs[-1]
     for expr in reversed(exprs[:-1]):
-        final_expr = ir3.OrExpr(lhs=expr, rhs=final_expr)
+        final_expr = ir2.OrExpr(lhs=expr, rhs=final_expr)
 
     return final_expr
 
-def not_expression_ast_to_ir3(ast_node: ast.UnaryOp,
+def not_expression_ast_to_ir2(ast_node: ast.UnaryOp,
                               compilation_context: CompilationContext,
                               in_match_pattern: bool,
                               check_var_reference: Callable[[ast.Name], None],
@@ -1152,15 +1152,15 @@ def not_expression_ast_to_ir3(ast_node: ast.UnaryOp,
         raise CompilationError(compilation_context, ast_node,
                                'The "not" operator is not allowed in match patterns')
 
-    expr = expression_ast_to_ir3(ast_node.operand, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    expr = expression_ast_to_ir2(ast_node.operand, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
 
-    if expr.expr_type != ir3.BoolType():
+    if expr.expr_type != ir2.BoolType():
         raise CompilationError(compilation_context, ast_node.operand,
                                'The "not" operator is only supported for booleans, but this value has type %s.' % str(expr.expr_type))
 
-    return ir3.NotExpr(expr=expr)
+    return ir2.NotExpr(expr=expr)
 
-def unary_minus_expression_ast_to_ir3(ast_node: ast.UnaryOp,
+def unary_minus_expression_ast_to_ir2(ast_node: ast.UnaryOp,
                                       compilation_context: CompilationContext,
                                       in_match_pattern: bool,
                                       check_var_reference: Callable[[ast.Name], None],
@@ -1171,38 +1171,38 @@ def unary_minus_expression_ast_to_ir3(ast_node: ast.UnaryOp,
         raise CompilationError(compilation_context, ast_node,
                                'The "-" operator is not allowed in match patterns')
 
-    expr = expression_ast_to_ir3(ast_node.operand, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    expr = expression_ast_to_ir2(ast_node.operand, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
 
-    if expr.expr_type != ir3.IntType():
+    if expr.expr_type != ir2.IntType():
         raise CompilationError(compilation_context, ast_node.operand,
                                'The "-" operator is only supported for ints, but this value has type %s.' % str(expr.expr_type))
 
-    return ir3.IntUnaryMinusExpr(expr=expr)
+    return ir2.IntUnaryMinusExpr(expr=expr)
 
-def int_binary_op_expression_ast_to_ir3(ast_node: ast.BinOp,
+def int_binary_op_expression_ast_to_ir2(ast_node: ast.BinOp,
                                         op: str,
                                         compilation_context: CompilationContext,
                                         in_match_pattern: bool,
                                         check_var_reference: Callable[[ast.Name], None],
                                         match_lambda_argument_names: Set[str]):
-    lhs = expression_ast_to_ir3(ast_node.left, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    rhs = expression_ast_to_ir3(ast_node.right, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    lhs = expression_ast_to_ir2(ast_node.left, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    rhs = expression_ast_to_ir2(ast_node.right, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
 
     if in_match_pattern:
         raise CompilationError(compilation_context, ast_node,
                                'The "%s" operator is not allowed in match patterns' % op)
 
-    if lhs.expr_type != ir3.IntType():
+    if lhs.expr_type != ir2.IntType():
         raise CompilationError(compilation_context, ast_node.left,
                                'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(lhs.expr_type)))
 
-    if rhs.expr_type != ir3.IntType():
+    if rhs.expr_type != ir2.IntType():
         raise CompilationError(compilation_context, ast_node.right,
                                'The "%s" operator is only supported for ints, but this value has type %s.' % (op, str(rhs.expr_type)))
 
-    return ir3.IntBinaryOpExpr(lhs=lhs, rhs=rhs, op=op)
+    return ir2.IntBinaryOpExpr(lhs=lhs, rhs=rhs, op=op)
 
-def list_comprehension_ast_to_ir3(ast_node: ast.ListComp,
+def list_comprehension_ast_to_ir2(ast_node: ast.ListComp,
                                   compilation_context: CompilationContext,
                                   in_match_pattern: bool,
                                   check_var_reference: Callable[[ast.Name], None],
@@ -1224,10 +1224,10 @@ def list_comprehension_ast_to_ir3(ast_node: ast.ListComp,
         raise CompilationError(compilation_context, generator.target,
                                'Only list comprehensions of the form [... for var_name in ...] are supported.')
 
-    list_expr = expression_ast_to_ir3(generator.iter, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if not isinstance(list_expr.expr_type, ir3.ListType):
+    list_expr = expression_ast_to_ir2(generator.iter, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if not isinstance(list_expr.expr_type, ir2.ListType):
         notes = []
-        if isinstance(list_expr, ir3.VarReference):
+        if isinstance(list_expr, ir2.VarReference):
             lookup_result = compilation_context.get_symbol_definition(list_expr.name)
             assert lookup_result
             notes.append((lookup_result.ast_node, '%s was defined here' % list_expr.name))
@@ -1241,20 +1241,20 @@ def list_comprehension_ast_to_ir3(ast_node: ast.ListComp,
                              definition_ast_node=generator.target,
                              is_only_partially_defined=False,
                              is_function_that_may_throw=False)
-    result_elem_expr = expression_ast_to_ir3(ast_node.elt, child_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    result_elem_expr = expression_ast_to_ir2(ast_node.elt, child_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
 
-    if isinstance(result_elem_expr.expr_type, ir3.FunctionType):
+    if isinstance(result_elem_expr.expr_type, ir2.FunctionType):
         raise CompilationError(compilation_context, ast_node,
                                'Creating lists of functions is not supported. The elements of this list have type: %s' % str(result_elem_expr.expr_type))
 
-    return ir3.ListComprehension(list_expr=list_expr,
-                                 loop_var=ir3.VarReference(name=generator.target.id,
+    return ir2.ListComprehension(list_expr=list_expr,
+                                 loop_var=ir2.VarReference(name=generator.target.id,
                                                            expr_type=list_expr.expr_type.elem_type,
                                                            is_global_function=False,
                                                            is_function_that_may_throw=False),
                                  result_elem_expr=result_elem_expr)
 
-def set_comprehension_ast_to_ir3(ast_node: ast.SetComp,
+def set_comprehension_ast_to_ir2(ast_node: ast.SetComp,
                                  compilation_context: CompilationContext,
                                  in_match_pattern: bool,
                                  check_var_reference: Callable[[ast.Name], None],
@@ -1276,10 +1276,10 @@ def set_comprehension_ast_to_ir3(ast_node: ast.SetComp,
         raise CompilationError(compilation_context, generator.target,
                                'Only set comprehensions of the form {... for var_name in ...} are supported.')
 
-    set_expr = expression_ast_to_ir3(generator.iter, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if not isinstance(set_expr.expr_type, ir3.SetType):
+    set_expr = expression_ast_to_ir2(generator.iter, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if not isinstance(set_expr.expr_type, ir2.SetType):
         notes = []
-        if isinstance(set_expr, ir3.VarReference):
+        if isinstance(set_expr, ir2.VarReference):
             lookup_result = compilation_context.get_symbol_definition(set_expr.name)
             assert lookup_result
             notes.append((lookup_result.ast_node, '%s was defined here' % set_expr.name))
@@ -1293,37 +1293,37 @@ def set_comprehension_ast_to_ir3(ast_node: ast.SetComp,
                              definition_ast_node=generator.target,
                              is_only_partially_defined=False,
                              is_function_that_may_throw=False)
-    result_elem_expr = expression_ast_to_ir3(ast_node.elt, child_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    result_elem_expr = expression_ast_to_ir2(ast_node.elt, child_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
 
-    if isinstance(result_elem_expr.expr_type, ir3.FunctionType):
+    if isinstance(result_elem_expr.expr_type, ir2.FunctionType):
         raise CompilationError(compilation_context, ast_node,
                                'Creating sets of functions is not supported. The elements of this set have type: %s' % str(result_elem_expr.expr_type))
 
-    return ir3.SetComprehension(set_expr=set_expr,
-                                loop_var=ir3.VarReference(name=generator.target.id,
+    return ir2.SetComprehension(set_expr=set_expr,
+                                loop_var=ir2.VarReference(name=generator.target.id,
                                                           expr_type=set_expr.expr_type.elem_type,
                                                           is_global_function=False,
                                                           is_function_that_may_throw=False),
                                 result_elem_expr=result_elem_expr)
 
 
-def add_expression_ast_to_ir3(ast_node: ast.BinOp,
+def add_expression_ast_to_ir2(ast_node: ast.BinOp,
                               compilation_context: CompilationContext,
                               in_match_pattern: bool,
                               check_var_reference: Callable[[ast.Name], None],
                               match_lambda_argument_names: Set[str]):
-    lhs = expression_ast_to_ir3(ast_node.left, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    rhs = expression_ast_to_ir3(ast_node.right, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    lhs = expression_ast_to_ir2(ast_node.left, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    rhs = expression_ast_to_ir2(ast_node.right, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
 
     if in_match_pattern:
         raise CompilationError(compilation_context, ast_node,
                                'The "+" operator is not allowed in match patterns')
 
-    if not isinstance(lhs.expr_type, (ir3.IntType, ir3.ListType)):
+    if not isinstance(lhs.expr_type, (ir2.IntType, ir2.ListType)):
         raise CompilationError(compilation_context, ast_node.left,
                                'The "+" operator is only supported for ints and lists, but this value has type %s.' % str(lhs.expr_type))
 
-    if not isinstance(rhs.expr_type, (ir3.IntType, ir3.ListType)):
+    if not isinstance(rhs.expr_type, (ir2.IntType, ir2.ListType)):
         raise CompilationError(compilation_context, ast_node.right,
                                'The "+" operator is only supported for ints and lists, but this value has type %s.' % str(rhs.expr_type))
 
@@ -1331,86 +1331,86 @@ def add_expression_ast_to_ir3(ast_node: ast.BinOp,
         raise CompilationError(compilation_context, ast_node.left,
                                'Type mismatch: the LHS of "+" has type %s but the RHS has type %s.' % (str(lhs.expr_type), str(rhs.expr_type)))
 
-    if lhs.expr_type == ir3.IntType():
-        return ir3.IntBinaryOpExpr(lhs=lhs, rhs=rhs, op='+')
+    if lhs.expr_type == ir2.IntType():
+        return ir2.IntBinaryOpExpr(lhs=lhs, rhs=rhs, op='+')
     else:
-        return ir3.ListConcatExpr(lhs=lhs, rhs=rhs)
+        return ir2.ListConcatExpr(lhs=lhs, rhs=rhs)
 
 
-def expression_ast_to_ir3(ast_node: ast.AST,
+def expression_ast_to_ir2(ast_node: ast.AST,
                           compilation_context: CompilationContext,
                           in_match_pattern: bool,
                           check_var_reference: Callable[[ast.Name], None],
-                          match_lambda_argument_names: Set[str]) -> ir3.Expr:
+                          match_lambda_argument_names: Set[str]) -> ir2.Expr:
     if isinstance(ast_node, ast.NameConstant):
-        return name_constant_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return name_constant_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'Type':
-        return atomic_type_literal_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return atomic_type_literal_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif (isinstance(ast_node, ast.Call)
           and isinstance(ast_node.func, ast.Attribute)
           and isinstance(ast_node.func.value, ast.Name) and ast_node.func.value.id == 'Type'):
-        return type_factory_method_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return type_factory_method_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'empty_list':
-        return empty_list_literal_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return empty_list_literal_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'empty_set':
-        return empty_set_literal_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return empty_set_literal_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'sum':
-        return int_iterable_sum_expr_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return int_iterable_sum_expr_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'all':
-        return bool_iterable_all_expr_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference)
+        return bool_iterable_all_expr_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Name) and ast_node.func.id == 'any':
-        return bool_iterable_any_expr_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference)
+        return bool_iterable_any_expr_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference)
     elif isinstance(ast_node, ast.Call) and isinstance(ast_node.func, ast.Call) and isinstance(ast_node.func.func, ast.Name) and ast_node.func.func.id == 'match':
-        return match_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return match_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Call):
-        return function_call_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return function_call_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Compare):
-        return compare_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return compare_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Name) and isinstance(ast_node.ctx, ast.Load):
-        return var_reference_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return var_reference_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.List) and isinstance(ast_node.ctx, ast.Load):
-        return list_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return list_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Set):
-        return set_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return set_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Attribute) and isinstance(ast_node.ctx, ast.Load):
-        return attribute_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return attribute_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.Num):
-        return number_literal_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names, positive=True)
+        return number_literal_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names, positive=True)
     elif isinstance(ast_node, ast.UnaryOp) and isinstance(ast_node.op, ast.USub) and isinstance(ast_node.operand, ast.Num):
-        return number_literal_expression_ast_to_ir3(ast_node.operand, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names, positive=False)
+        return number_literal_expression_ast_to_ir2(ast_node.operand, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names, positive=False)
     elif isinstance(ast_node, ast.BoolOp) and isinstance(ast_node.op, ast.And):
-        return and_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return and_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.BoolOp) and isinstance(ast_node.op, ast.Or):
-        return or_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return or_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.UnaryOp) and isinstance(ast_node.op, ast.Not):
-        return not_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return not_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.UnaryOp) and isinstance(ast_node.op, ast.USub):
-        return unary_minus_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return unary_minus_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Add):
-        return add_expression_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return add_expression_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Sub):
-        return int_binary_op_expression_ast_to_ir3(ast_node, '-', compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return int_binary_op_expression_ast_to_ir2(ast_node, '-', compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Mult):
-        return int_binary_op_expression_ast_to_ir3(ast_node, '*', compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return int_binary_op_expression_ast_to_ir2(ast_node, '*', compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.FloorDiv):
-        return int_binary_op_expression_ast_to_ir3(ast_node, '//', compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return int_binary_op_expression_ast_to_ir2(ast_node, '//', compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.BinOp) and isinstance(ast_node.op, ast.Mod):
-        return int_binary_op_expression_ast_to_ir3(ast_node, '%', compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return int_binary_op_expression_ast_to_ir2(ast_node, '%', compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.ListComp):
-        return list_comprehension_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return list_comprehension_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif isinstance(ast_node, ast.SetComp):
-        return set_comprehension_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return set_comprehension_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     else:
         # raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported: %s' % ast_to_string(ast_node))
         raise CompilationError(compilation_context, ast_node, 'This kind of expression is not supported.')  # pragma: no cover
 
-def name_constant_ast_to_ir3(ast_node: ast.NameConstant,
+def name_constant_ast_to_ir2(ast_node: ast.NameConstant,
                              compilation_context: CompilationContext,
                              in_match_pattern: bool,
                              check_var_reference: Callable[[ast.Name], None],
                              match_lambda_argument_names: Set[str]):
     if isinstance(ast_node.value, bool):
-        return ir3.BoolLiteral(value=ast_node.value)
+        return ir2.BoolLiteral(value=ast_node.value)
     else:
         raise CompilationError(compilation_context, ast_node, 'NameConstant not supported: ' + str(ast_node.value))  # pragma: no cover
 
@@ -1421,7 +1421,7 @@ def _check_atomic_type(ast_node: ast.Str, compilation_context: CompilationContex
         raise CompilationError(compilation_context, ast_node,
                                'Invalid atomic type. Atomic types should be C++ identifiers (possibly namespace-qualified).')
 
-def atomic_type_literal_ast_to_ir3(ast_node: ast.Call,
+def atomic_type_literal_ast_to_ir2(ast_node: ast.Call,
                                    compilation_context: CompilationContext,
                                    in_match_pattern: bool,
                                    check_var_reference: Callable[[ast.Name], None],
@@ -1436,7 +1436,7 @@ def atomic_type_literal_ast_to_ir3(ast_node: ast.Call,
     if not isinstance(arg, ast.Str):
         raise CompilationError(compilation_context, arg, 'The argument passed to Type should be a string constant.')
     _check_atomic_type(arg, compilation_context)
-    return ir3.AtomicTypeLiteral(cpp_type=arg.s)
+    return ir2.AtomicTypeLiteral(cpp_type=arg.s)
 
 def _extract_single_type_expr_arg(ast_node: ast.Call,
                                   called_fun_name: str,
@@ -1452,72 +1452,72 @@ def _extract_single_type_expr_arg(ast_node: ast.Call,
         raise CompilationError(compilation_context, ast_node, '%s() takes 1 argument. Got: %s' % (called_fun_name, len(ast_node.args)))
     [arg] = ast_node.args
 
-    arg_ir = expression_ast_to_ir3(arg, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if arg_ir.expr_type != ir3.TypeType():
+    arg_ir = expression_ast_to_ir2(arg, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if arg_ir.expr_type != ir2.TypeType():
         raise CompilationError(compilation_context, arg, 'The argument passed to %s() should have type Type, but was: %s' % (called_fun_name, str(arg_ir.expr_type)))
     return arg_ir
 
-def type_pointer_expr_ast_to_ir3(ast_node: ast.Call,
+def type_pointer_expr_ast_to_ir2(ast_node: ast.Call,
                                  compilation_context: CompilationContext,
                                  in_match_pattern: bool,
                                  check_var_reference: Callable[[ast.Name], None],
                                  match_lambda_argument_names: Set[str]):
-    return ir3.PointerTypeExpr(_extract_single_type_expr_arg(ast_node,
+    return ir2.PointerTypeExpr(_extract_single_type_expr_arg(ast_node,
                                                              'Type.pointer',
                                                              compilation_context,
                                                              in_match_pattern,
                                                              check_var_reference,
                                                              match_lambda_argument_names))
 
-def type_reference_expr_ast_to_ir3(ast_node: ast.Call,
+def type_reference_expr_ast_to_ir2(ast_node: ast.Call,
                                    compilation_context: CompilationContext,
                                    in_match_pattern: bool,
                                    check_var_reference: Callable[[ast.Name], None],
                                    match_lambda_argument_names: Set[str]):
-    return ir3.ReferenceTypeExpr(_extract_single_type_expr_arg(ast_node,
+    return ir2.ReferenceTypeExpr(_extract_single_type_expr_arg(ast_node,
                                                                'Type.reference',
                                                                compilation_context,
                                                                in_match_pattern,
                                                                check_var_reference,
                                                                match_lambda_argument_names))
 
-def type_rvalue_reference_expr_ast_to_ir3(ast_node: ast.Call,
+def type_rvalue_reference_expr_ast_to_ir2(ast_node: ast.Call,
                                           compilation_context: CompilationContext,
                                           in_match_pattern: bool,
                                           check_var_reference: Callable[[ast.Name], None],
                                           match_lambda_argument_names: Set[str]):
-    return ir3.RvalueReferenceTypeExpr(_extract_single_type_expr_arg(ast_node,
+    return ir2.RvalueReferenceTypeExpr(_extract_single_type_expr_arg(ast_node,
                                                                      'Type.rvalue_reference',
                                                                      compilation_context,
                                                                      in_match_pattern,
                                                                      check_var_reference,
                                                                      match_lambda_argument_names))
 
-def const_type_expr_ast_to_ir3(ast_node: ast.Call,
+def const_type_expr_ast_to_ir2(ast_node: ast.Call,
                                compilation_context: CompilationContext,
                                in_match_pattern: bool,
                                check_var_reference: Callable[[ast.Name], None],
                                match_lambda_argument_names: Set[str]):
-    return ir3.ConstTypeExpr(_extract_single_type_expr_arg(ast_node,
+    return ir2.ConstTypeExpr(_extract_single_type_expr_arg(ast_node,
                                                            'Type.const',
                                                            compilation_context,
                                                            in_match_pattern,
                                                            check_var_reference,
                                                            match_lambda_argument_names))
 
-def type_array_expr_ast_to_ir3(ast_node: ast.Call,
+def type_array_expr_ast_to_ir2(ast_node: ast.Call,
                                compilation_context: CompilationContext,
                                in_match_pattern: bool,
                                check_var_reference: Callable[[ast.Name], None],
                                match_lambda_argument_names: Set[str]):
-    return ir3.ArrayTypeExpr(_extract_single_type_expr_arg(ast_node,
+    return ir2.ArrayTypeExpr(_extract_single_type_expr_arg(ast_node,
                                                            'Type.array',
                                                            compilation_context,
                                                            in_match_pattern,
                                                            check_var_reference,
                                                            match_lambda_argument_names))
 
-def function_type_expr_ast_to_ir3(ast_node: ast.Call,
+def function_type_expr_ast_to_ir2(ast_node: ast.Call,
                                   compilation_context: CompilationContext,
                                   in_match_pattern: bool,
                                   check_var_reference: Callable[[ast.Name], None],
@@ -1530,20 +1530,20 @@ def function_type_expr_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, ast_node, 'Type.function() takes 2 arguments. Got: %s' % len(ast_node.args))
     [return_type_ast_node, arg_list_ast_node] = ast_node.args
 
-    return_type_ir = expression_ast_to_ir3(return_type_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if return_type_ir.expr_type != ir3.TypeType():
+    return_type_ir = expression_ast_to_ir2(return_type_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if return_type_ir.expr_type != ir2.TypeType():
         raise CompilationError(compilation_context, return_type_ast_node,
                                'The first argument passed to Type.function should have type Type, but was: %s' % str(return_type_ir.expr_type))
 
-    arg_list_ir = expression_ast_to_ir3(arg_list_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if arg_list_ir.expr_type != ir3.ListType(ir3.TypeType()):
+    arg_list_ir = expression_ast_to_ir2(arg_list_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if arg_list_ir.expr_type != ir2.ListType(ir2.TypeType()):
         raise CompilationError(compilation_context, arg_list_ast_node,
                                'The second argument passed to Type.function should have type List[Type], but was: %s' % str(arg_list_ir.expr_type))
 
-    return ir3.FunctionTypeExpr(return_type_expr=return_type_ir,
+    return ir2.FunctionTypeExpr(return_type_expr=return_type_ir,
                                 arg_list_expr=arg_list_ir)
 
-def template_instantiation_ast_to_ir3(ast_node: ast.Call,
+def template_instantiation_ast_to_ir2(ast_node: ast.Call,
                                       compilation_context: CompilationContext,
                                       in_match_pattern: bool,
                                       check_var_reference: Callable[[ast.Name], None],
@@ -1561,17 +1561,17 @@ def template_instantiation_ast_to_ir3(ast_node: ast.Call,
                                'The first argument passed to Type.template_instantiation should be a string')
     _check_atomic_type(template_atomic_cpp_type_ast_node, compilation_context)
 
-    arg_list_ir = expression_ast_to_ir3(arg_list_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if arg_list_ir.expr_type != ir3.ListType(ir3.TypeType()):
+    arg_list_ir = expression_ast_to_ir2(arg_list_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if arg_list_ir.expr_type != ir2.ListType(ir2.TypeType()):
         raise CompilationError(compilation_context, arg_list_ast_node,
                                'The second argument passed to Type.template_instantiation should have type List[Type], but was: %s' % str(arg_list_ir.expr_type))
 
-    return ir3.TemplateInstantiationExpr(template_atomic_cpp_type=template_atomic_cpp_type_ast_node.s,
+    return ir2.TemplateInstantiationExpr(template_atomic_cpp_type=template_atomic_cpp_type_ast_node.s,
                                          arg_list_expr=arg_list_ir)
 
 _cxx_identifier_regex = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 
-def template_member_access_ast_to_ir3(ast_node: ast.Call,
+def template_member_access_ast_to_ir2(ast_node: ast.Call,
                                       compilation_context: CompilationContext,
                                       in_match_pattern: bool,
                                       check_var_reference: Callable[[ast.Name], None],
@@ -1588,8 +1588,8 @@ def template_member_access_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, ast_node, 'Type.template_member() takes 3 arguments. Got: %s' % len(ast_node.args))
     [class_type_ast_node, member_name_ast_node, arg_list_ast_node] = ast_node.args
 
-    class_type_expr_ir = expression_ast_to_ir3(class_type_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if class_type_expr_ir.expr_type != ir3.TypeType():
+    class_type_expr_ir = expression_ast_to_ir2(class_type_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if class_type_expr_ir.expr_type != ir2.TypeType():
         raise CompilationError(compilation_context, class_type_ast_node,
                                'The first argument passed to Type.template_member should have type Type, but was: %s' % str(class_type_expr_ir.expr_type))
 
@@ -1600,16 +1600,16 @@ def template_member_access_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, member_name_ast_node,
                                'The second argument passed to Type.template_member should be a valid C++ identifier')
 
-    arg_list_ir = expression_ast_to_ir3(arg_list_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if arg_list_ir.expr_type != ir3.ListType(ir3.TypeType()):
+    arg_list_ir = expression_ast_to_ir2(arg_list_ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if arg_list_ir.expr_type != ir2.ListType(ir2.TypeType()):
         raise CompilationError(compilation_context, arg_list_ast_node,
                                'The third argument passed to Type.template_member should have type List[Type], but was: %s' % str(arg_list_ir.expr_type))
 
-    return ir3.TemplateMemberAccessExpr(class_type_expr=class_type_expr_ir,
+    return ir2.TemplateMemberAccessExpr(class_type_expr=class_type_expr_ir,
                                         member_name=member_name_ast_node.s,
                                         arg_list_expr=arg_list_ir)
 
-def type_factory_method_ast_to_ir3(ast_node: ast.Call,
+def type_factory_method_ast_to_ir2(ast_node: ast.Call,
                                    compilation_context: CompilationContext,
                                    in_match_pattern: bool,
                                    check_var_reference: Callable[[ast.Name], None],
@@ -1620,26 +1620,26 @@ def type_factory_method_ast_to_ir3(ast_node: ast.Call,
     assert ast_node.func.value.id == 'Type'
 
     if ast_node.func.attr == 'pointer':
-        return type_pointer_expr_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return type_pointer_expr_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif ast_node.func.attr == 'reference':
-        return type_reference_expr_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return type_reference_expr_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif ast_node.func.attr == 'rvalue_reference':
-        return type_rvalue_reference_expr_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return type_rvalue_reference_expr_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif ast_node.func.attr == 'const':
-        return const_type_expr_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return const_type_expr_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif ast_node.func.attr == 'array':
-        return type_array_expr_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return type_array_expr_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif ast_node.func.attr == 'function':
-        return function_type_expr_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return function_type_expr_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif ast_node.func.attr == 'template_instantiation':
-        return template_instantiation_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return template_instantiation_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     elif ast_node.func.attr == 'template_member':
-        return template_member_access_ast_to_ir3(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        return template_member_access_ast_to_ir2(ast_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
     else:
         raise CompilationError(compilation_context, ast_node,
                                'Undefined Type factory method')
 
-def empty_list_literal_ast_to_ir3(ast_node: ast.Call,
+def empty_list_literal_ast_to_ir2(ast_node: ast.Call,
                                   compilation_context: CompilationContext,
                                   in_match_pattern: bool,
                                   check_var_reference: Callable[[ast.Name], None],
@@ -1649,10 +1649,10 @@ def empty_list_literal_ast_to_ir3(ast_node: ast.Call,
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'empty_list() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
-    elem_type = type_declaration_ast_to_ir3_expression_type(arg, compilation_context)
-    return ir3.ListExpr(elem_type=elem_type, elem_exprs=[], list_extraction_expr=None)
+    elem_type = type_declaration_ast_to_ir2_expression_type(arg, compilation_context)
+    return ir2.ListExpr(elem_type=elem_type, elem_exprs=[], list_extraction_expr=None)
 
-def empty_set_literal_ast_to_ir3(ast_node: ast.Call,
+def empty_set_literal_ast_to_ir2(ast_node: ast.Call,
                                  compilation_context: CompilationContext,
                                  in_match_pattern: bool,
                                  check_var_reference: Callable[[ast.Name], None],
@@ -1662,10 +1662,10 @@ def empty_set_literal_ast_to_ir3(ast_node: ast.Call,
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'empty_set() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
-    elem_type = type_declaration_ast_to_ir3_expression_type(arg, compilation_context)
-    return ir3.SetExpr(elem_type=elem_type, elem_exprs=[])
+    elem_type = type_declaration_ast_to_ir2_expression_type(arg, compilation_context)
+    return ir2.SetExpr(elem_type=elem_type, elem_exprs=[])
 
-def int_iterable_sum_expr_ast_to_ir3(ast_node: ast.Call,
+def int_iterable_sum_expr_ast_to_ir2(ast_node: ast.Call,
                                      compilation_context: CompilationContext,
                                      in_match_pattern: bool,
                                      check_var_reference: Callable[[ast.Name], None],
@@ -1679,10 +1679,10 @@ def int_iterable_sum_expr_ast_to_ir3(ast_node: ast.Call,
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'sum() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
-    arg_expr = expression_ast_to_ir3(arg, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if not (isinstance(arg_expr.expr_type, (ir3.ListType, ir3.SetType)) and isinstance(arg_expr.expr_type.elem_type, ir3.IntType)):
+    arg_expr = expression_ast_to_ir2(arg, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if not (isinstance(arg_expr.expr_type, (ir2.ListType, ir2.SetType)) and isinstance(arg_expr.expr_type.elem_type, ir2.IntType)):
         notes = []
-        if isinstance(arg_expr, ir3.VarReference):
+        if isinstance(arg_expr, ir2.VarReference):
             lookup_result = compilation_context.get_symbol_definition(arg_expr.name)
             assert lookup_result
             assert not lookup_result.is_only_partially_defined
@@ -1690,12 +1690,12 @@ def int_iterable_sum_expr_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, arg,
                                'The argument of sum() must have type List[int] or Set[int]. Got type: %s' % str(arg_expr.expr_type),
                                notes=notes)
-    if isinstance(arg_expr.expr_type, ir3.ListType):
-        return ir3.IntListSumExpr(list_expr=arg_expr)
+    if isinstance(arg_expr.expr_type, ir2.ListType):
+        return ir2.IntListSumExpr(list_expr=arg_expr)
     else:
-        return ir3.IntSetSumExpr(set_expr=arg_expr)
+        return ir2.IntSetSumExpr(set_expr=arg_expr)
 
-def bool_iterable_all_expr_ast_to_ir3(ast_node: ast.Call,
+def bool_iterable_all_expr_ast_to_ir2(ast_node: ast.Call,
                                       compilation_context: CompilationContext,
                                       in_match_pattern: bool,
                                       check_var_reference: Callable[[ast.Name], None]):
@@ -1708,10 +1708,10 @@ def bool_iterable_all_expr_ast_to_ir3(ast_node: ast.Call,
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'all() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
-    arg_expr = expression_ast_to_ir3(arg, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
-    if not (isinstance(arg_expr.expr_type, (ir3.ListType, ir3.SetType)) and isinstance(arg_expr.expr_type.elem_type, ir3.BoolType)):
+    arg_expr = expression_ast_to_ir2(arg, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    if not (isinstance(arg_expr.expr_type, (ir2.ListType, ir2.SetType)) and isinstance(arg_expr.expr_type.elem_type, ir2.BoolType)):
         notes = []
-        if isinstance(arg_expr, ir3.VarReference):
+        if isinstance(arg_expr, ir2.VarReference):
             lookup_result = compilation_context.get_symbol_definition(arg_expr.name)
             assert lookup_result
             assert not lookup_result.is_only_partially_defined
@@ -1719,12 +1719,12 @@ def bool_iterable_all_expr_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, arg,
                                'The argument of all() must have type List[bool] or Set[bool]. Got type: %s' % str(arg_expr.expr_type),
                                notes=notes)
-    if isinstance(arg_expr.expr_type, ir3.ListType):
-        return ir3.BoolListAllExpr(list_expr=arg_expr)
+    if isinstance(arg_expr.expr_type, ir2.ListType):
+        return ir2.BoolListAllExpr(list_expr=arg_expr)
     else:
-        return ir3.BoolSetAllExpr(set_expr=arg_expr)
+        return ir2.BoolSetAllExpr(set_expr=arg_expr)
 
-def bool_iterable_any_expr_ast_to_ir3(ast_node: ast.Call,
+def bool_iterable_any_expr_ast_to_ir2(ast_node: ast.Call,
                                       compilation_context: CompilationContext,
                                       in_match_pattern: bool,
                                       check_var_reference: Callable[[ast.Name], None]):
@@ -1737,10 +1737,10 @@ def bool_iterable_any_expr_ast_to_ir3(ast_node: ast.Call,
     if len(ast_node.args) != 1:
         raise CompilationError(compilation_context, ast_node, 'any() takes 1 argument. Got: %s' % len(ast_node.args))
     [arg] = ast_node.args
-    arg_expr = expression_ast_to_ir3(arg, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
-    if not (isinstance(arg_expr.expr_type, (ir3.ListType, ir3.SetType)) and isinstance(arg_expr.expr_type.elem_type, ir3.BoolType)):
+    arg_expr = expression_ast_to_ir2(arg, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    if not (isinstance(arg_expr.expr_type, (ir2.ListType, ir2.SetType)) and isinstance(arg_expr.expr_type.elem_type, ir2.BoolType)):
         notes = []
-        if isinstance(arg_expr, ir3.VarReference):
+        if isinstance(arg_expr, ir2.VarReference):
             lookup_result = compilation_context.get_symbol_definition(arg_expr.name)
             assert lookup_result
             assert not lookup_result.is_only_partially_defined
@@ -1748,81 +1748,81 @@ def bool_iterable_any_expr_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, arg,
                                'The argument of any() must have type List[bool] or Set[bool]. Got type: %s' % str(arg_expr.expr_type),
                                notes=notes)
-    if isinstance(arg_expr.expr_type, ir3.ListType):
-        return ir3.BoolListAnyExpr(list_expr=arg_expr)
+    if isinstance(arg_expr.expr_type, ir2.ListType):
+        return ir2.BoolListAnyExpr(list_expr=arg_expr)
     else:
-        return ir3.BoolSetAnyExpr(set_expr=arg_expr)
+        return ir2.BoolSetAnyExpr(set_expr=arg_expr)
 
-def _is_structural_equality_check_supported_for_type(expr_type: ir3.ExprType):
-    if isinstance(expr_type, ir3.BoolType):
+def _is_structural_equality_check_supported_for_type(expr_type: ir2.ExprType):
+    if isinstance(expr_type, ir2.BoolType):
         return True
-    elif isinstance(expr_type, ir3.IntType):
+    elif isinstance(expr_type, ir2.IntType):
         return True
-    elif isinstance(expr_type, ir3.TypeType):
+    elif isinstance(expr_type, ir2.TypeType):
         return True
-    elif isinstance(expr_type, ir3.FunctionType):
+    elif isinstance(expr_type, ir2.FunctionType):
         return False
-    elif isinstance(expr_type, ir3.ListType):
+    elif isinstance(expr_type, ir2.ListType):
         return _is_structural_equality_check_supported_for_type(expr_type.elem_type)
-    elif isinstance(expr_type, ir3.SetType):
+    elif isinstance(expr_type, ir2.SetType):
         return False
-    elif isinstance(expr_type, ir3.CustomType):
+    elif isinstance(expr_type, ir2.CustomType):
         return all(_is_structural_equality_check_supported_for_type(arg_type.expr_type)
                    for arg_type in expr_type.arg_types)
     else:
         raise NotImplementedError('Unexpected type: %s' % expr_type.__class__.__name__)
 
-def _is_equality_check_supported_for_type(expr_type: ir3.ExprType):
-    if isinstance(expr_type, ir3.SetType):
+def _is_equality_check_supported_for_type(expr_type: ir2.ExprType):
+    if isinstance(expr_type, ir2.SetType):
         return _is_structural_equality_check_supported_for_type(expr_type.elem_type)
     else:
         return _is_structural_equality_check_supported_for_type(expr_type)
 
-def eq_ast_to_ir3(lhs_node: ast.AST,
+def eq_ast_to_ir2(lhs_node: ast.AST,
                   rhs_node: ast.AST,
                   compilation_context: CompilationContext,
                   in_match_pattern: bool,
                   check_var_reference: Callable[[ast.Name], None]):
     assert not in_match_pattern
 
-    lhs = expression_ast_to_ir3(lhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
-    rhs = expression_ast_to_ir3(rhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    lhs = expression_ast_to_ir2(lhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    rhs = expression_ast_to_ir2(rhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
     if lhs.expr_type != rhs.expr_type:
         raise CompilationError(compilation_context, lhs_node, 'Type mismatch in ==: %s vs %s' % (
             str(lhs.expr_type), str(rhs.expr_type)))
     if not _is_equality_check_supported_for_type(lhs.expr_type):
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.expr_type))
-    return ir3.EqualityComparison(lhs=lhs, rhs=rhs)
+    return ir2.EqualityComparison(lhs=lhs, rhs=rhs)
 
-def not_eq_ast_to_ir3(lhs_node: ast.AST,
+def not_eq_ast_to_ir2(lhs_node: ast.AST,
                       rhs_node: ast.AST,
                       compilation_context: CompilationContext,
                       in_match_pattern: bool,
                       check_var_reference: Callable[[ast.Name], None]):
     assert not in_match_pattern
 
-    lhs = expression_ast_to_ir3(lhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
-    rhs = expression_ast_to_ir3(rhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    lhs = expression_ast_to_ir2(lhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    rhs = expression_ast_to_ir2(rhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
     if lhs.expr_type != rhs.expr_type:
         raise CompilationError(compilation_context, lhs_node, 'Type mismatch in !=: %s vs %s' % (
             str(lhs.expr_type), str(rhs.expr_type)))
     if not _is_equality_check_supported_for_type(lhs.expr_type):
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison: ' + str(lhs.expr_type))
-    return ir3.NotExpr(expr=ir3.EqualityComparison(lhs=lhs, rhs=rhs))
+    return ir2.NotExpr(expr=ir2.EqualityComparison(lhs=lhs, rhs=rhs))
 
-def in_ast_to_ir3(lhs_node: ast.AST,
+def in_ast_to_ir2(lhs_node: ast.AST,
                   rhs_node: ast.AST,
                   compilation_context: CompilationContext,
                   in_match_pattern: bool,
                   check_var_reference: Callable[[ast.Name], None]):
     assert not in_match_pattern
 
-    lhs = expression_ast_to_ir3(lhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
-    rhs = expression_ast_to_ir3(rhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    lhs = expression_ast_to_ir2(lhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
+    rhs = expression_ast_to_ir2(rhs_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names=set())
 
-    if isinstance(rhs.expr_type, ir3.ListType):
+    if isinstance(rhs.expr_type, ir2.ListType):
         rhs_elem_type = rhs.expr_type.elem_type
-    elif isinstance(rhs.expr_type, ir3.SetType):
+    elif isinstance(rhs.expr_type, ir2.SetType):
         rhs_elem_type = rhs.expr_type.elem_type
     else:
         raise CompilationError(compilation_context, rhs_node,
@@ -1833,7 +1833,7 @@ def in_ast_to_ir3(lhs_node: ast.AST,
             str(lhs.expr_type), str(rhs.expr_type)))
     if not _is_equality_check_supported_for_type(lhs.expr_type):
         raise CompilationError(compilation_context, lhs_node, 'Type not supported in equality comparison (for the "in" operator): ' + str(lhs.expr_type))
-    return ir3.InExpr(lhs=lhs, rhs=rhs)
+    return ir2.InExpr(lhs=lhs, rhs=rhs)
 
 def _construct_note_diagnostic_for_function_signature(function_lookup_result: SymbolLookupResult):
     if isinstance(function_lookup_result.ast_node, ast.ClassDef):
@@ -1846,7 +1846,7 @@ def _construct_note_diagnostic_for_function_signature(function_lookup_result: Sy
 def _construct_note_diagnostic_for_function_arg(function_arg_ast_node: ast.arg):
     return function_arg_ast_node, 'The definition of %s was here' % function_arg_ast_node.arg
 
-def function_call_ast_to_ir3(ast_node: ast.Call,
+def function_call_ast_to_ir2(ast_node: ast.Call,
                              compilation_context: CompilationContext,
                              in_match_pattern: bool,
                              check_var_reference: Callable[[ast.Name], None],
@@ -1856,8 +1856,8 @@ def function_call_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, ast_node,
                                'Function calls are not allowed in match patterns')
 
-    fun_expr = expression_ast_to_ir3(ast_node.func, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
-    if not isinstance(fun_expr.expr_type, ir3.FunctionType):
+    fun_expr = expression_ast_to_ir2(ast_node.func, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+    if not isinstance(fun_expr.expr_type, ir2.FunctionType):
         raise CompilationError(compilation_context, ast_node,
                                'Attempting to call an object that is not a function. It has type: %s' % str(fun_expr.expr_type))
 
@@ -1865,7 +1865,7 @@ def function_call_ast_to_ir3(ast_node: ast.Call,
         raise CompilationError(compilation_context, ast_node, 'Function calls with a mix of keyword and non-keyword arguments are not supported. Please choose either style.')
 
     if ast_node.keywords:
-        if not isinstance(fun_expr, ir3.VarReference):
+        if not isinstance(fun_expr, ir2.VarReference):
             raise CompilationError(compilation_context, ast_node.keywords[0].value,
                                    'Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable objects. Please switch to non-keyword arguments.')
         lookup_result = compilation_context.get_symbol_definition(fun_expr.name)
@@ -1892,7 +1892,7 @@ def function_call_ast_to_ir3(ast_node: ast.Call,
         else:
             fun_definition_ast_node_args = fun_definition_ast_node.args.args
 
-        arg_expr_by_name = {keyword_arg.arg: expression_ast_to_ir3(keyword_arg.value, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
+        arg_expr_by_name = {keyword_arg.arg: expression_ast_to_ir2(keyword_arg.value, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names)
                             for keyword_arg in ast_node.keywords}
         formal_arg_names = {arg.arg for arg in fun_definition_ast_node_args}
         specified_nonexisting_args = arg_expr_by_name.keys() - formal_arg_names
@@ -1935,7 +1935,7 @@ def function_call_ast_to_ir3(ast_node: ast.Call,
                                        notes=notes)
     else:
         ast_node_args = ast_node.args or []
-        args = [expression_ast_to_ir3(arg_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names) for arg_node in ast_node_args]
+        args = [expression_ast_to_ir2(arg_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names) for arg_node in ast_node_args]
         if len(args) != len(fun_expr.expr_type.argtypes):
             if isinstance(ast_node.func, ast.Name):
                 lookup_result = compilation_context.get_symbol_definition(ast_node.func.id)
@@ -1989,12 +1989,12 @@ def function_call_ast_to_ir3(ast_node: ast.Call,
                                            arg_index, str(arg_type), str(expr.expr_type)),
                                        notes=notes)
 
-    return ir3.FunctionCall(fun_expr=fun_expr,
+    return ir2.FunctionCall(fun_expr=fun_expr,
                             args=args,
-                            may_throw=not isinstance(fun_expr, ir3.VarReference)
+                            may_throw=not isinstance(fun_expr, ir2.VarReference)
                                          or fun_expr.is_function_that_may_throw)
 
-def var_reference_ast_to_ir3(ast_node: ast.Name,
+def var_reference_ast_to_ir2(ast_node: ast.Name,
                              compilation_context: CompilationContext,
                              in_match_pattern: bool,
                              check_var_reference: Callable[[ast.Name], None],
@@ -2004,16 +2004,16 @@ def var_reference_ast_to_ir3(ast_node: ast.Name,
 
     lookup_result = compilation_context.get_symbol_definition(ast_node.id)
 
-    # In match patterns, variables get defined at the first point of use, either here or in list_expression_ast_to_ir3().
+    # In match patterns, variables get defined at the first point of use, either here or in list_expression_ast_to_ir2().
     if in_match_pattern and ast_node.id in match_lambda_argument_names:
         if lookup_result:
-            if lookup_result.symbol.expr_type != ir3.TypeType():
+            if lookup_result.symbol.expr_type != ir2.TypeType():
                 raise CompilationError(compilation_context, ast_node,
                                        'Can\'t match %s as a Type because it was already used to match a List[Type]' % ast_node.id,
                                        notes=[(lookup_result.ast_node, 'A previous match as a List[Type] was here')])
         else:
             compilation_context.add_symbol(name=ast_node.id,
-                                           expr_type=ir3.TypeType(),
+                                           expr_type=ir2.TypeType(),
                                            definition_ast_node=ast_node,
                                            is_only_partially_defined=False,
                                            is_function_that_may_throw=False)
@@ -2024,10 +2024,10 @@ def var_reference_ast_to_ir3(ast_node: ast.Name,
             raise CompilationError(compilation_context, ast_node,
                                    'Reference to a variable that may or may not have been initialized (depending on which branch was taken)',
                                    notes=[(lookup_result.ast_node, '%s might have been initialized here' % ast_node.id)])
-        return ir3.VarReference(expr_type=lookup_result.symbol.expr_type,
+        return ir2.VarReference(expr_type=lookup_result.symbol.expr_type,
                                 name=lookup_result.symbol.name,
                                 is_global_function=lookup_result.symbol_table.parent is None,
-                                is_function_that_may_throw=isinstance(lookup_result.symbol.expr_type, ir3.FunctionType)
+                                is_function_that_may_throw=isinstance(lookup_result.symbol.expr_type, ir2.FunctionType)
                                                            and lookup_result.symbol.is_function_that_may_throw,
                                 source_module=lookup_result.symbol.source_module)
     else:
@@ -2042,7 +2042,7 @@ def var_reference_ast_to_ir3(ast_node: ast.Name,
         else:
             raise CompilationError(compilation_context, ast_node, 'Reference to undefined variable/function')
 
-def list_expression_ast_to_ir3(ast_node: ast.List,
+def list_expression_ast_to_ir2(ast_node: ast.List,
                                compilation_context: CompilationContext,
                                in_match_pattern: bool,
                                check_var_reference: Callable[[ast.Name], None],
@@ -2068,22 +2068,22 @@ def list_expression_ast_to_ir3(ast_node: ast.List,
 
             existing_symbol = compilation_context.get_symbol_definition(elem_expr_node.value.id)
             if existing_symbol:
-                if existing_symbol.symbol.expr_type != ir3.ListType(ir3.TypeType()):
+                if existing_symbol.symbol.expr_type != ir2.ListType(ir2.TypeType()):
                     raise CompilationError(compilation_context, elem_expr_node.value,
                                            'List extraction can\'t be used on %s because it was already used to match a Type' % elem_expr_node.value.id,
                                            notes=[(existing_symbol.ast_node, 'A previous match as a Type was here')])
             else:
                 compilation_context.add_symbol(name=elem_expr_node.value.id,
-                                               expr_type=ir3.ListType(ir3.TypeType()),
+                                               expr_type=ir2.ListType(ir2.TypeType()),
                                                definition_ast_node=elem_expr_node.value,
                                                is_only_partially_defined=False,
                                                is_function_that_may_throw=False)
-            list_extraction_expr = ir3.VarReference(expr_type=ir3.ListType(ir3.TypeType()),
+            list_extraction_expr = ir2.VarReference(expr_type=ir2.ListType(ir2.TypeType()),
                                                     name=elem_expr_node.value.id,
                                                     is_global_function=False,
                                                     is_function_that_may_throw=False)
         else:
-            elem_exprs.append(expression_ast_to_ir3(elem_expr_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names))
+            elem_exprs.append(expression_ast_to_ir2(elem_expr_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names))
 
     if len(elem_exprs) > 0:
         elem_type = elem_exprs[0].expr_type
@@ -2098,20 +2098,20 @@ def list_expression_ast_to_ir3(ast_node: ast.List,
                                    'Found different types in list elements, this is not supported. The type of this element was %s instead of %s' % (
                                        str(elem_expr.expr_type), str(elem_type)),
                                    notes=[(ast_node.elts[0], 'A previous list element with type %s was here.' % str(elem_type))])
-    if isinstance(elem_type, ir3.FunctionType):
+    if isinstance(elem_type, ir2.FunctionType):
         raise CompilationError(compilation_context, ast_node,
                                'Creating lists of functions is not supported. The elements of this list have type: %s' % str(elem_type))
 
-    return ir3.ListExpr(elem_type=elem_type,
+    return ir2.ListExpr(elem_type=elem_type,
                         elem_exprs=elem_exprs,
                         list_extraction_expr=list_extraction_expr)
 
-def set_expression_ast_to_ir3(ast_node: ast.Set,
+def set_expression_ast_to_ir2(ast_node: ast.Set,
                               compilation_context: CompilationContext,
                               in_match_pattern: bool,
                               check_var_reference: Callable[[ast.Name], None],
                               match_lambda_argument_names: Set[str]):
-    elem_exprs = [expression_ast_to_ir3(elem_expr_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names) for elem_expr_node in ast_node.elts]
+    elem_exprs = [expression_ast_to_ir2(elem_expr_node, compilation_context, in_match_pattern, check_var_reference, match_lambda_argument_names) for elem_expr_node in ast_node.elts]
     assert elem_exprs
     elem_type = elem_exprs[0].expr_type
     for elem_expr, elem_expr_ast_node in zip(elem_exprs, ast_node.elts):
@@ -2120,20 +2120,20 @@ def set_expression_ast_to_ir3(ast_node: ast.Set,
                                    'Found different types in set elements, this is not supported. The type of this element was %s instead of %s' % (
                                        str(elem_expr.expr_type), str(elem_type)),
                                    notes=[(ast_node.elts[0], 'A previous set element with type %s was here.' % str(elem_type))])
-    if isinstance(elem_type, ir3.FunctionType):
+    if isinstance(elem_type, ir2.FunctionType):
         raise CompilationError(compilation_context, ast_node,
                                'Creating sets of functions is not supported. The elements of this set have type: %s' % str(elem_type))
 
-    return ir3.SetExpr(elem_type=elem_type, elem_exprs=elem_exprs)
+    return ir2.SetExpr(elem_type=elem_type, elem_exprs=elem_exprs)
 
-def type_declaration_ast_to_ir3_expression_type(ast_node: ast.AST, compilation_context: CompilationContext):
+def type_declaration_ast_to_ir2_expression_type(ast_node: ast.AST, compilation_context: CompilationContext):
     if isinstance(ast_node, ast.Name) and isinstance(ast_node.ctx, ast.Load):
         if ast_node.id == 'bool':
-            return ir3.BoolType()
+            return ir2.BoolType()
         elif ast_node.id == 'int':
-            return ir3.IntType()
+            return ir2.IntType()
         elif ast_node.id == 'Type':
-            return ir3.TypeType()
+            return ir2.TypeType()
         else:
             lookup_result = compilation_context.get_type_symbol_definition(ast_node.id)
             if lookup_result:
@@ -2147,9 +2147,9 @@ def type_declaration_ast_to_ir3_expression_type(ast_node: ast.AST, compilation_c
         and isinstance(ast_node.ctx, ast.Load)
         and isinstance(ast_node.slice, ast.Index)):
         if ast_node.value.id == 'List':
-            return ir3.ListType(type_declaration_ast_to_ir3_expression_type(ast_node.slice.value, compilation_context))
+            return ir2.ListType(type_declaration_ast_to_ir2_expression_type(ast_node.slice.value, compilation_context))
         if ast_node.value.id == 'Set':
-            return ir3.SetType(type_declaration_ast_to_ir3_expression_type(ast_node.slice.value, compilation_context))
+            return ir2.SetType(type_declaration_ast_to_ir2_expression_type(ast_node.slice.value, compilation_context))
         elif (ast_node.value.id == 'Callable'
               and isinstance(ast_node.slice.value, ast.Tuple)
               and len(ast_node.slice.value.elts) == 2
@@ -2157,10 +2157,10 @@ def type_declaration_ast_to_ir3_expression_type(ast_node: ast.AST, compilation_c
               and isinstance(ast_node.slice.value.elts[0].ctx, ast.Load)
               and all(isinstance(elem, ast.Name) and isinstance(elem.ctx, ast.Load)
                       for elem in ast_node.slice.value.elts[0].elts)):
-            return ir3.FunctionType(
-                argtypes=[type_declaration_ast_to_ir3_expression_type(arg_type_decl, compilation_context)
+            return ir2.FunctionType(
+                argtypes=[type_declaration_ast_to_ir2_expression_type(arg_type_decl, compilation_context)
                           for arg_type_decl in ast_node.slice.value.elts[0].elts],
-                returns=type_declaration_ast_to_ir3_expression_type(ast_node.slice.value.elts[1], compilation_context))
+                returns=type_declaration_ast_to_ir2_expression_type(ast_node.slice.value.elts[1], compilation_context))
 
     raise CompilationError(compilation_context, ast_node, 'Unsupported type declaration.')
 
@@ -2176,7 +2176,7 @@ def _is_class_field_initialization(ast_node: ast.AST):
             and ast_node.targets[0].value.id == 'self'
             and isinstance(ast_node.targets[0].value.ctx, ast.Load))
 
-def class_definition_ast_to_ir3(ast_node: ast.ClassDef, compilation_context: CompilationContext):
+def class_definition_ast_to_ir2(ast_node: ast.ClassDef, compilation_context: CompilationContext):
     if ast_node.bases:
         if len(ast_node.bases) > 1:
             raise CompilationError(compilation_context, ast_node.bases[1],
@@ -2255,8 +2255,8 @@ def class_definition_ast_to_ir3(ast_node: ast.ClassDef, compilation_context: Com
                                    'Arguments of a custom type cannot be called "type", it\'s a reserved identifier')
 
         arg_decl_nodes_by_name[arg.arg] = arg
-        arg_types.append(ir3.CustomTypeArgDecl(name=arg.arg,
-                                               expr_type = type_declaration_ast_to_ir3_expression_type(arg.annotation, compilation_context)))
+        arg_types.append(ir2.CustomTypeArgDecl(name=arg.arg,
+                                               expr_type = type_declaration_ast_to_ir2_expression_type(arg.annotation, compilation_context)))
 
     init_body_ast_nodes = init_defn_ast_node.body
     if is_exception_class:
@@ -2298,7 +2298,7 @@ def class_definition_ast_to_ir3(ast_node: ast.ClassDef, compilation_context: Com
             raise CompilationError(compilation_context, decl_ast_node,
                                    'All __init__ arguments must be assigned to fields, but "%s" was never assigned.' % arg_name)
 
-    return ir3.CustomType(name=ast_node.name,
+    return ir2.CustomType(name=ast_node.name,
                           arg_types=arg_types,
                           is_exception_class=is_exception_class,
                           exception_message=exception_message if is_exception_class else None)

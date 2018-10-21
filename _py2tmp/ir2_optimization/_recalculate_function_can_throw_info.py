@@ -15,7 +15,7 @@ import itertools
 from collections import defaultdict
 from typing import Dict, Tuple
 import networkx as nx
-from _py2tmp.ir3 import ir, Transformation
+from _py2tmp.ir2 import ir, Transformation
 from _py2tmp.compiler.output_files import ObjectFileContent
 
 
@@ -140,8 +140,8 @@ def recalculate_function_can_throw_info(module: ir.Module, context_object_file_c
 
     external_function_can_throw = dict()
     for module_name, module_info in context_object_file_content.modules_by_name.items():
-        for elem in itertools.chain(module_info.ir3_module.custom_types, module_info.ir3_module.function_defns):
-            if elem.name in module_info.ir3_module.public_names:
+        for elem in itertools.chain(module_info.ir2_module.custom_types, module_info.ir2_module.function_defns):
+            if elem.name in module_info.ir2_module.public_names:
                 external_function_can_throw[(module_name, elem.name)] = (isinstance(elem, ir.FunctionDefn)
                                                                          and (function_contains_raise_stmt(elem)
                                                                               or function_contains_var_reference_that_can_throw(elem)))

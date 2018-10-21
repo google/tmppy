@@ -31,8 +31,8 @@ def _compile(module_name: str, object_files: List[str], filename: str, verbose):
 
     if verbose:
         main_module = object_file_content.modules_by_name[module_name]
-        print('TMPPy IR3:')
-        print(ir_to_string(main_module.ir3_module))
+        print('TMPPy IR2:')
+        print(ir_to_string(main_module.ir2_module))
         print()
         print('TMPPy IR1:')
         print(ir_to_string(main_module.ir1_module))

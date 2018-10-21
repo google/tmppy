@@ -14,8 +14,8 @@
 from contextlib import contextmanager
 from typing import Set, Dict, List, Optional
 
-from _py2tmp.ir3 import ir
-from _py2tmp.ir3._visitor import Visitor
+from _py2tmp.ir2 import ir
+from _py2tmp.ir2._visitor import Visitor
 
 def _combine_return_type_of_branches(branch1_stmts: List[ir.Stmt], branch2_stmts: List[ir.Stmt]):
     branch1_return_type_info = get_return_type(branch1_stmts)

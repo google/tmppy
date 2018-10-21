@@ -13,7 +13,7 @@
 # limitations under the License.
 from typing import Dict, List, Optional
 
-from _py2tmp.ir3 import ir3
+from _py2tmp.ir2 import ir2
 from _py2tmp.ir1 import ir1
 from _py2tmp.ir0 import ir0
 from _py2tmp.utils import ValueType
@@ -21,11 +21,11 @@ from _py2tmp.utils import ValueType
 
 class ModuleInfo(ValueType):
     def __init__(self,
-                 ir3_module: Optional[ir3.Module],
+                 ir2_module: Optional[ir2.Module],
                  ir0_header: ir0.Header,
                  ir0_header_before_optimization: Optional[ir0.Header] = None,
                  ir1_module: Optional[ir1.Module] = None):
-        self.ir3_module = ir3_module
+        self.ir2_module = ir2_module
         self.ir1_module = ir1_module
         self.ir0_header_before_optimization = ir0_header_before_optimization
         self.ir0_header = ir0_header
@@ -38,6 +38,6 @@ def merge_object_files(object_files: List[ObjectFileContent]):
     modules_by_name = dict()
     for object_file in object_files:
         for name, module_info in object_file.modules_by_name.items():
-            if name not in modules_by_name or modules_by_name[name].ir3_module is None:
+            if name not in modules_by_name or modules_by_name[name].ir2_module is None:
                 modules_by_name[name] = module_info
     return ObjectFileContent(modules_by_name)

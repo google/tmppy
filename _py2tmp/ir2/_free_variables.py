@@ -14,8 +14,8 @@
 from contextlib import contextmanager
 from typing import Set, Dict
 
-from _py2tmp.ir3 import ir
-from _py2tmp.ir3._visitor import Visitor
+from _py2tmp.ir2 import ir
+from _py2tmp.ir2._visitor import Visitor
 
 
 class _GetFreeVariablesVisitor(Visitor):

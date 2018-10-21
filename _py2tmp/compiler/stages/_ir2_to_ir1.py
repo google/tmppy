@@ -15,11 +15,11 @@
 from collections import defaultdict
 from _py2tmp.ir1 import ir1
 from _py2tmp.ir1.free_variables import get_unique_free_variables_in_stmts
-from _py2tmp.ir3 import ir3
+from _py2tmp.ir2 import ir2
 from typing import List, Iterator, Optional, Dict
 from contextlib import contextmanager
 
-from _py2tmp.ir3._return_type import get_return_type
+from _py2tmp.ir2._return_type import get_return_type
 
 
 class Writer:
@@ -198,134 +198,134 @@ class StmtWriter(Writer):
         context1 = self.try_except_contexts.pop()
         assert context1 is context
 
-def type_to_ir1(expr_type: ir3.ExprType):
-    if isinstance(expr_type, ir3.BoolType):
+def type_to_ir1(expr_type: ir2.ExprType):
+    if isinstance(expr_type, ir2.BoolType):
         return ir1.BoolType()
-    elif isinstance(expr_type, ir3.IntType):
+    elif isinstance(expr_type, ir2.IntType):
         return ir1.IntType()
-    elif isinstance(expr_type, ir3.TypeType):
+    elif isinstance(expr_type, ir2.TypeType):
         return ir1.TypeType()
-    elif isinstance(expr_type, ir3.BottomType):
+    elif isinstance(expr_type, ir2.BottomType):
         return ir1.BottomType()
-    elif isinstance(expr_type, ir3.ListType):
+    elif isinstance(expr_type, ir2.ListType):
         return ir1.ListType(elem_type=type_to_ir1(expr_type.elem_type))
-    elif isinstance(expr_type, ir3.SetType):
+    elif isinstance(expr_type, ir2.SetType):
         return ir1.ListType(elem_type=type_to_ir1(expr_type.elem_type))
-    elif isinstance(expr_type, ir3.FunctionType):
+    elif isinstance(expr_type, ir2.FunctionType):
         return ir1.FunctionType(argtypes=[type_to_ir1(arg)
                                           for arg in expr_type.argtypes],
                                 returns=type_to_ir1(expr_type.returns))
-    elif isinstance(expr_type, ir3.CustomType):
+    elif isinstance(expr_type, ir2.CustomType):
         return ir1.CustomType(name=expr_type.name,
                               arg_types=[ir1.CustomTypeArgDecl(name=arg.name, expr_type=type_to_ir1(arg.expr_type))
                                          for arg in expr_type.arg_types])
     else:
         raise NotImplementedError('Unexpected type: %s' % str(expr_type.__class__))
 
-def expr_to_ir1(expr: ir3.Expr, writer: StmtWriter) -> ir1.VarReference:
-    if isinstance(expr, ir3.VarReference):
+def expr_to_ir1(expr: ir2.Expr, writer: StmtWriter) -> ir1.VarReference:
+    if isinstance(expr, ir2.VarReference):
         return var_reference_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.MatchExpr):
+    elif isinstance(expr, ir2.MatchExpr):
         return match_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.BoolLiteral):
+    elif isinstance(expr, ir2.BoolLiteral):
         return bool_literal_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.IntLiteral):
+    elif isinstance(expr, ir2.IntLiteral):
         return int_literal_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.AtomicTypeLiteral):
+    elif isinstance(expr, ir2.AtomicTypeLiteral):
         return atomic_type_literal_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.PointerTypeExpr):
+    elif isinstance(expr, ir2.PointerTypeExpr):
         return pointer_type_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.ReferenceTypeExpr):
+    elif isinstance(expr, ir2.ReferenceTypeExpr):
         return reference_type_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.RvalueReferenceTypeExpr):
+    elif isinstance(expr, ir2.RvalueReferenceTypeExpr):
         return rvalue_reference_type_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.ConstTypeExpr):
+    elif isinstance(expr, ir2.ConstTypeExpr):
         return const_type_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.ArrayTypeExpr):
+    elif isinstance(expr, ir2.ArrayTypeExpr):
         return array_type_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.FunctionTypeExpr):
+    elif isinstance(expr, ir2.FunctionTypeExpr):
         return function_type_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.TemplateInstantiationExpr):
+    elif isinstance(expr, ir2.TemplateInstantiationExpr):
         return template_instantiation_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.TemplateMemberAccessExpr):
+    elif isinstance(expr, ir2.TemplateMemberAccessExpr):
         return template_member_access_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.ListExpr):
+    elif isinstance(expr, ir2.ListExpr):
         return list_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.SetExpr):
+    elif isinstance(expr, ir2.SetExpr):
         return set_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.FunctionCall):
+    elif isinstance(expr, ir2.FunctionCall):
         return function_call_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.EqualityComparison):
+    elif isinstance(expr, ir2.EqualityComparison):
         return equality_comparison_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.InExpr):
+    elif isinstance(expr, ir2.InExpr):
         return in_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.AttributeAccessExpr):
+    elif isinstance(expr, ir2.AttributeAccessExpr):
         return attribute_access_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.AndExpr):
+    elif isinstance(expr, ir2.AndExpr):
         return and_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.OrExpr):
+    elif isinstance(expr, ir2.OrExpr):
         return or_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.NotExpr):
+    elif isinstance(expr, ir2.NotExpr):
         return not_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.IntUnaryMinusExpr):
+    elif isinstance(expr, ir2.IntUnaryMinusExpr):
         return int_unary_minus_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.IntListSumExpr):
+    elif isinstance(expr, ir2.IntListSumExpr):
         return int_list_sum_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.IntSetSumExpr):
+    elif isinstance(expr, ir2.IntSetSumExpr):
         return int_set_sum_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.BoolListAllExpr):
+    elif isinstance(expr, ir2.BoolListAllExpr):
         return bool_list_all_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.BoolSetAllExpr):
+    elif isinstance(expr, ir2.BoolSetAllExpr):
         return bool_set_all_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.BoolListAnyExpr):
+    elif isinstance(expr, ir2.BoolListAnyExpr):
         return bool_list_any_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.BoolSetAnyExpr):
+    elif isinstance(expr, ir2.BoolSetAnyExpr):
         return bool_set_any_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.IntComparisonExpr):
+    elif isinstance(expr, ir2.IntComparisonExpr):
         return int_comparison_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.IntBinaryOpExpr):
+    elif isinstance(expr, ir2.IntBinaryOpExpr):
         return int_binary_op_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.ListConcatExpr):
+    elif isinstance(expr, ir2.ListConcatExpr):
         return list_concat_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.ListComprehension):
+    elif isinstance(expr, ir2.ListComprehension):
         return list_comprehension_expr_to_ir1(expr, writer)
-    elif isinstance(expr, ir3.SetComprehension):
+    elif isinstance(expr, ir2.SetComprehension):
         return set_comprehension_expr_to_ir1(expr, writer)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
-def type_pattern_expr_to_ir1(expr: ir3.Expr, writer: StmtWriter) -> ir1.PatternExpr:
-    if isinstance(expr, ir3.VarReference):
+def type_pattern_expr_to_ir1(expr: ir2.Expr, writer: StmtWriter) -> ir1.PatternExpr:
+    if isinstance(expr, ir2.VarReference):
         return var_reference_to_ir1_pattern(expr, writer)
-    elif isinstance(expr, ir3.AtomicTypeLiteral):
+    elif isinstance(expr, ir2.AtomicTypeLiteral):
         return atomic_type_literal_to_ir1_type_pattern(expr, writer)
     # TODO: Re-enable this once it's possible to use bools in template instantiations.
-    # elif isinstance(expr, ir3.BoolLiteral):
+    # elif isinstance(expr, ir2.BoolLiteral):
     #     return bool_literal_to_ir1_type_pattern(expr, writer)
-    elif isinstance(expr, ir3.PointerTypeExpr):
+    elif isinstance(expr, ir2.PointerTypeExpr):
         return pointer_type_expr_to_ir1_type_pattern(expr, writer)
-    elif isinstance(expr, ir3.ReferenceTypeExpr):
+    elif isinstance(expr, ir2.ReferenceTypeExpr):
         return reference_type_expr_to_ir1_type_pattern(expr, writer)
-    elif isinstance(expr, ir3.RvalueReferenceTypeExpr):
+    elif isinstance(expr, ir2.RvalueReferenceTypeExpr):
         return rvalue_reference_type_expr_to_ir1_type_pattern(expr, writer)
-    elif isinstance(expr, ir3.ConstTypeExpr):
+    elif isinstance(expr, ir2.ConstTypeExpr):
         return const_type_expr_to_ir1_type_pattern(expr, writer)
-    elif isinstance(expr, ir3.ArrayTypeExpr):
+    elif isinstance(expr, ir2.ArrayTypeExpr):
         return array_type_expr_to_ir1_type_pattern(expr, writer)
-    elif isinstance(expr, ir3.FunctionTypeExpr):
+    elif isinstance(expr, ir2.FunctionTypeExpr):
         return function_type_expr_to_ir1_type_pattern(expr, writer)
-    elif isinstance(expr, ir3.TemplateInstantiationExpr):
+    elif isinstance(expr, ir2.TemplateInstantiationExpr):
         return template_instantiation_expr_to_ir1_type_pattern(expr, writer)
-    elif isinstance(expr, ir3.ListExpr):
+    elif isinstance(expr, ir2.ListExpr):
         return list_expr_to_ir1_type_pattern(expr, writer)
     else:
         raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
 
-def function_arg_decl_to_ir1(decl: ir3.FunctionArgDecl, writer: Writer):
+def function_arg_decl_to_ir1(decl: ir2.FunctionArgDecl, writer: Writer):
     return ir1.FunctionArgDecl(expr_type=type_to_ir1(decl.expr_type),
                                name=writer.obfuscate_identifier(decl.name))
 
-def var_reference_to_ir1(var: ir3.VarReference, writer: StmtWriter):
+def var_reference_to_ir1(var: ir2.VarReference, writer: StmtWriter):
     return ir1.VarReference(expr_type=type_to_ir1(var.expr_type),
                             name=var.name if var.is_global_function else writer.obfuscate_identifier(var.name),
                             is_global_function=var.is_global_function,
@@ -344,7 +344,7 @@ def _select_arbitrary_forwarded_arg(args: List[ir1.FunctionArgDecl]):
                             is_global_function=False,
                             is_function_that_may_throw=isinstance(selected_arg.expr_type, ir1.FunctionType))
 
-def match_expr_to_ir1(match_expr: ir3.MatchExpr, writer: StmtWriter):
+def match_expr_to_ir1(match_expr: ir2.MatchExpr, writer: StmtWriter):
     matched_vars = [expr_to_ir1(expr, writer)
                     for expr in match_expr.matched_exprs]
 
@@ -388,52 +388,52 @@ def match_expr_to_ir1(match_expr: ir3.MatchExpr, writer: StmtWriter):
 
     return writer.new_var_for_expr_with_error_checking(ir1.MatchExpr(matched_vars, match_cases))
 
-def bool_literal_to_ir1(literal: ir3.BoolLiteral, writer: StmtWriter):
+def bool_literal_to_ir1(literal: ir2.BoolLiteral, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.BoolLiteral(value=literal.value))
 
-def int_literal_to_ir1(literal: ir3.IntLiteral, writer: StmtWriter):
+def int_literal_to_ir1(literal: ir2.IntLiteral, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.IntLiteral(value=literal.value))
 
-def atomic_type_literal_to_ir1(literal: ir3.AtomicTypeLiteral, writer: StmtWriter):
+def atomic_type_literal_to_ir1(literal: ir2.AtomicTypeLiteral, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.AtomicTypeLiteral(cpp_type=literal.cpp_type))
 
-def pointer_type_expr_to_ir1(expr: ir3.PointerTypeExpr, writer: StmtWriter):
+def pointer_type_expr_to_ir1(expr: ir2.PointerTypeExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.PointerTypeExpr(expr_to_ir1(expr.type_expr, writer)))
 
-def reference_type_expr_to_ir1(expr: ir3.ReferenceTypeExpr, writer: StmtWriter):
+def reference_type_expr_to_ir1(expr: ir2.ReferenceTypeExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.ReferenceTypeExpr(expr_to_ir1(expr.type_expr, writer)))
 
-def rvalue_reference_type_expr_to_ir1(expr: ir3.RvalueReferenceTypeExpr, writer: StmtWriter):
+def rvalue_reference_type_expr_to_ir1(expr: ir2.RvalueReferenceTypeExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.RvalueReferenceTypeExpr(expr_to_ir1(expr.type_expr, writer)))
 
-def const_type_expr_to_ir1(expr: ir3.ConstTypeExpr, writer: StmtWriter):
+def const_type_expr_to_ir1(expr: ir2.ConstTypeExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.ConstTypeExpr(expr_to_ir1(expr.type_expr, writer)))
 
-def array_type_expr_to_ir1(expr: ir3.ArrayTypeExpr, writer: StmtWriter):
+def array_type_expr_to_ir1(expr: ir2.ArrayTypeExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.ArrayTypeExpr(expr_to_ir1(expr.type_expr, writer)))
 
-def function_type_expr_to_ir1(expr: ir3.FunctionTypeExpr, writer: StmtWriter):
+def function_type_expr_to_ir1(expr: ir2.FunctionTypeExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.FunctionTypeExpr(return_type_expr=expr_to_ir1(expr.return_type_expr, writer),
                                                         arg_list_expr=expr_to_ir1(expr.arg_list_expr, writer)))
 
-def template_instantiation_expr_to_ir1(expr: ir3.TemplateInstantiationExpr, writer: StmtWriter):
+def template_instantiation_expr_to_ir1(expr: ir2.TemplateInstantiationExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.TemplateInstantiationExpr(template_atomic_cpp_type=expr.template_atomic_cpp_type,
                                                                  arg_list_expr=expr_to_ir1(expr.arg_list_expr, writer)))
 
-def template_member_access_expr_to_ir1(expr: ir3.TemplateMemberAccessExpr, writer: StmtWriter):
+def template_member_access_expr_to_ir1(expr: ir2.TemplateMemberAccessExpr, writer: StmtWriter):
     return writer.new_var_for_expr(
         ir1.TemplateMemberAccessExpr(class_type_expr=expr_to_ir1(expr.class_type_expr, writer),
                                      member_name=expr.member_name,
                                      arg_list_expr=expr_to_ir1(expr.arg_list_expr, writer)))
 
-def list_expr_to_ir1(list_expr: ir3.ListExpr, writer: StmtWriter):
+def list_expr_to_ir1(list_expr: ir2.ListExpr, writer: StmtWriter):
     assert list_expr.list_extraction_expr is None
     elem_vars = [expr_to_ir1(elem_expr, writer)
                  for elem_expr in list_expr.elem_exprs]
     return writer.new_var_for_expr(ir1.ListExpr(elem_type=type_to_ir1(list_expr.elem_type),
                                                 elems=elem_vars))
 
-def set_expr_to_ir1(set_expr: ir3.SetExpr, writer: StmtWriter):
+def set_expr_to_ir1(set_expr: ir2.SetExpr, writer: StmtWriter):
     result = writer.new_var_for_expr(ir1.ListExpr(elem_type=type_to_ir1(set_expr.elem_type),
                                                   elems=[]))
 
@@ -444,7 +444,7 @@ def set_expr_to_ir1(set_expr: ir3.SetExpr, writer: StmtWriter):
                                                           elem_expr=var))
     return result
 
-def function_call_to_ir1(call_expr: ir3.FunctionCall, writer: StmtWriter):
+def function_call_to_ir1(call_expr: ir2.FunctionCall, writer: StmtWriter):
     fun_var = expr_to_ir1(call_expr.fun_expr, writer)
     arg_vars = [expr_to_ir1(arg_expr, writer)
                 for arg_expr in call_expr.args]
@@ -455,24 +455,24 @@ def function_call_to_ir1(call_expr: ir3.FunctionCall, writer: StmtWriter):
         return writer.new_var_for_expr(ir1.FunctionCall(fun=fun_var,
                                                         args=arg_vars))
 
-def equality_comparison_to_ir1(comparison_expr: ir3.EqualityComparison, writer: StmtWriter):
-    if isinstance(comparison_expr.lhs.expr_type, ir3.SetType):
+def equality_comparison_to_ir1(comparison_expr: ir2.EqualityComparison, writer: StmtWriter):
+    if isinstance(comparison_expr.lhs.expr_type, ir2.SetType):
         return writer.new_var_for_expr(ir1.SetEqualityComparison(lhs=expr_to_ir1(comparison_expr.lhs, writer),
                                                                  rhs=expr_to_ir1(comparison_expr.rhs, writer)))
     else:
         return writer.new_var_for_expr(ir1.EqualityComparison(lhs=expr_to_ir1(comparison_expr.lhs, writer),
                                                               rhs=expr_to_ir1(comparison_expr.rhs, writer)))
 
-def in_expr_to_ir1(expr: ir3.InExpr, writer: StmtWriter):
+def in_expr_to_ir1(expr: ir2.InExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.IsInListExpr(lhs=expr_to_ir1(expr.lhs, writer),
                                                     rhs=expr_to_ir1(expr.rhs, writer)))
 
-def attribute_access_expr_to_ir1(attribute_access_expr: ir3.AttributeAccessExpr, writer: StmtWriter):
+def attribute_access_expr_to_ir1(attribute_access_expr: ir2.AttributeAccessExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.AttributeAccessExpr(var=expr_to_ir1(attribute_access_expr.expr, writer),
                                                            attribute_name=attribute_access_expr.attribute_name,
                                                            expr_type=type_to_ir1(attribute_access_expr.expr_type)))
 
-def and_expr_to_ir1(expr: ir3.AndExpr, writer: StmtWriter):
+def and_expr_to_ir1(expr: ir2.AndExpr, writer: StmtWriter):
     # y = f() and g()
     #
     # becomes:
@@ -499,7 +499,7 @@ def and_expr_to_ir1(expr: ir3.AndExpr, writer: StmtWriter):
 
     return rhs_var
 
-def or_expr_to_ir1(expr: ir3.OrExpr, writer: StmtWriter):
+def or_expr_to_ir1(expr: ir2.OrExpr, writer: StmtWriter):
     # y = f() or g()
     #
     # becomes:
@@ -526,45 +526,45 @@ def or_expr_to_ir1(expr: ir3.OrExpr, writer: StmtWriter):
 
     return rhs_var
 
-def not_expr_to_ir1(expr: ir3.NotExpr, writer: StmtWriter):
+def not_expr_to_ir1(expr: ir2.NotExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.NotExpr(expr_to_ir1(expr.expr, writer)))
 
-def int_unary_minus_expr_to_ir1(expr: ir3.IntUnaryMinusExpr, writer: StmtWriter):
+def int_unary_minus_expr_to_ir1(expr: ir2.IntUnaryMinusExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.UnaryMinusExpr(expr_to_ir1(expr.expr, writer)))
 
-def int_list_sum_expr_to_ir1(expr: ir3.IntListSumExpr, writer: StmtWriter):
+def int_list_sum_expr_to_ir1(expr: ir2.IntListSumExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.IntListSumExpr(expr_to_ir1(expr.list_expr, writer)))
 
-def int_set_sum_expr_to_ir1(expr: ir3.IntSetSumExpr, writer: StmtWriter):
+def int_set_sum_expr_to_ir1(expr: ir2.IntSetSumExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.IntListSumExpr(expr_to_ir1(expr.set_expr, writer)))
 
-def bool_list_all_expr_to_ir1(expr: ir3.BoolListAllExpr, writer: StmtWriter):
+def bool_list_all_expr_to_ir1(expr: ir2.BoolListAllExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.BoolListAllExpr(expr_to_ir1(expr.list_expr, writer)))
 
-def bool_set_all_expr_to_ir1(expr: ir3.BoolSetAllExpr, writer: StmtWriter):
+def bool_set_all_expr_to_ir1(expr: ir2.BoolSetAllExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.BoolListAllExpr(expr_to_ir1(expr.set_expr, writer)))
 
-def bool_list_any_expr_to_ir1(expr: ir3.BoolListAnyExpr, writer: StmtWriter):
+def bool_list_any_expr_to_ir1(expr: ir2.BoolListAnyExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.BoolListAnyExpr(expr_to_ir1(expr.list_expr, writer)))
 
-def bool_set_any_expr_to_ir1(expr: ir3.BoolSetAnyExpr, writer: StmtWriter):
+def bool_set_any_expr_to_ir1(expr: ir2.BoolSetAnyExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.BoolListAnyExpr(expr_to_ir1(expr.set_expr, writer)))
 
-def int_comparison_expr_to_ir1(expr: ir3.IntComparisonExpr, writer: StmtWriter):
+def int_comparison_expr_to_ir1(expr: ir2.IntComparisonExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.IntComparisonExpr(lhs=expr_to_ir1(expr.lhs, writer),
                                                          rhs=expr_to_ir1(expr.rhs, writer),
                                                          op=expr.op))
 
-def int_binary_op_expr_to_ir1(expr: ir3.IntBinaryOpExpr, writer: StmtWriter):
+def int_binary_op_expr_to_ir1(expr: ir2.IntBinaryOpExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.IntBinaryOpExpr(lhs=expr_to_ir1(expr.lhs, writer),
                                                        rhs=expr_to_ir1(expr.rhs, writer),
                                                        op=expr.op))
 
-def list_concat_expr_to_ir1(expr: ir3.ListConcatExpr, writer: StmtWriter):
+def list_concat_expr_to_ir1(expr: ir2.ListConcatExpr, writer: StmtWriter):
     return writer.new_var_for_expr(ir1.ListConcatExpr(lhs=expr_to_ir1(expr.lhs, writer),
                                                       rhs=expr_to_ir1(expr.rhs, writer)))
 
-def deconstructed_list_comprehension_expr_to_ir1(list_var: ir3.VarReference,
+def deconstructed_list_comprehension_expr_to_ir1(list_var: ir2.VarReference,
                                                  loop_var: ir1.VarReference,
                                                  result_elem_expr: ir1.Expr,
                                                  writer: StmtWriter):
@@ -617,7 +617,7 @@ def deconstructed_list_comprehension_expr_to_ir1(list_var: ir3.VarReference,
                                                                                  result_elem_expr=helper_fun_call))
 
 
-def list_comprehension_expr_to_ir1(expr: ir3.ListComprehension, writer: StmtWriter):
+def list_comprehension_expr_to_ir1(expr: ir2.ListComprehension, writer: StmtWriter):
     l_var = expr_to_ir1(expr.list_expr, writer)
 
     return deconstructed_list_comprehension_expr_to_ir1(list_var=l_var,
@@ -626,7 +626,7 @@ def list_comprehension_expr_to_ir1(expr: ir3.ListComprehension, writer: StmtWrit
                                                         writer=writer)
 
 
-def set_comprehension_expr_to_ir1(expr: ir3.SetComprehension, writer: StmtWriter):
+def set_comprehension_expr_to_ir1(expr: ir2.SetComprehension, writer: StmtWriter):
     # {f(x, y) * 2
     #  for x in s}
     #
@@ -647,60 +647,60 @@ def set_comprehension_expr_to_ir1(expr: ir3.SetComprehension, writer: StmtWriter
 
     return writer.new_var_for_expr(ir1.ListToSetExpr(l2_var))
 
-def var_reference_to_ir1_pattern(var: ir3.VarReference, writer: StmtWriter):
+def var_reference_to_ir1_pattern(var: ir2.VarReference, writer: StmtWriter):
     return ir1.VarReferencePattern(expr_type=type_to_ir1(var.expr_type),
                                    name=var.name if var.is_global_function else writer.obfuscate_identifier(var.name),
                                    is_global_function=var.is_global_function,
                                    is_function_that_may_throw=var.is_function_that_may_throw)
 
-def atomic_type_literal_to_ir1_type_pattern(expr: ir3.AtomicTypeLiteral, writer: StmtWriter):
+def atomic_type_literal_to_ir1_type_pattern(expr: ir2.AtomicTypeLiteral, writer: StmtWriter):
     return ir1.AtomicTypeLiteralPattern(expr.cpp_type)
 
 # TODO: Re-enable this once it's possible to use bools in template instantiations.
-# def bool_literal_to_ir1_type_pattern(expr: ir3.BoolLiteral, writer: StmtWriter):
+# def bool_literal_to_ir1_type_pattern(expr: ir2.BoolLiteral, writer: StmtWriter):
 #     return ir1.BoolLiteral(expr.value)
 
-def pointer_type_expr_to_ir1_type_pattern(expr: ir3.PointerTypeExpr, writer: StmtWriter):
+def pointer_type_expr_to_ir1_type_pattern(expr: ir2.PointerTypeExpr, writer: StmtWriter):
     return ir1.PointerTypePatternExpr(type_pattern_expr_to_ir1(expr.type_expr, writer))
 
-def reference_type_expr_to_ir1_type_pattern(expr: ir3.ReferenceTypeExpr, writer: StmtWriter):
+def reference_type_expr_to_ir1_type_pattern(expr: ir2.ReferenceTypeExpr, writer: StmtWriter):
     return ir1.ReferenceTypePatternExpr(type_pattern_expr_to_ir1(expr.type_expr, writer))
 
-def rvalue_reference_type_expr_to_ir1_type_pattern(expr: ir3.RvalueReferenceTypeExpr, writer: StmtWriter):
+def rvalue_reference_type_expr_to_ir1_type_pattern(expr: ir2.RvalueReferenceTypeExpr, writer: StmtWriter):
     return ir1.RvalueReferenceTypePatternExpr(type_pattern_expr_to_ir1(expr.type_expr, writer))
 
-def const_type_expr_to_ir1_type_pattern(expr: ir3.ConstTypeExpr, writer: StmtWriter):
+def const_type_expr_to_ir1_type_pattern(expr: ir2.ConstTypeExpr, writer: StmtWriter):
     return ir1.ConstTypePatternExpr(type_pattern_expr_to_ir1(expr.type_expr, writer))
 
-def array_type_expr_to_ir1_type_pattern(expr: ir3.ArrayTypeExpr, writer: StmtWriter):
+def array_type_expr_to_ir1_type_pattern(expr: ir2.ArrayTypeExpr, writer: StmtWriter):
     return ir1.ArrayTypePatternExpr(type_pattern_expr_to_ir1(expr.type_expr, writer))
 
-def function_type_expr_to_ir1_type_pattern(expr: ir3.FunctionTypeExpr, writer: StmtWriter):
+def function_type_expr_to_ir1_type_pattern(expr: ir2.FunctionTypeExpr, writer: StmtWriter):
     return ir1.FunctionTypePatternExpr(return_type_expr=type_pattern_expr_to_ir1(expr.return_type_expr, writer),
                                        arg_list_expr=type_pattern_expr_to_ir1(expr.arg_list_expr, writer))
 
-def template_instantiation_expr_to_ir1_type_pattern(expr: ir3.TemplateInstantiationExpr, writer: StmtWriter):
+def template_instantiation_expr_to_ir1_type_pattern(expr: ir2.TemplateInstantiationExpr, writer: StmtWriter):
     # This is the only ListExpr that's allowed in a template instantiation in a pattern.
-    assert isinstance(expr.arg_list_expr, ir3.ListExpr)
+    assert isinstance(expr.arg_list_expr, ir2.ListExpr)
     arg_exprs = [type_pattern_expr_to_ir1(arg_expr, writer) for arg_expr in expr.arg_list_expr.elem_exprs]
     list_extraction_expr = expr.arg_list_expr.list_extraction_expr
     return ir1.TemplateInstantiationPatternExpr(template_atomic_cpp_type=expr.template_atomic_cpp_type,
                                                 arg_exprs=arg_exprs,
                                                 list_extraction_arg_expr=var_reference_to_ir1_pattern(list_extraction_expr, writer) if list_extraction_expr else None)
 
-def list_expr_to_ir1_type_pattern(expr: ir3.ListExpr, writer: StmtWriter):
+def list_expr_to_ir1_type_pattern(expr: ir2.ListExpr, writer: StmtWriter):
     return ir1.ListPatternExpr(elem_type=type_to_ir1(expr.elem_type),
                                elems=[type_pattern_expr_to_ir1(elem_expr, writer)
                                       for elem_expr in expr.elem_exprs],
                                list_extraction_expr = var_reference_to_ir1(expr.list_extraction_expr, writer)
                                if expr.list_extraction_expr else None)
 
-def assert_to_ir1(assert_stmt: ir3.Assert, writer: StmtWriter):
+def assert_to_ir1(assert_stmt: ir2.Assert, writer: StmtWriter):
     writer.write_stmt(ir1.Assert(var=expr_to_ir1(assert_stmt.expr, writer),
                                  message=assert_stmt.message))
 
-def try_except_stmt_to_ir1(try_except_stmt: ir3.TryExcept,
-                           then_stmts: List[ir3.Stmt],
+def try_except_stmt_to_ir1(try_except_stmt: ir2.TryExcept,
+                           then_stmts: List[ir2.Stmt],
                            writer: StmtWriter):
     # try:
     #   x = f()
@@ -819,21 +819,21 @@ def try_except_stmt_to_ir1(try_except_stmt: ir3.TryExcept,
         writer.write_stmt(ir1.ReturnStmt(result=writer.new_var_for_expr_with_error_checking(then_fun_call_expr),
                                          error=None))
 
-def assignment_to_ir1(assignment: ir3.Assignment, writer: StmtWriter):
+def assignment_to_ir1(assignment: ir2.Assignment, writer: StmtWriter):
     writer.write_stmt(ir1.Assignment(lhs=var_reference_to_ir1(assignment.lhs, writer),
                                      rhs=expr_to_ir1(assignment.rhs, writer)))
 
-def unpacking_assignment_to_ir1(assignment: ir3.UnpackingAssignment, writer: StmtWriter):
+def unpacking_assignment_to_ir1(assignment: ir2.UnpackingAssignment, writer: StmtWriter):
     writer.write_stmt(ir1.UnpackingAssignment(lhs_list=[var_reference_to_ir1(var, writer)
                                                         for var in assignment.lhs_list],
                                               rhs=expr_to_ir1(assignment.rhs, writer),
                                               error_message=assignment.error_message))
 
-def return_stmt_to_ir1(return_stmt: ir3.ReturnStmt, writer: StmtWriter):
+def return_stmt_to_ir1(return_stmt: ir2.ReturnStmt, writer: StmtWriter):
     writer.write_stmt(ir1.ReturnStmt(result=expr_to_ir1(return_stmt.expr, writer),
                                      error=None))
 
-def raise_stmt_to_ir1(raise_stmt: ir3.RaiseStmt, writer: StmtWriter):
+def raise_stmt_to_ir1(raise_stmt: ir2.RaiseStmt, writer: StmtWriter):
     exception_expr = expr_to_ir1(raise_stmt.expr, writer)
     for context in writer.try_except_contexts:
         if context.caught_exception_type == exception_expr.expr_type:
@@ -867,7 +867,7 @@ def raise_stmt_to_ir1(raise_stmt: ir3.RaiseStmt, writer: StmtWriter):
         writer.write_stmt(ir1.ReturnStmt(result=None,
                                          error=exception_expr))
 
-def if_stmt_to_ir1(if_stmt: ir3.IfStmt, writer: StmtWriter):
+def if_stmt_to_ir1(if_stmt: ir2.IfStmt, writer: StmtWriter):
     cond_var = expr_to_ir1(if_stmt.cond_expr, writer)
 
     if_branch_writer = StmtWriter(writer.fun_writer,
@@ -888,27 +888,27 @@ def if_stmt_to_ir1(if_stmt: ir3.IfStmt, writer: StmtWriter):
                                  if_stmts=if_branch_writer.stmts,
                                  else_stmts=else_branch_writer.stmts))
 
-def stmts_to_ir1(stmts: List[ir3.Stmt], writer: StmtWriter):
+def stmts_to_ir1(stmts: List[ir2.Stmt], writer: StmtWriter):
     for index, stmt in enumerate(stmts):
-        if isinstance(stmt, ir3.IfStmt):
+        if isinstance(stmt, ir2.IfStmt):
             if_stmt_to_ir1(stmt, writer)
-        elif isinstance(stmt, ir3.Assignment):
+        elif isinstance(stmt, ir2.Assignment):
             assignment_to_ir1(stmt, writer)
-        elif isinstance(stmt, ir3.UnpackingAssignment):
+        elif isinstance(stmt, ir2.UnpackingAssignment):
             unpacking_assignment_to_ir1(stmt, writer)
-        elif isinstance(stmt, ir3.ReturnStmt):
+        elif isinstance(stmt, ir2.ReturnStmt):
             return_stmt_to_ir1(stmt, writer)
-        elif isinstance(stmt, ir3.RaiseStmt):
+        elif isinstance(stmt, ir2.RaiseStmt):
             raise_stmt_to_ir1(stmt, writer)
-        elif isinstance(stmt, ir3.Assert):
+        elif isinstance(stmt, ir2.Assert):
             assert_to_ir1(stmt, writer)
-        elif isinstance(stmt, ir3.TryExcept):
+        elif isinstance(stmt, ir2.TryExcept):
             try_except_stmt_to_ir1(stmt, stmts[index + 1:], writer)
             return
         else:
             raise NotImplementedError('Unexpected statement: %s' % str(stmt.__class__))
 
-def function_defn_to_ir1(function_defn: ir3.FunctionDefn, writer: FunWriter):
+def function_defn_to_ir1(function_defn: ir2.FunctionDefn, writer: FunWriter):
     return_type = type_to_ir1(function_defn.return_type)
     arg_decls = [function_arg_decl_to_ir1(arg, writer) for arg in function_defn.args]
 
@@ -921,7 +921,7 @@ def function_defn_to_ir1(function_defn: ir3.FunctionDefn, writer: FunWriter):
                                            body=stmt_writer.stmts,
                                            return_type=return_type))
 
-def module_to_ir1(module: ir3.Module, identifier_generator: Iterator[str]):
+def module_to_ir1(module: ir2.Module, identifier_generator: Iterator[str]):
     writer = FunWriter(identifier_generator)
     for function_defn in module.function_defns:
         function_defn_to_ir1(function_defn, writer)

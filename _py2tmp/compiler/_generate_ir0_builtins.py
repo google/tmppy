@@ -598,7 +598,7 @@ def main():
     [module_info] = object_file_content.modules_by_name.values()
     assert isinstance(module_info, ModuleInfo)
 
-    module_info = ModuleInfo(ir3_module=module_info.ir3_module,
+    module_info = ModuleInfo(ir2_module=module_info.ir2_module,
                              ir0_header=ir0.Header(template_defns=BUILTIN_TEMPLATES + list(module_info.ir0_header.template_defns),
                                                    check_if_error_specializations=module_info.ir0_header.check_if_error_specializations,
                                                    toplevel_content=module_info.ir0_header.toplevel_content,

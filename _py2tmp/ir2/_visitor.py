@@ -13,7 +13,7 @@
 # limitations under the License.
 import itertools
 
-from _py2tmp.ir3 import ir
+from _py2tmp.ir2 import ir
 
 class Visitor:
     def visit_custom_type_defn(self, custom_type: ir.CustomType):

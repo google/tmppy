@@ -11,7 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from _py2tmp.compiler.output_files import ObjectFileContent
+from _py2tmp.ir2 import ir2
+from _py2tmp.ir2_optimization._recalculate_function_can_throw_info import recalculate_function_can_throw_info
 
-from . import ir as ir3
-from ._transformation import Transformation
-from ._free_variables import get_free_variables
+
+def optimize_module(module: ir2.Module, context_object_file_content: ObjectFileContent):
+    module = recalculate_function_can_throw_info(module, context_object_file_content)
+    return module
