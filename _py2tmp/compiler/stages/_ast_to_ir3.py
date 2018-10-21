@@ -18,8 +18,9 @@ from typing import List, Tuple, Dict, Optional, Union, Callable, Iterator, Set
 
 import typed_ast.ast3 as ast
 
-from _py2tmp.ir3 import ir3
 from _py2tmp.compiler.output_files import ObjectFileContent
+from _py2tmp.ir3 import ir3, get_free_variables
+from _py2tmp.ir3._return_type import get_return_type
 
 
 class Symbol:
@@ -445,7 +446,7 @@ def match_expression_ast_to_ir3(ast_node: ast.Call,
 
         lambda_args_used_in_pattern = {var.name: var.expr_type
                                        for pattern_expr in pattern_exprs
-                                       for var in pattern_expr.get_free_variables()
+                                       for var in get_free_variables(pattern_expr).values()
                                        if var.name in lambda_arg_names}
         for var in lambda_args_used_in_pattern.keys():
             unused_lambda_arg_names.discard(var)
@@ -563,14 +564,8 @@ def _join_definitions_in_branches(parent_context: CompilationContext,
                                   branch1_stmts: List[ir3.Stmt],
                                   branch2_context: CompilationContext,
                                   branch2_stmts: List[ir3.Stmt]):
-    if branch1_stmts:
-        branch1_return_info = branch1_stmts[-1].get_return_type()
-    else:
-        branch1_return_info = ir3.ReturnTypeInfo(expr_type=None, always_returns=False)
-    if branch2_stmts:
-        branch2_return_info = branch2_stmts[-1].get_return_type()
-    else:
-        branch2_return_info = ir3.ReturnTypeInfo(expr_type=None, always_returns=False)
+    branch1_return_info = get_return_type(branch1_stmts)
+    branch2_return_info = get_return_type(branch2_stmts)
 
     symbol_names = set()
     if not branch1_return_info.always_returns:
@@ -724,7 +719,7 @@ def statements_ast_to_ir3(ast_nodes: List[ast.AST],
     statements = []
     first_return_stmt = None
     for statement_node in ast_nodes:
-        if statements and statements[-1].get_return_type().always_returns:
+        if get_return_type(statements).always_returns:
             raise CompilationError(compilation_context, statement_node, 'Unreachable statement.')
 
         check_stmt_always_returns = check_block_always_returns and statement_node is ast_nodes[-1]
@@ -778,7 +773,7 @@ def statements_ast_to_ir3(ast_nodes: List[ast.AST],
         else:
             raise CompilationError(compilation_context, statement_node, 'Unsupported statement.')
 
-    if check_block_always_returns and not statements[-1].get_return_type().always_returns:
+    if check_block_always_returns and not get_return_type(statements).always_returns:
         raise CompilationError(compilation_context, ast_nodes[-1],
                                'Missing return statement.')
 

@@ -18,6 +18,9 @@ from _py2tmp.ir3 import ir3
 from typing import List, Iterator, Optional, Dict
 from contextlib import contextmanager
 
+from _py2tmp.ir3._return_type import get_return_type
+
+
 class Writer:
     def obfuscate_identifier(self, identifier: str) -> str: ...  # pragma: no cover
 
@@ -781,8 +784,7 @@ def try_except_stmt_to_ir2(try_except_stmt: ir3.TryExcept,
                                      writer.current_fun_return_type,
                                      writer.try_except_contexts)
     stmts_to_ir2(try_except_stmt.except_body, except_stmts_writer)
-    if then_fun_call_expr and not (try_except_stmt.except_body
-                                   and try_except_stmt.except_body[-1].get_return_type().always_returns):
+    if then_fun_call_expr and not get_return_type(try_except_stmt.except_body).always_returns:
         except_stmts_writer.write_stmt(
             ir2.ReturnStmt(result=except_stmts_writer.new_var_for_expr_with_error_checking(then_fun_call_expr),
                            error=None))
@@ -812,8 +814,7 @@ def try_except_stmt_to_ir2(try_except_stmt: ir3.TryExcept,
                                                           except_fun_call_expr)):
         stmts_to_ir2(try_except_stmt.try_body, writer)
 
-    if then_fun_call_expr and not (try_except_stmt.try_body
-                                   and try_except_stmt.try_body[-1].get_return_type().always_returns):
+    if then_fun_call_expr and not get_return_type(try_except_stmt.try_body).always_returns:
         writer.write_stmt(ir2.ReturnStmt(result=writer.new_var_for_expr_with_error_checking(then_fun_call_expr),
                                          error=None))
 

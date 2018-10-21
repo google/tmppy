@@ -14,3 +14,4 @@
 
 from . import ir as ir3
 from ._transformation import Transformation
+from ._free_variables import get_free_variables
