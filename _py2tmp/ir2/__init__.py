@@ -15,3 +15,4 @@
 from . import ir as ir2
 from ._transformation import Transformation
 from ._free_variables import get_free_variables
+from ._return_type import get_return_type

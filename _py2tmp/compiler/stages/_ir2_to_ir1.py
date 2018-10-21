@@ -13,13 +13,12 @@
 # limitations under the License.
 
 from collections import defaultdict
+from contextlib import contextmanager
+from typing import List, Iterator, Optional, Dict
+
 from _py2tmp.ir1 import ir1
 from _py2tmp.ir1.free_variables import get_unique_free_variables_in_stmts
-from _py2tmp.ir2 import ir2
-from typing import List, Iterator, Optional, Dict
-from contextlib import contextmanager
-
-from _py2tmp.ir2._return_type import get_return_type
+from _py2tmp.ir2 import ir2, get_return_type
 
 
 class Writer:
