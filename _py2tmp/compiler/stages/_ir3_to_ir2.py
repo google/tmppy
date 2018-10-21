@@ -14,6 +14,7 @@
 
 from collections import defaultdict
 from _py2tmp.ir2 import ir2
+from _py2tmp.ir2.free_variables import get_unique_free_variables_in_stmts
 from _py2tmp.ir3 import ir3
 from typing import List, Iterator, Optional, Dict
 from contextlib import contextmanager
@@ -357,7 +358,7 @@ def match_expr_to_ir2(match_expr: ir3.MatchExpr, writer: StmtWriter):
         match_case_var = expr_to_ir2(match_case.expr, match_case_writer)
         match_case_writer.write_stmt(ir2.ReturnStmt(result=match_case_var, error=None))
 
-        forwarded_vars = ir2.get_unique_free_variables_in_stmts(match_case_writer.stmts)
+        forwarded_vars = get_unique_free_variables_in_stmts(match_case_writer.stmts)
 
         if not forwarded_vars:
             forwarded_vars = [_select_arbitrary_forwarded_arg(writer.current_fun_args)]
@@ -589,7 +590,7 @@ def deconstructed_list_comprehension_expr_to_ir2(list_var: ir3.VarReference,
                                    try_except_contexts=[])
     helper_fun_writer.write_stmt(ir2.ReturnStmt(result=expr_to_ir2(result_elem_expr, helper_fun_writer),
                                                 error=None))
-    forwarded_vars = ir2.get_unique_free_variables_in_stmts(helper_fun_writer.stmts)
+    forwarded_vars = get_unique_free_variables_in_stmts(helper_fun_writer.stmts)
     if not forwarded_vars:
         if writer.current_fun_args:
             forwarded_vars = [_select_arbitrary_forwarded_arg(writer.current_fun_args)]
@@ -756,7 +757,7 @@ def try_except_stmt_to_ir2(try_except_stmt: ir3.TryExcept,
                                        writer.try_except_contexts)
         stmts_to_ir2(then_stmts, then_stmts_writer)
 
-        then_fun_forwarded_vars = ir2.get_unique_free_variables_in_stmts(then_stmts_writer.stmts)
+        then_fun_forwarded_vars = get_unique_free_variables_in_stmts(then_stmts_writer.stmts)
         if not then_fun_forwarded_vars:
             then_fun_forwarded_vars = [_select_arbitrary_forwarded_arg(writer.current_fun_args)]
 
@@ -789,7 +790,7 @@ def try_except_stmt_to_ir2(try_except_stmt: ir3.TryExcept,
             ir2.ReturnStmt(result=except_stmts_writer.new_var_for_expr_with_error_checking(then_fun_call_expr),
                            error=None))
 
-    except_fun_forwarded_vars = ir2.get_unique_free_variables_in_stmts(except_stmts_writer.stmts)
+    except_fun_forwarded_vars = get_unique_free_variables_in_stmts(except_stmts_writer.stmts)
     if not except_fun_forwarded_vars:
         except_fun_forwarded_vars = [_select_arbitrary_forwarded_arg(writer.current_fun_args)]
 

@@ -117,10 +117,6 @@ class Expr:
     def __init__(self, expr_type: ExprType):
         self.expr_type = expr_type
 
-    # Note: it's the caller's responsibility to de-duplicate VarReference objects that reference the same symbol, if
-    # desired.
-    def get_free_variables(self) -> 'Iterable[VarReference]': ...  # pragma: no cover
-
     def __str__(self) -> str: ...  # pragma: no cover
 
     def describe_other_fields(self) -> str: ...  # pragma: no cover
@@ -128,10 +124,6 @@ class Expr:
 class PatternExpr:
     def __init__(self, expr_type: ExprType):
         self.expr_type = expr_type
-
-    # Note: it's the caller's responsibility to de-duplicate VarReference objects that reference the same symbol, if
-    # desired.
-    def get_free_variables(self) -> 'Iterable[VarReference]': ...  # pragma: no cover
 
     def __str__(self) -> str: ...  # pragma: no cover
 
@@ -153,10 +145,6 @@ class VarReference(Expr):
         self.is_global_function = is_global_function
         self.is_function_that_may_throw = is_function_that_may_throw
 
-    def get_free_variables(self):
-        if not self.is_global_function:
-            yield self
-
     def __str__(self):
         return self.name
 
@@ -172,10 +160,6 @@ class VarReferencePattern(PatternExpr):
         self.name = name
         self.is_global_function = is_global_function
         self.is_function_that_may_throw = is_function_that_may_throw
-
-    def get_free_variables(self):
-        if not self.is_global_function:
-            yield self
 
     def __str__(self):
         return self.name
@@ -223,16 +207,6 @@ class MatchExpr(Expr):
                     for match_case in match_cases
                     if match_case.is_main_definition()]) <= 1
 
-    def get_free_variables(self):
-        for expr in self.matched_vars:
-            for var in expr.get_free_variables():
-                yield var
-        for match_case in self.match_cases:
-            local_vars = set(match_case.matched_var_names)
-            for var in match_case.expr.get_free_variables():
-                if var.name not in local_vars:
-                    yield var
-
     def write(self, writer: Writer):
         writer.writeln('match(%s)({' % ', '.join(var.name
                                                  for var in self.matched_vars))
@@ -249,10 +223,6 @@ class BoolLiteral(Expr):
         super().__init__(BoolType())
         self.value = value
 
-    def get_free_variables(self):
-        if False:
-            yield  # pragma: no cover
-
     def __str__(self):
         return repr(self.value)
 
@@ -264,10 +234,6 @@ class AtomicTypeLiteral(Expr):
         super().__init__(expr_type=TypeType())
         self.cpp_type = cpp_type
 
-    def get_free_variables(self):
-        if False:
-            yield  # pragma: no cover
-
     def __str__(self):
         return 'Type(\'%s\')' % self.cpp_type
 
@@ -278,10 +244,6 @@ class AtomicTypeLiteralPattern(PatternExpr):
     def __init__(self, cpp_type: str):
         super().__init__(expr_type=TypeType())
         self.cpp_type = cpp_type
-
-    def get_free_variables(self):
-        if False:
-            yield  # pragma: no cover
 
     def __str__(self):
         return 'Type(\'%s\')' % self.cpp_type
@@ -295,10 +257,6 @@ class PointerTypeExpr(Expr):
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
-
     def __str__(self):
         return 'Type.pointer(%s)' % str(self.type_expr)
 
@@ -310,10 +268,6 @@ class PointerTypePatternExpr(PatternExpr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
-
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
 
     def __str__(self):
         return 'Type.pointer(%s)' % str(self.type_expr)
@@ -327,10 +281,6 @@ class ReferenceTypeExpr(Expr):
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
-
     def __str__(self):
         return 'Type.reference(%s)' % str(self.type_expr)
 
@@ -342,10 +292,6 @@ class ReferenceTypePatternExpr(PatternExpr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
-
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
 
     def __str__(self):
         return 'Type.reference(%s)' % str(self.type_expr)
@@ -359,10 +305,6 @@ class RvalueReferenceTypeExpr(Expr):
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
-
     def __str__(self):
         return 'Type.rvalue_reference(%s)' % str(self.type_expr)
 
@@ -374,10 +316,6 @@ class RvalueReferenceTypePatternExpr(PatternExpr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
-
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
 
     def __str__(self):
         return 'Type.rvalue_reference(%s)' % str(self.type_expr)
@@ -391,10 +329,6 @@ class ConstTypeExpr(Expr):
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
-
     def __str__(self):
         return 'Type.const(%s)' % str(self.type_expr)
 
@@ -406,10 +340,6 @@ class ConstTypePatternExpr(PatternExpr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
-
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
 
     def __str__(self):
         return 'Type.const(%s)' % str(self.type_expr)
@@ -423,10 +353,6 @@ class ArrayTypeExpr(Expr):
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
 
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
-
     def __str__(self):
         return 'Type.array(%s)' % str(self.type_expr)
 
@@ -438,10 +364,6 @@ class ArrayTypePatternExpr(PatternExpr):
         super().__init__(expr_type=TypeType())
         assert type_expr.expr_type == TypeType()
         self.type_expr = type_expr
-
-    def get_free_variables(self):
-        for var in self.type_expr.get_free_variables():
-            yield var
 
     def __str__(self):
         return 'Type.array(%s)' % str(self.type_expr)
@@ -457,11 +379,6 @@ class FunctionTypeExpr(Expr):
         super().__init__(expr_type=TypeType())
         self.return_type_expr = return_type_expr
         self.arg_list_expr = arg_list_expr
-
-    def get_free_variables(self):
-        for expr in (self.return_type_expr, self.arg_list_expr):
-            for var in expr.get_free_variables():
-                yield var
 
     def __str__(self):
         return 'Type.function(%s, %s)' % (str(self.return_type_expr), str(self.arg_list_expr))
@@ -479,11 +396,6 @@ class FunctionTypePatternExpr(PatternExpr):
         self.return_type_expr = return_type_expr
         self.arg_list_expr = arg_list_expr
 
-    def get_free_variables(self):
-        for expr in (self.return_type_expr, self.arg_list_expr):
-            for var in expr.get_free_variables():
-                yield var
-
     def __str__(self):
         return 'Type.function(%s, %s)' % (str(self.return_type_expr), str(self.arg_list_expr))
 
@@ -499,10 +411,6 @@ class TemplateInstantiationExpr(Expr):
         super().__init__(expr_type=TypeType())
         self.template_atomic_cpp_type = template_atomic_cpp_type
         self.arg_list_expr = arg_list_expr
-
-    def get_free_variables(self):
-        for var in self.arg_list_expr.get_free_variables():
-            yield var
 
     def __str__(self):
         return 'Type.template_instantiation(\'%s\', %s)' % (self.template_atomic_cpp_type, str(self.arg_list_expr))
@@ -522,13 +430,6 @@ class TemplateInstantiationPatternExpr(PatternExpr):
         self.template_atomic_cpp_type = template_atomic_cpp_type
         self.arg_exprs = arg_exprs
         self.list_extraction_arg_expr = list_extraction_arg_expr
-
-    def get_free_variables(self):
-        for expr in self.arg_exprs:
-            for var in expr.get_free_variables():
-                yield var
-        if self.list_extraction_arg_expr:
-            yield self.list_extraction_arg_expr
 
     def __str__(self):
         return 'Type.template_instantiation(\'%s\', [%s%s])' % (self.template_atomic_cpp_type,
@@ -551,11 +452,6 @@ class TemplateMemberAccessExpr(Expr):
         self.member_name = member_name
         self.arg_list_expr = arg_list_expr
 
-    def get_free_variables(self):
-        for expr in (self.class_type_expr, self.arg_list_expr):
-            for var in expr.get_free_variables():
-                yield var
-
     def __str__(self):
         return 'Type.template_member(%s, \'%s\', %s)' % (str(self.class_type_expr),
                                                          self.member_name,
@@ -572,11 +468,6 @@ class ListExpr(Expr):
         self.elem_type = elem_type
         self.elems = elems
 
-    def get_free_variables(self):
-        for expr in self.elems:
-            for var in expr.get_free_variables():
-                yield var
-
     def __str__(self):
         return '[%s]' % ', '.join(var.name
                                   for var in self.elems)
@@ -591,11 +482,6 @@ class ListPatternExpr(PatternExpr):
         self.elem_type = elem_type
         self.elems = elems
         self.list_extraction_expr = list_extraction_expr
-
-    def get_free_variables(self):
-        for expr in self.elems:
-            for var in expr.get_free_variables():
-                yield var
 
     def __str__(self):
         return '[%s]' % ', '.join(str(elem)
@@ -613,11 +499,6 @@ class AddToSetExpr(Expr):
         self.set_expr = set_expr
         self.elem_expr = elem_expr
 
-    def get_free_variables(self):
-        for expr in (self.set_expr, self.elem_expr):
-            for var in expr.get_free_variables():
-                yield var
-
     def __str__(self):
         return 'add_to_set(%s, %s)' % (
             str(self.set_expr),
@@ -632,10 +513,6 @@ class SetToListExpr(Expr):
         super().__init__(expr_type=ListType(elem_type=var.expr_type.elem_type))
         self.var = var
 
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
-
     def __str__(self):
         return 'set_to_list(%s)' % self.var.name
 
@@ -647,10 +524,6 @@ class ListToSetExpr(Expr):
         assert isinstance(var.expr_type, ListType)
         super().__init__(expr_type=ListType(elem_type=var.expr_type.elem_type))
         self.var = var
-
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
 
     def __str__(self):
         return 'list_to_set(%s)' % self.var.name
@@ -666,13 +539,6 @@ class FunctionCall(Expr):
         super().__init__(expr_type=fun.expr_type.returns)
         self.fun = fun
         self.args = args
-
-    def get_free_variables(self):
-        for var in self.fun.get_free_variables():
-            yield var
-        for expr in self.args:
-            for var in expr.get_free_variables():
-                yield var
 
     def __str__(self):
         return '%s(%s)' % (
@@ -694,11 +560,6 @@ class EqualityComparison(Expr):
         self.lhs = lhs
         self.rhs = rhs
 
-    def get_free_variables(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_variables():
-                yield var
-
     def __str__(self):
         return '%s == %s' % (self.lhs.name, self.rhs.name)
 
@@ -712,11 +573,6 @@ class SetEqualityComparison(Expr):
         assert lhs.expr_type == rhs.expr_type
         self.lhs = lhs
         self.rhs = rhs
-
-    def get_free_variables(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_variables():
-                yield var
 
     def __str__(self):
         return 'set_equals(%s, %s)' % (self.lhs.name, self.rhs.name)
@@ -732,11 +588,6 @@ class IsInListExpr(Expr):
         self.lhs = lhs
         self.rhs = rhs
 
-    def get_free_variables(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_variables():
-                yield var
-
     def __str__(self):
         return '%s in %s' % (self.lhs.name, self.rhs.name)
 
@@ -751,10 +602,6 @@ class AttributeAccessExpr(Expr):
         self.attribute_name = attribute_name
         self.expr_type = expr_type
 
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
-
     def __str__(self):
         return '%s.%s' % (self.var.name, self.attribute_name)
 
@@ -765,10 +612,6 @@ class IntLiteral(Expr):
     def __init__(self, value: int):
         super().__init__(expr_type=IntType())
         self.value = value
-
-    def get_free_variables(self):
-        if False:
-            yield  # pragma: no cover
 
     def __str__(self):
         return str(self.value)
@@ -782,10 +625,6 @@ class NotExpr(Expr):
         super().__init__(expr_type=BoolType())
         self.var = var
 
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
-
     def __str__(self):
         return 'not %s' % self.var.name
 
@@ -797,10 +636,6 @@ class UnaryMinusExpr(Expr):
         assert var.expr_type == IntType()
         super().__init__(expr_type=IntType())
         self.var = var
-
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
 
     def __str__(self):
         return '-%s' % self.var.name
@@ -815,10 +650,6 @@ class IntListSumExpr(Expr):
         super().__init__(expr_type=IntType())
         self.var = var
 
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
-
     def __str__(self):
         return 'sum(%s)' % self.var.name
 
@@ -832,10 +663,6 @@ class BoolListAllExpr(Expr):
         super().__init__(expr_type=BoolType())
         self.var = var
 
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
-
     def __str__(self):
         return 'all(%s)' % self.var.name
 
@@ -848,10 +675,6 @@ class BoolListAnyExpr(Expr):
         assert isinstance(var.expr_type.elem_type, BoolType)
         super().__init__(expr_type=BoolType())
         self.var = var
-
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
 
     def __str__(self):
         return 'any(%s)' % self.var.name
@@ -869,11 +692,6 @@ class IntComparisonExpr(Expr):
         self.rhs = rhs
         self.op = op
 
-    def get_free_variables(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_variables():
-                yield var
-
     def __str__(self):
         return '%s %s %s' % (self.lhs.name, self.op, self.rhs.name)
 
@@ -890,11 +708,6 @@ class IntBinaryOpExpr(Expr):
         self.rhs = rhs
         self.op = op
 
-    def get_free_variables(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_variables():
-                yield var
-
     def __str__(self):
         return '%s %s %s' % (self.lhs.name, self.op, self.rhs.name)
 
@@ -909,11 +722,6 @@ class ListConcatExpr(Expr):
         self.lhs = lhs
         self.rhs = rhs
 
-    def get_free_variables(self):
-        for expr in (self.lhs, self.rhs):
-            for var in expr.get_free_variables():
-                yield var
-
     def __str__(self):
         return '%s + %s' % (self.lhs.name, self.rhs.name)
 
@@ -925,10 +733,6 @@ class IsInstanceExpr(Expr):
         super().__init__(expr_type=BoolType())
         self.var = var
         self.checked_type = checked_type
-
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
 
     def __str__(self):
         return 'isinstance(%s, %s)' % (self.var.name, str(self.checked_type))
@@ -942,10 +746,6 @@ class SafeUncheckedCast(Expr):
         assert isinstance(expr_type, CustomType)
         super().__init__(expr_type=expr_type)
         self.var = var
-
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
 
     def __str__(self):
         return '%s  # type: %s' % (self.var.name, str(self.expr_type))
@@ -962,13 +762,6 @@ class ListComprehensionExpr(Expr):
         self.loop_var = loop_var
         self.result_elem_expr = result_elem_expr
 
-    def get_free_variables(self):
-        for var in self.list_var.get_free_variables():
-            yield var
-        for var in self.result_elem_expr.get_free_variables():
-            if var.name != self.loop_var.name:
-                yield var
-
     def __str__(self):
         return '[%s for %s in %s]' % (str(self.result_elem_expr), self.loop_var.name, self.list_var.name)
 
@@ -983,10 +776,6 @@ class ReturnTypeInfo:
         self.always_returns = always_returns
 
 class Stmt:
-    # Note: it's the caller's responsibility to de-duplicate VarReference objects that reference the same symbol, if
-    # desired.
-    def get_free_variables(self) -> 'Iterable[VarReference]': ...  # pragma: no cover
-
     def write(self, writer: Writer, verbose: bool): ...  # pragma: no cover
 
 class Assert(Stmt):
@@ -994,10 +783,6 @@ class Assert(Stmt):
         assert isinstance(var.expr_type, BoolType)
         self.var = var
         self.message = message
-
-    def get_free_variables(self):
-        for var in self.var.get_free_variables():
-            yield var
 
     def write(self, writer: Writer, verbose: bool):
         writer.write('assert ')
@@ -1020,10 +805,6 @@ class Assignment(Stmt):
         self.lhs2 = lhs2
         self.rhs = rhs
 
-    def get_free_variables(self):
-        for var in self.rhs.get_free_variables():
-            yield var
-
     def write(self, writer: Writer, verbose: bool):
         writer.write(self.lhs.name)
         if self.lhs2:
@@ -1044,10 +825,6 @@ class CheckIfError(Stmt):
                  var: VarReference):
         assert var.expr_type == ErrorOrVoidType()
         self.var = var
-
-    def get_free_variables(self) -> 'Iterable[VarReference]':
-        for var in self.var.get_free_variables():
-            yield var
 
     def write(self, writer: Writer, verbose: bool):
         writer.write('check_if_error(')
@@ -1071,10 +848,6 @@ class UnpackingAssignment(Stmt):
         self.rhs = rhs
         self.error_message = error_message
 
-    def get_free_variables(self):
-        for var in self.rhs.get_free_variables():
-            yield var
-
     def write(self, writer: Writer, verbose: bool):
         writer.write('[')
         writer.write(', '.join(var.name
@@ -1095,12 +868,6 @@ class ReturnStmt(Stmt):
         self.result = result
         self.error = error
 
-    def get_free_variables(self):
-        for expr in (self.result, self.error):
-            if expr:
-                for var in expr.get_free_variables():
-                    yield var
-
     def write(self, writer: Writer, verbose: bool):
         writer.write('return ')
         writer.write(str(self.result))
@@ -1119,13 +886,6 @@ class IfStmt(Stmt):
         self.cond = cond
         self.if_stmts = if_stmts
         self.else_stmts = else_stmts
-
-    def get_free_variables(self):
-        for var in self.cond.get_free_variables():
-            yield var
-        for stmts in (self.if_stmts, self.else_stmts):
-            for var in get_free_variables_in_stmts(stmts):
-                yield var
 
     def write(self, writer: Writer, verbose: bool):
         writer.write('if %s:' % self.cond.name)
@@ -1199,25 +959,3 @@ class Module:
         for elem in self.body:
             elem.write(writer, verbose=False)
         return ''.join(writer.strings)
-
-def get_free_variables_in_stmts(stmts: List[Stmt]):
-    local_var_names = set()
-    for stmt in stmts:
-        for var in stmt.get_free_variables():
-            if var.name not in local_var_names:
-                yield var
-        if isinstance(stmt, Assignment):
-            local_var_names.add(stmt.lhs.name)
-            if stmt.lhs2:
-                local_var_names.add(stmt.lhs2.name)
-        elif isinstance(stmt, UnpackingAssignment):
-            for var in stmt.lhs_list:
-                local_var_names.add(var.name)
-
-def get_unique_free_variables_in_stmts(stmts: List[Stmt]) -> List[VarReference]:
-    var_by_name = dict()
-    for var in get_free_variables_in_stmts(stmts):
-        if var.name not in var_by_name:
-            var_by_name[var.name] = var
-    return list(sorted(var_by_name.values(),
-                       key=lambda var: var.name))
