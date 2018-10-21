@@ -16,59 +16,7 @@ from typing import List, Union, Mapping, Optional, Iterator
 
 from _py2tmp.ir0 import ir
 from _py2tmp.ir0._is_variadic import is_expr_variadic
-
-
-class Writer:
-    def write(self, elem: Union[ir.TemplateDefn, ir.StaticAssert, ir.ConstantDef, ir.Typedef]): ...  # pragma: no cover
-
-    def write_toplevel_elem(self, elem: Union[ir.TemplateDefn, ir.StaticAssert, ir.ConstantDef, ir.Typedef]): ...  # pragma: no cover
-
-    def new_constant_or_typedef(self, expr: ir.Expr, identifier_generator: Iterator[str]) -> ir.AtomicTypeLiteral:
-        id = next(identifier_generator)
-        if expr.expr_type.kind in (ir.ExprKind.BOOL, ir.ExprKind.INT64):
-            self.write(ir.ConstantDef(name=id, expr=expr))
-        elif expr.expr_type.kind in (ir.ExprKind.TYPE, ir.ExprKind.TEMPLATE):
-            self.write(ir.Typedef(name=id, expr=expr))
-        else:
-            raise NotImplementedError('Unexpected kind: ' + str(expr.expr_type.kind))
-
-        return ir.AtomicTypeLiteral.for_local(cpp_type=id, expr_type=expr.expr_type, is_variadic=False)
-
-    def get_toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
-
-class ToplevelWriter(Writer):
-    def __init__(self,
-                 allow_toplevel_elems: bool = True,
-                 allow_template_defns: bool = True):
-        self.template_defns = []  # type: List[ir.TemplateDefn]
-        self.toplevel_elems = []  # type: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]]
-        self.allow_toplevel_elems = allow_toplevel_elems
-        self.allow_template_defns = allow_template_defns
-
-    def write(self, elem: ir.TemplateBodyElement):
-        if isinstance(elem, ir.TemplateDefn):
-            assert self.allow_template_defns
-            self.template_defns.append(elem)
-        else:
-            assert self.allow_toplevel_elems
-            self.toplevel_elems.append(elem)
-
-    def get_toplevel_writer(self):
-        return self
-
-class TemplateBodyWriter(Writer):
-    def __init__(self, toplevel_writer: Optional[ToplevelWriter]):
-        self.toplevel_writer = toplevel_writer
-        self.elems = []  # type: List[ir.TemplateBodyElement]
-
-    def write_toplevel_elem(self, elem: ir.TemplateBodyElement):
-        self.toplevel_writer.write(elem)
-
-    def write(self, elem: ir.TemplateBodyElement):
-        self.elems.append(elem)
-
-    def get_toplevel_writer(self):
-        return self.toplevel_writer
+from _py2tmp.ir0._writers import Writer, ToplevelWriter, TemplateBodyWriter
 
 class Transformation:
     def __init__(self, identifier_generator: Optional[Iterator[str]] = None):
@@ -129,7 +77,7 @@ class Transformation:
         return arg_decl
 
     def transform_template_body_elems(self,
-                                      elems: List[ir.TemplateBodyElement]) -> List[ir.TemplateBodyElement]:
+                                      elems: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]]) -> List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]]:
         body_writer = TemplateBodyWriter(self.writer.get_toplevel_writer()) if self.writer else TemplateBodyWriter(None)
         with self.set_writer(body_writer):
             for elem in elems:
@@ -192,7 +140,7 @@ class Transformation:
     def transform_exprs(self, exprs: List[ir.Expr], original_parent_element: ir.Expr) -> List[ir.Expr]:
         return [self.transform_expr(expr) for expr in exprs]
 
-    def transform_template_body_elem(self, elem: ir.TemplateBodyElement):
+    def transform_template_body_elem(self, elem: Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]):
         if isinstance(elem, ir.TemplateDefn):
             self.transform_template_defn(elem)
         elif isinstance(elem, ir.StaticAssert):

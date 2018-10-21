@@ -12,37 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
+from typing import List, Union
 
 from _py2tmp.compiler.stages import _ir1_to_ir0
 from _py2tmp.ir0 import ir0
-from _py2tmp.ir1 import ir1
+from _py2tmp.ir1 import ir1, Writer, FunWriter, StmtWriter
 from _py2tmp.ir2 import ir2
 
-
-class Writer:
-    def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment, ir1.CheckIfErrorStmt]): ...  # pragma: no cover
-
-class FunWriter(Writer):
-    def __init__(self):
-        self.elems = []  # type: List[ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment, ir1.CheckIfErrorStmt]]
-
-    def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.Assignment, ir1.Assert, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.UnpackingAssignment, ir1.CheckIfErrorStmt]):
-        self.elems.append(elem)
-
-class StmtWriter(Writer):
-    def __init__(self,
-                 fun_writer: FunWriter,
-                 current_fun_return_type: Optional[ir1.ExprType]):
-        self.fun_writer = fun_writer
-        self.current_fun_return_type = current_fun_return_type
-        self.stmts = []  # type: List[ir1.Stmt]
-
-    def write(self, elem: ir1.Union[ir1.FunctionDefn, ir1.CustomType, ir1.CheckIfErrorDefn, ir1.Stmt]):
-        if isinstance(elem, ir1.Stmt):
-            self.stmts.append(elem)
-        else:
-            self.fun_writer.write(elem)
 
 def custom_type_to_ir1(expr_type: ir2.CustomType):
     return ir1.CustomType(name=expr_type.name,

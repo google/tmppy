@@ -12,5 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from . import ir as ir1
-from ._writers import Writer, FunWriter, StmtWriter
+from ._writers import Writer, ToplevelWriter, TemplateElemWriter, ExprWriter
