@@ -14,7 +14,7 @@
 import itertools
 from typing import List
 
-from _py2tmp.ir2 import ir
+from _py2tmp.ir1 import ir
 
 
 class Visitor:

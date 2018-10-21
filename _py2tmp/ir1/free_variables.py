@@ -15,8 +15,8 @@ import itertools
 from contextlib import contextmanager
 from typing import List, Set, Dict
 
-from _py2tmp.ir2 import ir
-from _py2tmp.ir2._visitor import Visitor
+from _py2tmp.ir1 import ir
+from _py2tmp.ir1._visitor import Visitor
 
 
 class _GetFreeVariablesVisitor(Visitor):

@@ -301,13 +301,13 @@ def expect_cpp_code_compile_error_helper(check_error_fun: Callable[[CompilationF
             TMPPy source:
             {tmppy_source}
 
-            TMPPy IR2:
-            {tmppy_ir2}
+            TMPPy IR1:
+            {tmppy_ir1}
             
             C++ source code:
             {cxx_source}
             ''').format(tmppy_source = add_line_numbers(tmppy_source),
-                        tmppy_ir2=str(main_module.ir2_module),
+                        tmppy_ir1=str(main_module.ir1_module),
                         cxx_source = add_line_numbers(cxx_source)))
     except CompilationFailedException as e1:
         e = e1
@@ -353,15 +353,15 @@ def expect_cpp_code_generic_compile_error(expected_error_regex: str,
                 TMPPy source:
                 {tmppy_source}
                     
-                TMPPy IR2:
-                {tmppy_ir2}
+                TMPPy IR1:
+                {tmppy_ir1}
                 
                 C++ source:
                 {cxx_source}
                 ''').format(expected_error = expected_error_regex,
                             compiler_command=e.command,
                             tmppy_source = add_line_numbers(tmppy_source),
-                            tmppy_ir2 = str(main_module.ir2_module),
+                            tmppy_ir1 = str(main_module.ir1_module),
                             cxx_source = add_line_numbers(cxx_source),
                             error_message = error_message_head))
 
@@ -438,15 +438,15 @@ def expect_cpp_code_compile_error(
                     TMPPy source:
                     {tmppy_source}
                     
-                    TMPPy IR2:
-                    {tmppy_ir2}
+                    TMPPy IR1:
+                    {tmppy_ir1}
                     
                     C++ source code:
                     {cxx_source}
                     ''').format(expected_error = expected_py2tmp_error_regex,
                                 compiler_command = e.command,
                                 tmppy_source = add_line_numbers(tmppy_source),
-                                tmppy_ir2 = str(main_module.ir2_module),
+                                tmppy_ir1 = str(main_module.ir1_module),
                                 cxx_source = add_line_numbers(cxx_source),
                                 error_message = error_message_head))
 
@@ -466,15 +466,15 @@ def expect_cpp_code_compile_error(
                     TMPPy source:
                     {tmppy_source}
                     
-                    TMPPy IR2:
-                    {tmppy_ir2}
+                    TMPPy IR1:
+                    {tmppy_ir1}
                     
                     C++ source code:
                     {cxx_source}
                     ''').format(expected_error = expected_py2tmp_error_regex,
                                 compiler_command=e.command,
                                 tmppy_source = add_line_numbers(tmppy_source),
-                                tmppy_ir2 = str(main_module.ir2_module),
+                                tmppy_ir1 = str(main_module.ir1_module),
                                 cxx_source = add_line_numbers(cxx_source),
                                 error_message = error_message_head))
 
@@ -496,8 +496,8 @@ def expect_cpp_code_compile_error(
                     TMPPy source:
                     {tmppy_source}
                     
-                    TMPPy IR2:
-                    {tmppy_ir2}
+                    TMPPy IR1:
+                    {tmppy_ir1}
                     
                     C++ source code:
                     {cxx_source}
@@ -506,7 +506,7 @@ def expect_cpp_code_compile_error(
                                expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
                                actual_static_assert_error = actual_static_assert_error,
                                tmppy_source = add_line_numbers(tmppy_source),
-                               tmppy_ir2 = str(main_module.ir2_module),
+                               tmppy_ir1 = str(main_module.ir1_module),
                                cxx_source = add_line_numbers(cxx_source),
                                error_message = error_message_head)))
         try:
@@ -527,8 +527,8 @@ def expect_cpp_code_compile_error(
                     TMPPy source:
                     {tmppy_source}
                     
-                    TMPPy IR2:
-                    {tmppy_ir2}
+                    TMPPy IR1:
+                    {tmppy_ir1}
                     
                     C++ source code:
                     {cxx_source}
@@ -537,7 +537,7 @@ def expect_cpp_code_compile_error(
                                expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
                                actual_static_assert_error = actual_static_assert_error,
                                tmppy_source = add_line_numbers(tmppy_source),
-                               tmppy_ir2 = str(main_module.ir2_module),
+                               tmppy_ir1 = str(main_module.ir1_module),
                                cxx_source = add_line_numbers(cxx_source),
                                error_message = error_message_head)))
 
@@ -554,15 +554,15 @@ def expect_cpp_code_compile_error(
                     TMPPy source:
                     {tmppy_source}
                     
-                    TMPPy IR2:
-                    {tmppy_ir2}
+                    TMPPy IR1:
+                    {tmppy_ir1}
                     
                     C++ source code:
                     {cxx_source}
                     '''.format(actual_py2tmp_error_line_number = actual_py2tmp_error_line_number,
                                actual_static_assert_error_line_number = actual_static_assert_error_line_number,
                                tmppy_source = add_line_numbers(tmppy_source),
-                               tmppy_ir2 = str(main_module.ir2_module),
+                               tmppy_ir1 = str(main_module.ir1_module),
                                cxx_source = add_line_numbers(cxx_source),
                                error_message = error_message_head)))
 
@@ -616,14 +616,14 @@ def expect_cpp_code_success(tmppy_source: str,
                 TMPPy source:
                 {tmppy_source}
                 
-                TMPPy IR2:
-                {tmppy_ir2}
+                TMPPy IR1:
+                {tmppy_ir1}
                 
                 C++ source:
                 {cxx_source}
                 ''').format(compiler_command=e.command,
                             tmppy_source = add_line_numbers(tmppy_source),
-                            tmppy_ir2 = str(main_module.ir2_module),
+                            tmppy_ir1 = str(main_module.ir1_module),
                             cxx_source = add_line_numbers(cxx_source),
                             error_message = _cap_to_lines(e.stderr, 40)))
 
@@ -736,13 +736,13 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
                         TMPPy source:
                         {tmppy_source}
                         
-                        TMPPy IR2:
-                        {tmppy_ir2}
+                        TMPPy IR1:
+                        {tmppy_ir1}
                         
                         Generated C++ source:
                         {cpp_source}
                         ''').format(tmppy_source=add_line_numbers(tmppy_source),
-                                    tmppy_ir2=str(main_module.ir2_module),
+                                    tmppy_ir1=str(main_module.ir1_module),
                                     cpp_source=cpp_source))
 
     cpp_source = link(object_file_content)
@@ -796,8 +796,8 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
                             TMPPy source:
                             {tmppy_source}
                             
-                            TMPPy IR2:
-                            {tmppy_ir2}
+                            TMPPy IR1:
+                            {tmppy_ir1}
                             
                             Generated C++ source:
                             {cpp_source}
@@ -808,7 +808,7 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
                             Diff:
                             {cpp_source_diff}
                             ''').format(tmppy_source=add_line_numbers(tmppy_source),
-                                        tmppy_ir2=str(main_module.ir2_module),
+                                        tmppy_ir1=str(main_module.ir1_module),
                                         cpp_source=str(cpp_source),
                                         expected_cpp_source=str(expected_cpp_source[1:]),
                                         cpp_source_diff=''.join(difflib.unified_diff(expected_cpp_source[1:].splitlines(True),
@@ -986,10 +986,10 @@ def assert_conversion_fails(f):
                         TMPPy source:
                         {tmppy_source}
     
-                        TMPPy IR2:
-                        {tmppy_ir2}
+                        TMPPy IR1:
+                        {tmppy_ir1}
                         ''').format(tmppy_source=add_line_numbers(tmppy_source),
-                                    tmppy_ir2=str(main_module.ir2_module)))
+                                    tmppy_ir1=str(main_module.ir1_module)))
 
             check_compilation_error(e, tmppy_source)
 
