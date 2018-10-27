@@ -208,6 +208,7 @@ class PosixCompiler:
             include_dirs,
             args = (
                 [source]
+                + config.ADDITIONAL_LINKER_FLAGS.split()
                 + args
                 + ['-o', output_file_name]
             ))
@@ -217,6 +218,7 @@ class PosixCompiler:
         args = (
             ['-W', '-Wall', '-g0', '-Werror', '-Wno-error=tautological-compare', '-std=c++11']
             + include_flags
+            + config.ADDITIONAL_COMPILER_FLAGS.split()
             + args
         )
         run_command(self.executable, args)
@@ -239,6 +241,7 @@ class MsvcCompiler:
             include_dirs,
             args = (
                 [source]
+                + config.ADDITIONAL_LINKER_FLAGS.split()
                 + args
                 + ['/Fe' + output_file_name]
             ))
@@ -248,6 +251,7 @@ class MsvcCompiler:
         args = (
             ['/nologo', '/FS', '/W4', '/D_SCL_SECURE_NO_WARNINGS', '/WX']
             + include_flags
+            + config.ADDITIONAL_COMPILER_FLAGS.split()
             + args
         )
         run_command(self.executable, args)
