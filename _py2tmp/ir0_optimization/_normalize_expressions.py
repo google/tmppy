@@ -37,4 +37,6 @@ class NormalizeExpressionsTransformation(Transformation):
 
     def transform_typedef(self, typedef: ir.Typedef):
         self.writer.write(ir.Typedef(name=typedef.name,
-                                     expr=self.transform_expr(typedef.expr, split_nontrivial_exprs=False)))
+                                     expr=self.transform_expr(typedef.expr, split_nontrivial_exprs=False),
+                                     description=typedef.description,
+                                     template_args=typedef.template_args))

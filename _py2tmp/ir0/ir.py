@@ -13,7 +13,7 @@
 # limitations under the License.
 import re
 from enum import Enum
-from typing import Sequence, Set, Optional, Iterable, Union, Tuple, Dict
+from typing import Sequence, Set, Optional, Iterable, Union, Tuple, Dict, List
 
 from _py2tmp.utils import ir_to_string, ValueType
 
@@ -124,10 +124,16 @@ class ConstantDef(TemplateBodyElement):
         yield self.expr
 
 class Typedef(TemplateBodyElement):
-    def __init__(self, name: str, expr: Expr):
+    def __init__(self,
+                 name: str,
+                 expr: Expr,
+                 description: str = '',
+                 template_args: List['TemplateArgDecl'] = []):
         assert isinstance(expr.expr_type, (TypeType, TemplateType))
         self.name = name
         self.expr = expr
+        self.template_args = template_args
+        self.description = description
 
     def get_direct_subelements(self):
         return []

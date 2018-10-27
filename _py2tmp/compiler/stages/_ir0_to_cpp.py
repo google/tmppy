@@ -111,37 +111,42 @@ def constant_def_to_cpp(constant_def: ir0.ConstantDef,
 def typedef_to_cpp(typedef: ir0.Typedef,
                    enclosing_function_defn_args: List[ir0.TemplateArgDecl],
                    writer: Writer):
-    name = typedef.name
-    if typedef.expr.expr_type.kind == ir0.ExprKind.TYPE:
-        cpp_meta_expr = expr_to_cpp(typedef.expr, enclosing_function_defn_args, writer)
-        writer.write_template_body_elem('''\
-            using {name} = {cpp_meta_expr};
-            '''.format(**locals()))
-    elif typedef.expr.expr_type.kind == ir0.ExprKind.TEMPLATE:
-        assert isinstance(typedef.expr.expr_type, ir0.TemplateType)
-
+    if typedef.expr.expr_type.kind == ir0.ExprKind.TEMPLATE:
+        assert not typedef.template_args
         template_args = [ir0.TemplateArgDecl(expr_type=arg.expr_type, name=writer.new_id(), is_variadic=arg.is_variadic)
                          for arg in typedef.expr.expr_type.args]
-        template_args_decl = ', '.join(template_arg_decl_to_cpp(arg)
-                                       for arg in template_args)
+        typedef = ir0.Typedef(name=typedef.name,
+                              expr=ir0.TemplateInstantiation(template_expr=typedef.expr,
+                                                             args=[ir0.AtomicTypeLiteral.for_local(expr_type=arg.expr_type,
+                                                                                                   cpp_type=arg.name,
+                                                                                                   is_variadic=arg.is_variadic)
+                                                                   for arg in template_args],
+                                                             # TODO: use static analysis to determine when it's
+                                                             # safe to set this to False.
+                                                             instantiation_might_trigger_static_asserts=True),
+                              description=typedef.description,
+                              template_args=template_args)
 
-        template_instantiation_expr = ir0.TemplateInstantiation(template_expr=typedef.expr,
-                                                                args=[ir0.AtomicTypeLiteral.for_local(expr_type=arg.expr_type,
-                                                                                                      cpp_type=arg.name,
-                                                                                                      is_variadic=arg.is_variadic)
-                                                                      for arg in template_args],
-                                                                # TODO: use static analysis to determine when it's
-                                                                # safe to set this to False.
-                                                                instantiation_might_trigger_static_asserts=True)
+    assert typedef.expr.expr_type.kind == ir0.ExprKind.TYPE, typedef.expr.expr_type.kind
 
-        cpp_meta_expr = template_instantiation_to_cpp(template_instantiation_expr, enclosing_function_defn_args, writer)
+    name = typedef.name
+    cpp_meta_expr = expr_to_cpp(typedef.expr, enclosing_function_defn_args, writer)
+    if typedef.description:
+        description = '// ' + typedef.description + '\n'
+    else:
+        description = ''
 
+    if not typedef.template_args:
         writer.write_template_body_elem('''\
-            template <{template_args_decl}>
-            using {name} = {cpp_meta_expr};
+            {description}using {name} = {cpp_meta_expr};
             '''.format(**locals()))
     else:
-        raise NotImplementedError('Unexpected expression type kind: %s' % typedef.expr.expr_type.kind)
+        template_args_decl = ', '.join(template_arg_decl_to_cpp(arg)
+                                       for arg in typedef.template_args)
+        writer.write_template_body_elem('''\
+            {description}template <{template_args_decl}>
+            using {name} = {cpp_meta_expr};
+            '''.format(**locals()))
 
 def _type_to_template_param_declaration(expr_type: ir0.ExprType, is_variadic: bool):
     if expr_type.kind == ir0.ExprKind.TEMPLATE:

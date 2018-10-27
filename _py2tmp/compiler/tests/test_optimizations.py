@@ -509,15 +509,13 @@ template <bool tmppy_internal_test_module_x5>
 struct tmppy_internal_test_module_x38<tmppy_internal_test_module_x5, false> {
   static constexpr int64_t value = -1LL;
 };
-template <typename tmppy_internal_test_module_x8,
-          int64_t tmppy_internal_test_module_x9>
+template <typename tmppy_internal_test_module_x8>
 struct tmppy_internal_test_module_x52;
 // Split that generates type of: g
-template <bool... tmppy_internal_test_module_x28,
-          int64_t tmppy_internal_test_module_x9>
+template <bool... tmppy_internal_test_module_x28>
 struct tmppy_internal_test_module_x52<
-    BoolList<(tmppy_internal_test_module_x28)...>,
-    tmppy_internal_test_module_x9> {
+    BoolList<(tmppy_internal_test_module_x28)...>> {
+  template <int64_t tmppy_internal_test_module_x9>
   using type = Int64List<(
       (tmppy_internal_test_module_x38<tmppy_internal_test_module_x28,
                                       tmppy_internal_test_module_x28>::value) +
@@ -527,8 +525,9 @@ template <typename tmppy_internal_test_module_x8,
           int64_t tmppy_internal_test_module_x9>
 struct g {
   using error = void;
-  using type = typename tmppy_internal_test_module_x52<
-      tmppy_internal_test_module_x8, tmppy_internal_test_module_x9>::type;
+  using type =
+      typename tmppy_internal_test_module_x52<tmppy_internal_test_module_x8>::
+          template type<tmppy_internal_test_module_x9>;
 };
 template <bool tmppy_internal_test_module_x5> struct f {
   using error = void;
@@ -580,25 +579,20 @@ template <bool... bs1, bool... bs2>
 struct BoolListConcat<BoolList<(bs1)...>, BoolList<(bs2)...>> {
   using type = BoolList<(bs1)..., (bs2)...>;
 };
-template <typename tmppy_internal_tmppy_builtins_x7,
-          bool tmppy_internal_tmppy_builtins_x21,
-          bool tmppy_internal_tmppy_builtins_x123>
+template <bool tmppy_internal_tmppy_builtins_x123>
 struct tmppy_internal_tmppy_builtins_x246;
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename tmppy_internal_tmppy_builtins_x7,
-          bool tmppy_internal_tmppy_builtins_x21>
-struct tmppy_internal_tmppy_builtins_x246<
-    tmppy_internal_tmppy_builtins_x7, tmppy_internal_tmppy_builtins_x21, true> {
+template <> struct tmppy_internal_tmppy_builtins_x246<true> {
+  template <typename tmppy_internal_tmppy_builtins_x7,
+            bool tmppy_internal_tmppy_builtins_x21>
   using type = tmppy_internal_tmppy_builtins_x7;
 };
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename tmppy_internal_tmppy_builtins_x7,
-          bool tmppy_internal_tmppy_builtins_x21>
-struct tmppy_internal_tmppy_builtins_x246<tmppy_internal_tmppy_builtins_x7,
-                                          tmppy_internal_tmppy_builtins_x21,
-                                          false> {
+template <> struct tmppy_internal_tmppy_builtins_x246<false> {
+  template <typename tmppy_internal_tmppy_builtins_x7,
+            bool tmppy_internal_tmppy_builtins_x21>
   using type =
       typename BoolListConcat<BoolList<tmppy_internal_tmppy_builtins_x21>,
                               tmppy_internal_tmppy_builtins_x7>::type;
@@ -608,8 +602,9 @@ template <bool tmppy_internal_test_module_x5,
 struct set_of {
   using error = void;
   using type = typename tmppy_internal_tmppy_builtins_x246<
-      BoolList<tmppy_internal_test_module_x5>, tmppy_internal_test_module_x6,
-      (tmppy_internal_test_module_x6) == (tmppy_internal_test_module_x5)>::type;
+      (tmppy_internal_test_module_x6) == (tmppy_internal_test_module_x5)>::
+      template type<BoolList<tmppy_internal_test_module_x5>,
+                    tmppy_internal_test_module_x6>;
 };
 ''')
 def test_optimization_set_with_two_bools():
@@ -624,25 +619,20 @@ template <int64_t... ns, int64_t... ms>
 struct Int64ListConcat<Int64List<(ns)...>, Int64List<(ms)...>> {
   using type = Int64List<(ns)..., (ms)...>;
 };
-template <typename tmppy_internal_tmppy_builtins_x7,
-          int64_t tmppy_internal_tmppy_builtins_x28,
-          bool tmppy_internal_tmppy_builtins_x126>
+template <bool tmppy_internal_tmppy_builtins_x126>
 struct tmppy_internal_tmppy_builtins_x250;
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename tmppy_internal_tmppy_builtins_x7,
-          int64_t tmppy_internal_tmppy_builtins_x28>
-struct tmppy_internal_tmppy_builtins_x250<
-    tmppy_internal_tmppy_builtins_x7, tmppy_internal_tmppy_builtins_x28, true> {
+template <> struct tmppy_internal_tmppy_builtins_x250<true> {
+  template <typename tmppy_internal_tmppy_builtins_x7,
+            int64_t tmppy_internal_tmppy_builtins_x28>
   using type = tmppy_internal_tmppy_builtins_x7;
 };
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename tmppy_internal_tmppy_builtins_x7,
-          int64_t tmppy_internal_tmppy_builtins_x28>
-struct tmppy_internal_tmppy_builtins_x250<tmppy_internal_tmppy_builtins_x7,
-                                          tmppy_internal_tmppy_builtins_x28,
-                                          false> {
+template <> struct tmppy_internal_tmppy_builtins_x250<false> {
+  template <typename tmppy_internal_tmppy_builtins_x7,
+            int64_t tmppy_internal_tmppy_builtins_x28>
   using type =
       typename Int64ListConcat<Int64List<tmppy_internal_tmppy_builtins_x28>,
                                tmppy_internal_tmppy_builtins_x7>::type;
@@ -652,8 +642,9 @@ template <int64_t tmppy_internal_test_module_x5,
 struct set_of {
   using error = void;
   using type = typename tmppy_internal_tmppy_builtins_x250<
-      Int64List<tmppy_internal_test_module_x5>, tmppy_internal_test_module_x6,
-      (tmppy_internal_test_module_x6) == (tmppy_internal_test_module_x5)>::type;
+      (tmppy_internal_test_module_x6) == (tmppy_internal_test_module_x5)>::
+      template type<Int64List<tmppy_internal_test_module_x5>,
+                    tmppy_internal_test_module_x6>;
 };
 ''')
 def test_optimization_set_with_two_ints():
@@ -668,24 +659,20 @@ template <typename... Ts, typename... Us>
 struct TypeListConcat<List<Ts...>, List<Us...>> {
   using type = List<Ts..., Us...>;
 };
-template <typename tmppy_internal_tmppy_builtins_x7,
-          typename tmppy_internal_tmppy_builtins_x5,
-          bool tmppy_internal_tmppy_builtins_x129>
+template <bool tmppy_internal_tmppy_builtins_x129>
 struct tmppy_internal_tmppy_builtins_x254;
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename tmppy_internal_tmppy_builtins_x7,
-          typename tmppy_internal_tmppy_builtins_x5>
-struct tmppy_internal_tmppy_builtins_x254<
-    tmppy_internal_tmppy_builtins_x7, tmppy_internal_tmppy_builtins_x5, true> {
+template <> struct tmppy_internal_tmppy_builtins_x254<true> {
+  template <typename tmppy_internal_tmppy_builtins_x7,
+            typename tmppy_internal_tmppy_builtins_x5>
   using type = tmppy_internal_tmppy_builtins_x7;
 };
 // Split that generates type of: (meta)function generated for an if-else
 // statement
-template <typename tmppy_internal_tmppy_builtins_x7,
-          typename tmppy_internal_tmppy_builtins_x5>
-struct tmppy_internal_tmppy_builtins_x254<
-    tmppy_internal_tmppy_builtins_x7, tmppy_internal_tmppy_builtins_x5, false> {
+template <> struct tmppy_internal_tmppy_builtins_x254<false> {
+  template <typename tmppy_internal_tmppy_builtins_x7,
+            typename tmppy_internal_tmppy_builtins_x5>
   using type = typename TypeListConcat<List<tmppy_internal_tmppy_builtins_x5>,
                                        tmppy_internal_tmppy_builtins_x7>::type;
 };
@@ -693,10 +680,10 @@ template <typename tmppy_internal_test_module_x5,
           typename tmppy_internal_test_module_x6>
 struct set_of {
   using error = void;
-  using type = typename tmppy_internal_tmppy_builtins_x254<
-      List<tmppy_internal_test_module_x5>, tmppy_internal_test_module_x6,
-      std::is_same<tmppy_internal_test_module_x6,
-                   tmppy_internal_test_module_x5>::value>::type;
+  using type = typename tmppy_internal_tmppy_builtins_x254<std::is_same<
+      tmppy_internal_test_module_x6, tmppy_internal_test_module_x5>::value>::
+      template type<List<tmppy_internal_test_module_x5>,
+                    tmppy_internal_test_module_x6>;
 };
 ''')
 def test_optimization_set_with_two_types():
@@ -824,12 +811,11 @@ struct tmppy_internal_tmppy_builtins_x260<
                     false, tmppy_internal_tmppy_builtins_x131>::value)...>>::
             value);
 };
-template <typename L, typename tmppy_internal_tmppy_builtins_x5>
-struct tmppy_internal_tmppy_builtins_x268;
+template <typename L> struct tmppy_internal_tmppy_builtins_x268;
 // Split that generates type of: tmppy_internal_tmppy_builtins_x138
-template <bool... elems, typename tmppy_internal_tmppy_builtins_x5>
-struct tmppy_internal_tmppy_builtins_x268<BoolList<(elems)...>,
-                                          tmppy_internal_tmppy_builtins_x5> {
+template <bool... elems>
+struct tmppy_internal_tmppy_builtins_x268<BoolList<(elems)...>> {
+  template <typename tmppy_internal_tmppy_builtins_x5>
   using type = BoolList<(tmppy_internal_tmppy_builtins_x260<
                          tmppy_internal_tmppy_builtins_x5, elems>::value)...>;
 };
@@ -856,8 +842,8 @@ struct tmppy_internal_tmppy_builtins_x276<
     tmppy_internal_tmppy_builtins_x35, tmppy_internal_tmppy_builtins_x5, true> {
   static constexpr bool value = tmppy_internal_tmppy_builtins_x196<
       typename tmppy_internal_tmppy_builtins_x268<
-          tmppy_internal_tmppy_builtins_x35,
-          tmppy_internal_tmppy_builtins_x5>::type>::value;
+          tmppy_internal_tmppy_builtins_x35>::
+          template type<tmppy_internal_tmppy_builtins_x5>>::value;
 };
 // Split that generates value of: (meta)function generated for an if-else
 // statement
@@ -940,12 +926,11 @@ struct tmppy_internal_tmppy_builtins_x286<
                     false, tmppy_internal_tmppy_builtins_x148>::value)...>>::
             value);
 };
-template <typename L, typename tmppy_internal_tmppy_builtins_x5>
-struct tmppy_internal_tmppy_builtins_x294;
+template <typename L> struct tmppy_internal_tmppy_builtins_x294;
 // Split that generates type of: tmppy_internal_tmppy_builtins_x155
-template <int64_t... elems, typename tmppy_internal_tmppy_builtins_x5>
-struct tmppy_internal_tmppy_builtins_x294<Int64List<(elems)...>,
-                                          tmppy_internal_tmppy_builtins_x5> {
+template <int64_t... elems>
+struct tmppy_internal_tmppy_builtins_x294<Int64List<(elems)...>> {
+  template <typename tmppy_internal_tmppy_builtins_x5>
   using type = BoolList<(tmppy_internal_tmppy_builtins_x286<
                          tmppy_internal_tmppy_builtins_x5, elems>::value)...>;
 };
@@ -972,8 +957,8 @@ struct tmppy_internal_tmppy_builtins_x302<
     tmppy_internal_tmppy_builtins_x35, tmppy_internal_tmppy_builtins_x5, true> {
   static constexpr bool value = tmppy_internal_tmppy_builtins_x196<
       typename tmppy_internal_tmppy_builtins_x294<
-          tmppy_internal_tmppy_builtins_x35,
-          tmppy_internal_tmppy_builtins_x5>::type>::value;
+          tmppy_internal_tmppy_builtins_x35>::
+          template type<tmppy_internal_tmppy_builtins_x5>>::value;
 };
 // Split that generates value of: (meta)function generated for an if-else
 // statement
@@ -1057,12 +1042,11 @@ struct tmppy_internal_tmppy_builtins_x312<
                     false, tmppy_internal_tmppy_builtins_x165>::value)...>>::
             value);
 };
-template <typename L, typename tmppy_internal_tmppy_builtins_x5>
-struct tmppy_internal_tmppy_builtins_x320;
+template <typename L> struct tmppy_internal_tmppy_builtins_x320;
 // Split that generates type of: tmppy_internal_tmppy_builtins_x172
-template <typename... elems, typename tmppy_internal_tmppy_builtins_x5>
-struct tmppy_internal_tmppy_builtins_x320<List<elems...>,
-                                          tmppy_internal_tmppy_builtins_x5> {
+template <typename... elems>
+struct tmppy_internal_tmppy_builtins_x320<List<elems...>> {
+  template <typename tmppy_internal_tmppy_builtins_x5>
   using type = BoolList<(tmppy_internal_tmppy_builtins_x312<
                          tmppy_internal_tmppy_builtins_x5, elems>::value)...>;
 };
@@ -1089,8 +1073,8 @@ struct tmppy_internal_tmppy_builtins_x328<
     tmppy_internal_tmppy_builtins_x35, tmppy_internal_tmppy_builtins_x5, true> {
   static constexpr bool value = tmppy_internal_tmppy_builtins_x196<
       typename tmppy_internal_tmppy_builtins_x320<
-          tmppy_internal_tmppy_builtins_x35,
-          tmppy_internal_tmppy_builtins_x5>::type>::value;
+          tmppy_internal_tmppy_builtins_x35>::
+          template type<tmppy_internal_tmppy_builtins_x5>>::value;
 };
 // Split that generates value of: (meta)function generated for an if-else
 // statement

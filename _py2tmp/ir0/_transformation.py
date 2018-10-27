@@ -71,7 +71,11 @@ class Transformation:
 
     def transform_typedef(self, typedef: ir.Typedef):
         expr = self.transform_expr(typedef.expr)
-        self.writer.write(ir.Typedef(name=typedef.name, expr=expr))
+        self.writer.write(ir.Typedef(name=typedef.name,
+                                     expr=expr,
+                                     description=typedef.description,
+                                     template_args=[self.transform_template_arg_decl(arg_decl)
+                                                    for arg_decl in typedef.template_args]))
 
     def transform_template_arg_decl(self, arg_decl: ir.TemplateArgDecl) -> ir.TemplateArgDecl:
         return arg_decl
@@ -225,7 +229,7 @@ class Transformation:
         if is_expr_variadic(expr):
             return ir.VariadicTypeExpansion(expr)
         else:
-            # This is not just an ir0_optimization, it's an error to have a VariadicTypeExpansion() that doesn't contain
+            # This is not just an optimization, it's an error to have a VariadicTypeExpansion() that doesn't contain
             # any variadic var refs.
             return expr
 
@@ -255,7 +259,9 @@ class NameReplacementTransformation(Transformation):
 
     def transform_typedef(self, typedef: ir.Typedef):
         self.writer.write(ir.Typedef(name=self._transform_name(typedef.name),
-                                     expr=self.transform_expr(typedef.expr)))
+                                     expr=self.transform_expr(typedef.expr),
+                                     description=typedef.description,
+                                     template_args=typedef.template_args))
 
     def transform_template_defn(self, template_defn: ir.TemplateDefn):
         self.writer.write(

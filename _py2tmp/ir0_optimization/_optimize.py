@@ -32,6 +32,8 @@ from _py2tmp.ir0_optimization._split_template_defn_with_multiple_outputs import 
     split_template_defn_with_multiple_outputs, replace_metafunction_calls_with_split_template_calls
 from _py2tmp.ir0_optimization._template_instantiation_inlining import perform_template_inlining, \
     perform_template_inlining_on_toplevel_elems
+from _py2tmp.ir0_optimization.replace_templates_with_templated_using_declarations import \
+    move_template_args_to_using_declarations
 from _py2tmp.utils import compute_condensation_in_topological_order
 
 
@@ -175,5 +177,12 @@ def optimize_header(header: ir.Header,
     header = _optimize_header_first_pass(header, identifier_generator, context_object_file_content)
     header = _optimize_header_second_pass(header, identifier_generator, context_object_file_content)
     header = _optimize_header_third_pass(header, identifier_generator, linking_final_header)
+
+    if linking_final_header:
+        [header], _ = apply_elem_optimization([header],
+                                              lambda: ([move_template_args_to_using_declarations(header)], False),
+                                              lambda headers: describe_headers(headers, identifier_generator),
+                                              optimization_name='replace_templates_with_templated_using_declarations',
+                                              other_context=lambda: '')
 
     return header

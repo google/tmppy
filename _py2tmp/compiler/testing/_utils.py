@@ -70,6 +70,7 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
             cpp_source = run(allow_toplevel_static_asserts_after_optimization=True)
         except (TestFailedException, AttributeError, AssertionError) as e:
             e1 = e
+            e1_traceback = traceback.format_exc()
 
         e2 = None
         try:
@@ -110,11 +111,11 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
                 run(allow_toplevel_static_asserts_after_optimization=True)
             except TestFailedException as e:
                 [message] = e.args
-                raise TestFailedException('Found test that fails after ir0_optimization.\nNon-optimized C++ code:\n%s\n%s' % (cpp_source,
-                                                                                                                          textwrap.dedent(message)))
+                raise TestFailedException('Found test that fails after ir0_optimization.\n%s\nNon-optimized C++ code:\n%s' % (textwrap.dedent(message),
+                                                                                                                              cpp_source))
             except (AttributeError, AssertionError):
-                raise TestFailedException('Found test that fails after ir0_optimization.\nNon-optimized C++ code:\n%s\n%s' % (cpp_source,
-                                                                                                                          traceback.format_exc()))
+                raise TestFailedException('Found test that fails after ir0_optimization.\n%s\nNon-optimized C++ code:\n%s' % (traceback.format_exc(),
+                                                                                                                              cpp_source))
 
             raise Exception('This should never happen, the test failed before with the same max_num_optimization_steps.')
         else:
@@ -124,7 +125,7 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
             ConfigurationKnobs.verbose = True
             ConfigurationKnobs.max_num_optimization_steps = bisect_result
             run(allow_toplevel_static_asserts_after_optimization=True)
-            raise TestFailedException('Found test that succeeds only after ir0_optimization: ' + ', '.join(e1.args))
+            raise TestFailedException('Found test that succeeds only after ir0_optimization: ' + e1_traceback)
     except TestFailedException as e:
         [message] = e.args
         pytest.fail(message, pytrace=False)
