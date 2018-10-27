@@ -16,8 +16,11 @@ from typing import List, Union, Tuple, Dict
 
 import pytest
 
-from _py2tmp.utils import _unification, ListExpansion, UnificationStrategy
 from _py2tmp.compiler.testing import main
+from _py2tmp.unification import ListExpansion, UnificationStrategy, _unification, _canonicalization, \
+    UnificationStrategyForCanonicalization, \
+    CanonicalizationFailedException, UnificationFailedException, UnificationAmbiguousException
+
 
 class Term:
     def __init__(self, name: str, args: List[Union[str, 'Term']]):
@@ -30,7 +33,7 @@ class Term:
 NonListExpr = Union[str, Term, ListExpansion[Term]]
 Expr = Union[NonListExpr, List[NonListExpr]]
 
-class ExampleUnificationStrategy(_unification.UnificationStrategyForCanonicalization[Term]):
+class ExampleUnificationStrategy(UnificationStrategyForCanonicalization[Term]):
     def __init__(self, vars_forbidden_on_lhs: List[str]):
         self.vars_forbidden_on_lhs = vars_forbidden_on_lhs
 
@@ -98,7 +101,7 @@ def unify(expr_expr_equations: List[Tuple[Expr, Expr]],
 
     result_dict = dict()
     if canonicalize:
-        var_expr_equations = _unification.canonicalize(var_expr_equations, expanded_var_expr_equations, strategy)
+        var_expr_equations = _canonicalization.canonicalize(var_expr_equations, expanded_var_expr_equations, strategy)
         for lhs, rhs in var_expr_equations:
             if isinstance(lhs, ListExpansion):
                 result_dict['%s...' % lhs.expr] = '[' + ', '.join(expr_to_str(rhs_elem)
@@ -151,7 +154,7 @@ def test_unify_trivial_term_equality(canonicalize, vars_forbidden_on_lhs):
     (True, ['x', 'y']),
 ])
 def test_unify_terms_with_different_arg_number_error(canonicalize, vars_forbidden_on_lhs):
-    with pytest.raises(_unification.UnificationFailedException):
+    with pytest.raises(UnificationFailedException):
         unify([
             (Term('f', ['x']), Term('f', ['x', 'y'])),
         ], canonicalize)
@@ -162,7 +165,7 @@ def test_unify_terms_with_different_arg_number_error(canonicalize, vars_forbidde
     (True, ['x']),
 ])
 def test_unify_terms_with_different_name_error(canonicalize, vars_forbidden_on_lhs):
-    with pytest.raises(_unification.UnificationFailedException):
+    with pytest.raises(UnificationFailedException):
         unify([
             (Term('f', ['x']), Term('g', ['x'])),
         ], canonicalize)
@@ -189,7 +192,7 @@ def test_unify_one_equality_variable_flipped_due_to_lhs_var_constraint():
     }
 
 def test_unify_one_equality_variable_impossible_due_to_lhs_var_constraint():
-    with pytest.raises(_unification.CanonicalizationFailedException):
+    with pytest.raises(CanonicalizationFailedException):
         unify([
             ('x', 'y'),
         ], canonicalize=True, vars_forbidden_on_lhs=['x', 'y'])
@@ -208,7 +211,7 @@ def test_unify_one_equality_term(canonicalize, vars_forbidden_on_lhs):
     }
 
 def test_unify_one_equality_term_impossible_due_to_lhs_var_constraint():
-    with pytest.raises(_unification.CanonicalizationFailedException):
+    with pytest.raises(CanonicalizationFailedException):
         unify([
             ('x', Term('f', ['y', 'z'])),
         ], canonicalize=True, vars_forbidden_on_lhs=['x'])
@@ -227,7 +230,7 @@ def test_unify_one_equality_term_swapped(canonicalize, vars_forbidden_on_lhs):
     }
 
 def test_unify_one_equality_term_swapped_impossible_due_to_lhs_var_constraint():
-    with pytest.raises(_unification.CanonicalizationFailedException):
+    with pytest.raises(CanonicalizationFailedException):
         unify([
             (Term('f', ['y', 'z']), 'x'),
         ], canonicalize=True, vars_forbidden_on_lhs=['x'])
@@ -249,7 +252,7 @@ def test_unify_two_equalities_no_substitution(canonicalize, vars_forbidden_on_lh
 
 @pytest.mark.parametrize('vars_forbidden_on_lhs', [['x'], ['k']])
 def test_unify_two_equalities_no_substitution_impossible_due_to_lhs_var_constraint(vars_forbidden_on_lhs):
-    with pytest.raises(_unification.CanonicalizationFailedException):
+    with pytest.raises(CanonicalizationFailedException):
         unify([
             ('x', Term('f', ['y', 'z'])),
             ('k', Term('g', ['n'])),
@@ -284,7 +287,7 @@ def test_unify_two_equalities_with_substitution_not_performed_without_canonicali
     ['y'],
 ])
 def test_unify_two_equalities_with_substitution_impossible_due_to_lhs_var_constraint(vars_forbidden_on_lhs):
-    with pytest.raises(_unification.CanonicalizationFailedException):
+    with pytest.raises(CanonicalizationFailedException):
         unify([
             ('x', Term('f', ['y', 'z'])),
             ('y', Term('g', ['n'])),
@@ -296,7 +299,7 @@ def test_unify_two_equalities_with_substitution_impossible_due_to_lhs_var_constr
     (True, ['x', 'y']),
 ])
 def test_equality_loop_length_two_impossible(canonicalize, vars_forbidden_on_lhs):
-    with pytest.raises(_unification.UnificationFailedException):
+    with pytest.raises(UnificationFailedException):
         unify([
             ('x', Term('f', ['y'])),
             ('y', 'x'),
@@ -308,7 +311,7 @@ def test_equality_loop_length_two_impossible(canonicalize, vars_forbidden_on_lhs
     (True, ['x', 'y', 'z']),
 ])
 def test_equality_loop_length_three_impossible(canonicalize, vars_forbidden_on_lhs):
-    with pytest.raises(_unification.UnificationFailedException):
+    with pytest.raises(UnificationFailedException):
         unify([
             ('x', 'z'),
             ('y', Term('f', ['x'])),
@@ -347,7 +350,7 @@ def test_variable_equality_loop_length_two_with_canonicalization_flipped_due_to_
     }
 
 def test_variable_equality_loop_length_two_with_canonicalization_impossible_due_to_lhs_var_constraint():
-    with pytest.raises(_unification.CanonicalizationFailedException):
+    with pytest.raises(CanonicalizationFailedException):
         unify([
             ('x', 'y'),
             ('y', 'x'),
@@ -419,7 +422,7 @@ def test_variable_equality_loop_length_three_ok_with_canonicalization_rearranged
     ['x', 'y', 'z'],
 ])
 def test_variable_equality_loop_length_three_ok_with_canonicalization_impossible_due_to_lhs_var_constraint(vars_forbidden_on_lhs):
-    with pytest.raises(_unification.CanonicalizationFailedException):
+    with pytest.raises(CanonicalizationFailedException):
         unify([
             ('x', 'y'),
             ('y', 'z'),
@@ -533,7 +536,7 @@ def test_unify_lists_one_to_many_list_vars(canonicalize):
 
 @pytest.mark.parametrize('canonicalize', [True, False])
 def test_unify_lists_many_to_many_list_vars(canonicalize):
-    with pytest.raises(_unification.UnificationAmbiguousException):
+    with pytest.raises(UnificationAmbiguousException):
         unify([
             ([ListExpansion('x'), Term('f', []), ListExpansion('y')], [ListExpansion('z'), Term('f', []), ListExpansion('k')]),
         ], canonicalize)

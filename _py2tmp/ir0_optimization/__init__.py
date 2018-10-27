@@ -13,5 +13,4 @@
 # limitations under the License.
 
 from ._optimize import optimize_header
-from ._replace_var_with_expr import replace_var_with_expr_in_expr
 from ._configuration_knobs import ConfigurationKnobs, DEFAULT_VERBOSE_SETTING

@@ -21,8 +21,9 @@ from bidict import bidict
 from _py2tmp.compiler.stages import expr_to_cpp_simple
 from _py2tmp.ir0 import NameReplacementTransformation, ir
 from _py2tmp.ir0_optimization._replace_var_with_expr import replace_var_with_expr_in_expr
-from _py2tmp.utils import ListExpansion, ir_to_string, UnificationStrategyForCanonicalization, UnificationStrategy, \
+from _py2tmp.unification import ListExpansion, UnificationStrategyForCanonicalization, UnificationStrategy, \
     UnificationFailedException, unify, UnificationAmbiguousException, CanonicalizationFailedException, canonicalize
+from _py2tmp.utils import ir_to_string
 
 
 def _unpack_if_variable(expr: ir.Expr,

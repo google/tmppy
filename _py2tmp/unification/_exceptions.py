@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._ast_to_string import ast_to_string
-from ._clang_format import clang_format
-from ._graphs import compute_condensation_in_topological_order
-from ._ir_to_string import ir_to_string
-from ._value_type import ValueType
+class UnificationFailedException(Exception):
+    pass
+
+class UnificationAmbiguousException(Exception):
+    pass
+
+class CanonicalizationFailedException(Exception):
+    pass
