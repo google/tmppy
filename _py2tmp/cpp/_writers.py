@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from contextlib import contextmanager
 from typing import Iterator
 
 
@@ -75,6 +76,7 @@ class ExprWriter(Writer):
     def __init__(self, parent_writer: Writer):
         self.parent_writer = parent_writer
         self.strings = []
+        self.is_in_pattern = parent_writer.is_in_pattern if isinstance(parent_writer, ExprWriter) else False
 
     def new_id(self):
         return self.parent_writer.new_id()
@@ -93,3 +95,9 @@ class ExprWriter(Writer):
 
     def get_toplevel_writer(self):
         return self.parent_writer.get_toplevel_writer()
+
+    @contextmanager
+    def enter_pattern_context(self):
+        self.is_in_pattern = True
+        yield
+        self.is_in_pattern = False

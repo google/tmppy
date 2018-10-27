@@ -346,7 +346,7 @@ def expect_cpp_code_generic_compile_error(expected_error_regex: str,
             if re.search(expected_error_regex, line):
                 return
         raise TestFailedException(textwrap.dedent('''\
-                Expected error {expected_error} but the _compiler output did not contain that.
+                Expected error {expected_error} but the compiler output did not contain that.
                 Compiler command line: {compiler_command}
                 Error message was:
                 {error_message}
@@ -431,7 +431,7 @@ def expect_cpp_code_compile_error(
                 break
         else:
             raise TestFailedException(textwrap.dedent('''\
-                    Expected error {expected_error} but the _compiler output did not contain user-facing _py2tmp errors.
+                    Expected error {expected_error} but the compiler output did not contain user-facing _py2tmp errors.
                     Compiler command line: {compiler_command}
                     Error message was:
                     {error_message}
@@ -459,7 +459,7 @@ def expect_cpp_code_compile_error(
                 break
         else:
             raise TestFailedException(textwrap.dedent('''\
-                    Expected error {expected_error} but the _compiler output did not contain static_assert errors.
+                    Expected error {expected_error} but the compiler output did not contain static_assert errors.
                     Compiler command line: {compiler_command}
                     Error message was:
                     {error_message}
@@ -854,7 +854,7 @@ def assert_compilation_fails_with_static_assert_error(expected_error_regex: str)
                 tmppy_source = _get_function_body(f)
                 object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
                 expect_cpp_code_generic_compile_error(
-                    r'(error: static assertion failed: |error: static_assert failed .)' + expected_error_regex,
+                    r'(error: static assertion failed: |error: static_assert failed .|static_assert failed due to requirement.*)' + expected_error_regex,
                     tmppy_source,
                     object_file_content,
                     cpp_source)

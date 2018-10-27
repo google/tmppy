@@ -197,8 +197,11 @@ def template_specialization_to_cpp(specialization: ir0.TemplateSpecialization,
     template_args = ', '.join(template_arg_decl_to_cpp(arg)
                               for arg in specialization.args)
     if specialization.patterns is not None:
-        patterns_str = ', '.join(expr_to_cpp(pattern, enclosing_function_defn_args, writer)
-                                 for pattern in specialization.patterns)
+        expr_writer = ExprWriter(writer)
+        with expr_writer.enter_pattern_context():
+            patterns_str = ', '.join(expr_to_cpp(pattern, enclosing_function_defn_args, expr_writer)
+                                     for pattern in specialization.patterns)
+        assert not expr_writer.strings
         writer.write_template_body_elem('''\
             template <{template_args}>
             struct {cxx_name}<{patterns_str}> {{
@@ -440,7 +443,7 @@ def variadic_type_expansion_to_cpp(expr: ir0.VariadicTypeExpansion,
                                    enclosing_function_defn_args: List[ir0.TemplateArgDecl],
                                    writer: Writer):
     cpp = expr_to_cpp(expr.expr, enclosing_function_defn_args, writer)
-    if expr.expr_type.kind == ir0.ExprKind.TYPE:
+    if expr.expr_type.kind == ir0.ExprKind.TYPE or (isinstance(writer, ExprWriter) and writer.is_in_pattern):
         return cpp + '...'
     else:
         return '(' + cpp + ')...'
