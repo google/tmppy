@@ -1,12 +1,16 @@
 [run]
-source = _py2tmp,tests
+source = _py2tmp
 omit =
-  tests/*
+  */tests/*
   testing/*
   */testing/*
 # Enable branch coverage
 branch = True
 
+[paths]
+source =
+    _py2tmp/
+    */_py2tmp
 [report]
 # Regexes for lines to exclude from consideration
 exclude_lines =
