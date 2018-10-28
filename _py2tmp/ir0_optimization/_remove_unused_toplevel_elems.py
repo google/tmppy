@@ -50,12 +50,11 @@ def remove_unused_toplevel_elems(header: ir.Header, linking_final_header: bool):
     elem_dependency_graph.add_node('')
     used_elem_names = nx.single_source_shortest_path(elem_dependency_graph, source='').keys()
 
-    new_header = ir.Header(template_defns=[template_defn for template_defn in header.template_defns if
-                                           template_defn.name in used_elem_names],
-                           toplevel_content=[elem for elem in header.toplevel_content if
-                                             isinstance(elem, ir.StaticAssert) or elem.name in used_elem_names],
-                           public_names=header.public_names,
-                           split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name,
-                           check_if_error_specializations=header.check_if_error_specializations)
-    return new_header, False
+    return ir.Header(template_defns=[template_defn for template_defn in header.template_defns if
+                                     template_defn.name in used_elem_names],
+                     toplevel_content=[elem for elem in header.toplevel_content if
+                                       isinstance(elem, ir.StaticAssert) or elem.name in used_elem_names],
+                     public_names=header.public_names,
+                     split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name,
+                     check_if_error_specializations=header.check_if_error_specializations)
 

@@ -151,18 +151,10 @@ def _optimize_header_second_pass(header: ir.Header,
                      split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name,
                      check_if_error_specializations=header.check_if_error_specializations)
 
-def _optimize_header_third_pass(header: ir.Header, identifier_generator: Iterator[str], linking_final_header: bool):
-    def optimization():
-        new_header, needs_another_loop = remove_unused_toplevel_elems(header, linking_final_header)
-        return [new_header], needs_another_loop
-
-    [header], needs_another_loop = apply_elem_optimization([header],
-                                                           optimization,
-                                                           lambda headers: describe_headers(headers, identifier_generator),
-                                                           optimization_name='',
-                                                           other_context=lambda: '')
-    assert not needs_another_loop
-    return header
+def _optimize_header_third_pass(header: ir.Header, linking_final_header: bool):
+    # We call this directly, not through apply_elem_optimization(), since that would pollute the diagnostics for failed
+    # tests and it would significantly slow down the test compilation in non-optimized mode.
+    return remove_unused_toplevel_elems(header, linking_final_header)
 
 def optimize_header(header: ir.Header,
                     context_object_file_content: ObjectFileContent,
@@ -171,12 +163,12 @@ def optimize_header(header: ir.Header,
     if linking_final_header:
         # This is just a performance optimization. Notably this removes any unused builtins, to avoid wasting time
         # optimizing those.
-        header = _optimize_header_third_pass(header, identifier_generator, linking_final_header)
+        header = _optimize_header_third_pass(header, linking_final_header)
 
     header = recalculate_template_instantiation_can_trigger_static_asserts_info(header)
     header = _optimize_header_first_pass(header, identifier_generator, context_object_file_content)
     header = _optimize_header_second_pass(header, identifier_generator, context_object_file_content)
-    header = _optimize_header_third_pass(header, identifier_generator, linking_final_header)
+    header = _optimize_header_third_pass(header, linking_final_header)
 
     if linking_final_header:
         [header], _ = apply_elem_optimization([header],
