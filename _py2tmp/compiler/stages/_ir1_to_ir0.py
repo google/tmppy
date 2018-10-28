@@ -36,9 +36,9 @@ class ToplevelWriter(Writer, PlainToplevelWriter):
     def __init__(self, identifier_generator: Iterator[str]):
         Writer.__init__(self, identifier_generator)
         PlainToplevelWriter.__init__(self)
-        self.check_if_error_specializations = []  # type: List[ir0.TemplateSpecialization]
-        self.holder_template_name_for_error = dict()  # type: Dict[str, str]
-        self.is_instance_template_name_for_error = dict()  # type: Dict[str, str]
+        self.check_if_error_specializations: List[ir0.TemplateSpecialization] = []
+        self.holder_template_name_for_error: Dict[str, str] = dict()
+        self.is_instance_template_name_for_error: Dict[str, str] = dict()
 
     def write_check_if_error_specialization(self, specialization: ir0.TemplateSpecialization):
         self.check_if_error_specializations.append(specialization)
@@ -293,7 +293,7 @@ def _create_metafunction_specialization(args: Sequence[ir0.TemplateArgDecl],
 
 def match_expr_to_ir0(match_expr: ir1.MatchExpr,
                       writer: TemplateBodyWriter):
-    forwarded_args = []  # type: List[ir1.VarReference]
+    forwarded_args: List[ir1.VarReference] = []
     forwarded_args_names = set()
     for match_case in match_expr.match_cases:
         local_vars = set(match_case.matched_var_names).union(match_case.matched_variadic_var_names)
@@ -1167,7 +1167,7 @@ def return_stmt_to_ir0(return_stmt: ir1.ReturnStmt, writer: TemplateBodyWriter):
 def _get_free_vars_in_elements(elements: Sequence[ir0.TemplateBodyElement]):
     free_var_names = set()
     bound_var_names = set()
-    free_vars = [] # type: List[ir0.AtomicTypeLiteral]
+    free_vars: List[ir0.AtomicTypeLiteral] = []
     for element in elements:
         if isinstance(element, ir0.StaticAssert) or isinstance(element, ir0.ConstantDef) or isinstance(element, ir0.Typedef):
             for var in element.expr.get_free_vars():

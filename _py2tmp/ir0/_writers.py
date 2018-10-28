@@ -44,8 +44,8 @@ class ToplevelWriter(Writer):
                  allow_toplevel_elems: bool = True,
                  allow_template_defns: bool = True):
         super().__init__()
-        self.template_defns = []  # type: List[ir.TemplateDefn]
-        self.toplevel_elems = []  # type: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]]
+        self.template_defns: List[ir.TemplateDefn] = []
+        self.toplevel_elems: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]] = []
         self.allow_toplevel_elems = allow_toplevel_elems
         self.allow_template_defns = allow_template_defns
 
@@ -64,7 +64,7 @@ class TemplateBodyWriter(Writer):
     def __init__(self, toplevel_writer: Optional[ToplevelWriter]):
         super().__init__()
         self.toplevel_writer = toplevel_writer
-        self.elems = []  # type: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]]
+        self.elems: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]] = []
 
     def write_toplevel_elem(self, elem: Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef, ir.TemplateDefn]):
         self.toplevel_writer.write(elem)

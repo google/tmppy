@@ -57,9 +57,9 @@ class CommonSubexpressionEliminationTransformation(Transformation):
                                        result_element_names: Sequence[str],
                                        template_specialization_args: Sequence[ir.TemplateArgDecl],
                                        is_metafunction: bool):
-        name_by_expr = dict()  # type: Dict[ir.Expr, str]
-        replacements = dict()  # type: Dict[str, str]
-        type_by_name = dict()  # type: Dict[str, ir.ExprType]
+        name_by_expr: Dict[ir.Expr, str] = dict()
+        replacements: Dict[str, str] = dict()
+        type_by_name: Dict[str, ir.ExprType] = dict()
 
         # First we process all args, so that we'll remove assignments of the form:
         # x1 = arg1
@@ -141,9 +141,9 @@ class CommonSubexpressionEliminationTransformation(Transformation):
                                  elems: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]],
                                  identifier_generator: Iterator[str]):
 
-        name_by_expr = dict()  # type: Dict[ir.Expr, str]
-        replacements = dict()  # type: Dict[str, str]
-        type_by_name = dict()  # type: Dict[str, ir.ExprType]
+        name_by_expr: Dict[ir.Expr, str] = dict()
+        replacements: Dict[str, str] = dict()
+        type_by_name: Dict[str, ir.ExprType] = dict()
 
         result_elems = []
         for elem in elems:

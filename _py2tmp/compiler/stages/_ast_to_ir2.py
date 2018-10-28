@@ -43,8 +43,8 @@ class SymbolLookupResult:
         self.symbol_table = symbol_table
 
 class SymbolTable:
-    def __init__(self, parent=None):
-        self.symbols_by_name = dict()  # type: Dict[str, Tuple[Symbol, ast.AST, bool]]
+    def __init__(self, parent: 'SymbolTable' =None):
+        self.symbols_by_name: Dict[str, Tuple[Symbol, ast.AST, bool]] = dict()
         self.parent = parent
 
     def get_symbol_definition(self, name: str):

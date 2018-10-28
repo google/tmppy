@@ -233,6 +233,6 @@ def select1st_literal(lhs_type: ir.ExprType, rhs_type: ir.ExprType):
                                                       may_be_alias=False)
 
 
-GLOBAL_LITERALS_BY_NAME = {x.cpp_type: x
-                           for x in GlobalLiterals.__dict__.values()
-                           if isinstance(x, ir.AtomicTypeLiteral)}  # type: Dict[str, ir.AtomicTypeLiteral]
+GLOBAL_LITERALS_BY_NAME: Dict[str, ir.AtomicTypeLiteral] = {x.cpp_type: x
+                                                            for x in GlobalLiterals.__dict__.values()
+                                                            if isinstance(x, ir.AtomicTypeLiteral)}

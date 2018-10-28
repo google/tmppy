@@ -31,7 +31,7 @@ class FunWriter(Writer):
                                                               returns=ir1.BoolType()),
                                              is_global_function=True)
         self.function_defns = [self._create_is_error_fun_defn()]
-        self.obfuscated_identifiers_by_identifier = defaultdict(lambda: self.new_id())  # type: Dict[str, str]
+        self.obfuscated_identifiers_by_identifier: Dict[str, str] = defaultdict(lambda: self.new_id())
 
     def new_id(self):
         return next(self.identifier_generator)
@@ -96,7 +96,7 @@ class StmtWriter(Writer):
         self.current_fun_name = current_fun_name
         self.current_fun_args = current_fun_args
         self.current_fun_return_type = current_fun_return_type
-        self.stmts = []  # type: List[ir1.Stmt]
+        self.stmts: List[ir1.Stmt] = []
         self.try_except_contexts = try_except_contexts.copy()
 
     def write_function(self, fun_defn: ir1.FunctionDefn):
