@@ -84,7 +84,7 @@ def add_osx_tests(compiler, xcode_version=None, stl=None, smoke_tests=[], exclud
   compiler_kind = determine_compiler_kind(compiler)
   export_statements = 'export OS=osx; ' + generate_export_statements_for_env(env=env)
   test_environment_template = {'os': 'osx', '_compiler': compiler_kind,
-                               'install': '%s extras/scripts/travis_ci_install_osx.sh' % export_statements}
+                               'install': '%s travis_wait extras/scripts/travis_ci_install_osx.sh' % export_statements}
   if xcode_version is not None:
     test_environment_template['osx_image'] = 'xcode%s' % xcode_version
 
@@ -102,22 +102,38 @@ def add_osx_tests(compiler, xcode_version=None, stl=None, smoke_tests=[], exclud
       build_matrix_rows.append(test_environment)
 
 
-add_ubuntu_tests(ubuntu_version='18.10', compiler='gcc-8', smoke_tests=['DebugPlain', 'ReleasePlain'])
-add_ubuntu_tests(ubuntu_version='18.10', compiler='clang-7.0', stl='libstdc++', smoke_tests=['DebugPlain', 'ReleasePlain'])
+add_ubuntu_tests(ubuntu_version='20.04', compiler='gcc-7')
+add_ubuntu_tests(ubuntu_version='20.04', compiler='gcc-10',
+                 smoke_tests=['DebugPlain', 'ReleasePlain'])
+add_ubuntu_tests(ubuntu_version='20.04', compiler='clang-6.0', stl='libstdc++',
+                 smoke_tests=['DebugPlain', 'DebugAsanUbsan', 'ReleasePlain'])
+add_ubuntu_tests(ubuntu_version='20.04', compiler='clang-10.0', stl='libstdc++')
+add_ubuntu_tests(ubuntu_version='20.04', compiler='clang-10.0', stl='libc++')
 
+add_ubuntu_tests(ubuntu_version='18.04', compiler='gcc-5')
+add_ubuntu_tests(ubuntu_version='18.04', compiler='gcc-8')
+add_ubuntu_tests(ubuntu_version='18.04', compiler='clang-3.9', stl='libstdc++')
+add_ubuntu_tests(ubuntu_version='18.04', compiler='clang-7.0', stl='libstdc++')
+
+# ASan/UBSan are disabled for all these, the analysis on later versions is better anyway.
+# Also, in some combinations they wouldn't work.
 add_ubuntu_tests(ubuntu_version='16.04', compiler='gcc-5')
 add_ubuntu_tests(ubuntu_version='16.04', compiler='clang-3.5', stl='libstdc++')
 add_ubuntu_tests(ubuntu_version='16.04', compiler='clang-3.9', stl='libstdc++')
-add_ubuntu_tests(ubuntu_version='16.04', compiler='clang-3.5', stl='libc++')
-add_ubuntu_tests(ubuntu_version='16.04', compiler='clang-3.9', stl='libc++')
 
-add_osx_tests(compiler='gcc-5', xcode_version='8')
-add_osx_tests(compiler='gcc-6', xcode_version='8', smoke_tests=['DebugPlain'])
-add_osx_tests(compiler='clang-3.7', stl='libc++')
-add_osx_tests(compiler='clang-4.0', xcode_version='8', stl='libc++', smoke_tests=['DebugPlain'])
+# Asan/Ubsan are disabled because it generates lots of warnings like:
+#    warning: direct access in [...] to global weak symbol guard variable for [...] means the weak symbol cannot be
+#    overridden at runtime. This was likely caused by different translation units being compiled with different
+#    visibility settings.
+# and the build eventually fails or times out.
+add_osx_tests(compiler='gcc-6', xcode_version='11.4')
+add_osx_tests(compiler='gcc-9', xcode_version='11.4', smoke_tests=['DebugPlain'])
+add_osx_tests(compiler='clang-6.0', xcode_version='11.4', stl='libc++')
+add_osx_tests(compiler='clang-8.0', xcode_version='11.4', stl='libc++', smoke_tests=['DebugPlain'])
 
-add_osx_tests(compiler='clang-default', xcode_version='7.3', stl='libc++')
-add_osx_tests(compiler='clang-default', xcode_version='8.2', stl='libc++', smoke_tests=['DebugPlain'])
+add_osx_tests(compiler='clang-default', xcode_version='9.4', stl='libc++')
+add_osx_tests(compiler='clang-default', xcode_version='11.3', stl='libc++',
+              smoke_tests=['DebugPlain'])
 
 yaml_file = {
   'sudo': 'required',

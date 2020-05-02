@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 2.8)
-project(tmppy)
+cmake_minimum_required(VERSION 3.2)
+project(TMPPy VERSION 3.5.0 LANGUAGES CXX)
 
 add_custom_command(OUTPUT builtins.tmppyc
                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

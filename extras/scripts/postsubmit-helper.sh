@@ -32,6 +32,16 @@ gcc-8)
     export CXX=g++-8
     ;;
 
+gcc-9)
+    export CC=gcc-9
+    export CXX=g++-9
+    ;;
+
+gcc-10)
+    export CC=gcc-10
+    export CXX=g++-10
+    ;;
+
 clang-3.5)
     export CC=clang-3.5
     export CXX=clang++-3.5
@@ -86,6 +96,21 @@ clang-7.0)
     export CXX=clang++-7
     ;;
 
+clang-8.0)
+    export CC=clang-8
+    export CXX=clang++-8
+    ;;
+
+clang-9.0)
+    export CC=clang-9
+    export CXX=clang++-9
+    ;;
+
+clang-10.0)
+    export CC=clang-10
+    export CXX=clang++-10
+    ;;
+
 clang-default)
     export CC=clang
     export CXX=clang++
@@ -100,15 +125,20 @@ run_make() {
   make -j$N_JOBS
 }
 
+COMMON_CXX_FLAGS="$STLARG -Werror -pedantic -Winvalid-pch"
+
 echo CXX version: $($CXX --version)
 echo C++ Standard library location: $(echo '#include <vector>' | $CXX -x c++ -E - | grep 'vector\"' | awk '{print $3}' | sed 's@/vector@@;s@\"@@g' | head -n 1)
 echo Normalized C++ Standard library location: $(readlink -f $(echo '#include <vector>' | $CXX -x c++ -E - | grep 'vector\"' | awk '{print $3}' | sed 's@/vector@@;s@\"@@g' | head -n 1))
 
 case "$1" in
-DebugPlain)           CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Debug   -DCMAKE_CXX_FLAGS="$STLARG -Werror -pedantic -D_GLIBCXX_DEBUG -O2") ;;
-ReleasePlain)         CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="$STLARG -Werror -pedantic") ;;
+DebugPlain)           CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Debug   -DCMAKE_CXX_FLAGS="$COMMON_CXX_FLAGS -D_GLIBCXX_DEBUG -O2") ;;
+ReleasePlain)         CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="$COMMON_CXX_FLAGS") ;;
 *) echo "Error: you need to specify one of the supported postsubmit modes (see postsubmit.sh)."; exit 1 ;;
 esac
+
+# Setting compilers only via env vars doesn't work when using recent versions of XCode.
+CMAKE_ARGS+=(-DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX)
 
 SOURCES_PATH="$PWD"
 
