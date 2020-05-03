@@ -162,6 +162,6 @@ run_make
 # We specify the path explicitly because old versions of pytest (e.g. the one in Ubuntu 14.04)
 # don't support the testpaths setting in pytest.ini, so they will ignore it and they would
 # otherwise run no tests.
-py.test -n auto -r a "$SOURCES_PATH"/tests
+py.test -n auto -r a "$SOURCES_PATH"/_py2tmp
 
 make install
