@@ -106,7 +106,7 @@ add_ubuntu_tests(ubuntu_version='20.04', compiler='gcc-7')
 add_ubuntu_tests(ubuntu_version='20.04', compiler='gcc-10',
                  smoke_tests=['DebugPlain', 'ReleasePlain'])
 add_ubuntu_tests(ubuntu_version='20.04', compiler='clang-6.0', stl='libstdc++',
-                 smoke_tests=['DebugPlain', 'DebugAsanUbsan', 'ReleasePlain'])
+                 smoke_tests=['DebugPlain' 'ReleasePlain'])
 add_ubuntu_tests(ubuntu_version='20.04', compiler='clang-10.0', stl='libstdc++')
 add_ubuntu_tests(ubuntu_version='20.04', compiler='clang-10.0', stl='libc++')
 
@@ -115,17 +115,10 @@ add_ubuntu_tests(ubuntu_version='18.04', compiler='gcc-8')
 add_ubuntu_tests(ubuntu_version='18.04', compiler='clang-3.9', stl='libstdc++')
 add_ubuntu_tests(ubuntu_version='18.04', compiler='clang-7.0', stl='libstdc++')
 
-# ASan/UBSan are disabled for all these, the analysis on later versions is better anyway.
-# Also, in some combinations they wouldn't work.
 add_ubuntu_tests(ubuntu_version='16.04', compiler='gcc-5')
 add_ubuntu_tests(ubuntu_version='16.04', compiler='clang-3.5', stl='libstdc++')
 add_ubuntu_tests(ubuntu_version='16.04', compiler='clang-3.9', stl='libstdc++')
 
-# Asan/Ubsan are disabled because it generates lots of warnings like:
-#    warning: direct access in [...] to global weak symbol guard variable for [...] means the weak symbol cannot be
-#    overridden at runtime. This was likely caused by different translation units being compiled with different
-#    visibility settings.
-# and the build eventually fails or times out.
 add_osx_tests(compiler='gcc-6', xcode_version='11.4')
 add_osx_tests(compiler='gcc-9', xcode_version='11.4', smoke_tests=['DebugPlain'])
 add_osx_tests(compiler='clang-6.0', xcode_version='11.4', stl='libc++')
