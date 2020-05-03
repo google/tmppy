@@ -22,6 +22,7 @@ import pickle
 import re
 import subprocess
 import sys
+import shlex
 import tempfile
 import textwrap
 import traceback
@@ -31,6 +32,7 @@ from typing import Callable, Iterable, Any
 
 import py2tmp_test_config as config
 import pytest
+from absl.testing import parameterized, absltest
 
 from _py2tmp.compiler._compile import compile_source_code
 from _py2tmp.compiler._link import compute_merged_header_for_linking
@@ -131,7 +133,26 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
         pytest.fail(message, pytrace=False)
 
 def pretty_print_command(command):
-    return ' '.join('"' + x + '"' for x in command)
+    return ' '.join(shlex.quote(x) for x in command)
+
+def multiple_parameters(*param_lists):
+    param_lists = [[params if isinstance(params, tuple) else (params,)
+                    for params in param_list]
+                   for param_list in param_lists]
+    result = param_lists[0]
+    for param_list in param_lists[1:]:
+        result = [(*args1, *args2)
+                  for args1 in result
+                  for args2 in param_list]
+    return parameterized.parameters(*result)
+
+def multiple_named_parameters(*param_lists):
+    result = param_lists[0]
+    for param_list in param_lists[1:]:
+        result = [(name1 + ', ' + name2, *args1, *args2)
+                  for name1, *args1 in result
+                  for name2, *args2 in param_list]
+    return parameterized.named_parameters(*result)
 
 def add_line_numbers(source_code):
     lines = source_code.splitlines()
@@ -1004,6 +1025,5 @@ def assert_conversion_fails(f):
     return wrapper
 
 # Note: this is not the main function of this file, it's meant to be used as main function from test_*.py files.
-def main(file):
-    code = pytest.main(args = sys.argv + [os.path.realpath(file)])
-    exit(code)
+def main():
+    absltest.main(*sys.argv)
