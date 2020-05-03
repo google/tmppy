@@ -14,7 +14,7 @@
 import itertools
 import traceback
 from enum import Enum
-from typing import List, Tuple, Set, Optional, Iterable, Union, MutableMapping, Mapping, Dict
+from typing import List, Tuple, Set, Optional, Iterable, Union, MutableMapping, Mapping, Dict, TypeVar, overload
 
 from bidict import bidict
 
@@ -48,9 +48,20 @@ def _unpack_if_variable(expr: ir.Expr,
     else:
         return expr
 
+@overload
+def _pack_if_variable(var_or_expr: str,
+                      literal_expr_by_unique_name: Mapping[str, ir.AtomicTypeLiteral]) -> Union[ir.Expr, List[ir.Expr]]: ...
+
+@overload
+def _pack_if_variable(var_or_expr: ir.Expr,
+                      literal_expr_by_unique_name: Mapping[str, ir.AtomicTypeLiteral]) -> ir.Expr: ...
+
+@overload
+def _pack_if_variable(var_or_expr: ListExpansion[ir.Expr],
+                      literal_expr_by_unique_name: Mapping[str, ir.AtomicTypeLiteral]) -> ir.VariadicTypeExpansion: ...
+
 def _pack_if_variable(var_or_expr: Union[str, ir.Expr, ListExpansion[ir.Expr]],
-                      literal_expr_by_unique_name: Mapping[str, ir.AtomicTypeLiteral]) -> Union[
-    ir.Expr, List[ir.Expr]]:
+                      literal_expr_by_unique_name: Mapping[str, ir.AtomicTypeLiteral]) -> Union[ir.Expr, List[ir.Expr]]:
     assert not isinstance(var_or_expr, list)
     if isinstance(var_or_expr, str):
         return literal_expr_by_unique_name[var_or_expr]
@@ -152,7 +163,9 @@ class _ExprUnificationStrategy(UnificationStrategyForCanonicalization[ir.Expr]):
 
         return True
 
-def _replace_var_names_in_expr(expr: Union[ir.Expr, List[ir.Expr]], new_name_by_old_name: Mapping[str, str]):
+ExprOrExprList = TypeVar('ExprOrExprList', ir.Expr, List[ir.Expr])
+
+def _replace_var_names_in_expr(expr: ExprOrExprList, new_name_by_old_name: Mapping[str, str]) -> ExprOrExprList:
     if isinstance(expr, list):
         return [_replace_var_names_in_expr(elem, new_name_by_old_name)
                 for elem in expr]
@@ -168,7 +181,7 @@ class UnificationResult:
                  kind: UnificationResultKind,
                  pattern_var_expr_equations: Optional[List[Tuple[ir.AtomicTypeLiteral,
                                                                  List[ir.Expr]]]] = None,
-                 value_by_expanded_pattern_variable: Optional[List[Tuple[ir.AtomicTypeLiteral,
+                 value_by_expanded_pattern_variable: Optional[List[Tuple[ir.VariadicTypeExpansion,
                                                                          List[ir.Expr]]]] = None):
         assert (pattern_var_expr_equations is not None) == (kind == UnificationResultKind.CERTAIN)
         self.kind = kind
@@ -404,7 +417,7 @@ def _unify(initial_exprs: List[ir.Expr],
     try:
         var_expr_equations, expanded_var_expr_equations = unify([(lhs, rhs)],
                                                                 context,
-                                                                unification_strategy)
+                                                                unification_strategy)  # type: Tuple[Dict[str, Union[str, ExprOrExprList]], Dict[str, List[ir.Expr]]]
     except UnificationFailedException:
         if verbose:
             print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning IMPOSSIBLE due to exception: %s' % (
@@ -479,6 +492,7 @@ def _unify(initial_exprs: List[ir.Expr],
     for lhs_var, exprs in var_expr_equations:
         if isinstance(lhs_var, ir.VariadicTypeExpansion):
             lhs_var = lhs_var.expr
+        assert isinstance(lhs_var, ir.AtomicTypeLiteral)
         if lhs_var.cpp_type in unique_var_name_by_pattern_type_literal_name.inv:
             if isinstance(exprs, list):
                 for expr in exprs:
@@ -490,7 +504,7 @@ def _unify(initial_exprs: List[ir.Expr],
 
     # We reverse the var renaming done above
     result_var_expr_equations: List[Tuple[ir.AtomicTypeLiteral, List[ir.Expr]]] = []
-    result_expanded_var_expr_equations: List[Tuple[ir.AtomicTypeLiteral, List[ir.Expr]]] = []
+    result_expanded_var_expr_equations: List[Tuple[ir.VariadicTypeExpansion, List[ir.Expr]]] = []
     for var, exprs in var_expr_equations:
         if isinstance(var, ir.VariadicTypeExpansion):
             assert isinstance(exprs, list)
@@ -498,6 +512,7 @@ def _unify(initial_exprs: List[ir.Expr],
                                                        [_replace_var_names_in_expr(expr, unique_var_name_by_expr_type_literal_name.inv)
                                                         for expr in exprs]))
         else:
+            assert isinstance(var, ir.AtomicTypeLiteral)
             result_var_expr_equations.append((_replace_var_names_in_expr(var, unique_var_name_by_pattern_type_literal_name.inv),
                                               _replace_var_names_in_expr(exprs, unique_var_name_by_expr_type_literal_name.inv)))
 
@@ -505,7 +520,7 @@ def _unify(initial_exprs: List[ir.Expr],
         for expr in (exprs if isinstance(exprs, list) else (exprs,)):
             if var.expr_type != expr.expr_type:
                 if verbose:
-                    print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning IMPOSSIBLE due to type mismatch:\n%s\nwith type:\n%s\n=== vs ===\n%s\nwith type:\m%s' % (
+                    print('unify(exprs=[%s], local_var_definitions={%s}, patterns=[%s], expr_variables=[%s], pattern_variables=[%s], ...):\nUsing name mappings: %s, %s\nReturning IMPOSSIBLE due to type mismatch:\n%s\nwith type:\n%s\n=== vs ===\n%s\nwith type:\n%s' % (
                         ', '.join(expr_to_cpp_simple(expr) for expr in initial_exprs),
                         ', '.join('%s = %s' % (var, expr_to_cpp_simple(expr)) for var, expr in local_var_definitions.items()),
                         ', '.join(expr_to_cpp_simple(pattern) for pattern in patterns),

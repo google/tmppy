@@ -563,4 +563,4 @@ def test_try_except_where_both_try_and_except_maybe_throw():
     assert f(False, False) == 1
 
 if __name__== '__main__':
-    main(__file__)
+    main()

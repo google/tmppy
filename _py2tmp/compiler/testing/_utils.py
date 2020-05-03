@@ -28,8 +28,9 @@ import textwrap
 import traceback
 import unittest
 from functools import wraps, lru_cache
-from typing import Callable, Iterable, Any
+from typing import Callable, Iterable, Any, List
 
+# noinspection PyUnresolvedReferences
 import py2tmp_test_config as config
 import pytest
 from absl.testing import parameterized, absltest
@@ -62,24 +63,27 @@ def bisect_with_predicate(last_known_good: int, first_known_bad: int, is_good: C
     assert last_known_good + 1 == first_known_bad
     return first_known_bad
 
+# run takes a bool allow_toplevel_static_asserts_after_optimization and returns the cpp source.
 def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reaching_max_optimization_loops=False):
     try:
         ConfigurationKnobs.verbose = DEFAULT_VERBOSE_SETTING
 
         e1 = None
+        e1_traceback = None
         try:
             ConfigurationKnobs.max_num_optimization_steps = 0
-            cpp_source = run(allow_toplevel_static_asserts_after_optimization=True)
+            cpp_source = run(True)
         except (TestFailedException, AttributeError, AssertionError) as e:
             e1 = e
             e1_traceback = traceback.format_exc()
+            cpp_source = None
 
         e2 = None
         try:
             ConfigurationKnobs.max_num_optimization_steps = -1
             ConfigurationKnobs.optimization_step_counter = 0
             ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
-            run(allow_toplevel_static_asserts_after_optimization=True)
+            run(True)
         except (TestFailedException, AttributeError, AssertionError) as e:
             e2 = e
 
@@ -89,16 +93,16 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
         if not e1 and not e2:
             if ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0 and not allow_reaching_max_optimization_loops:
                 ConfigurationKnobs.verbose = True
-                optimized_cpp_source = run(allow_toplevel_static_asserts_after_optimization=True)
+                optimized_cpp_source = run(True)
                 raise TestFailedException('The test passed, but hit max_num_remaining_loops.\nOptimized C++ code:\n%s' % optimized_cpp_source)
             if CHECK_TESTS_WERE_FULLY_OPTIMIZED:
-                run(allow_toplevel_static_asserts_after_optimization=False)
+                run(False)
             return
 
-        def predicate(max_num_optimization_steps):
+        def predicate(max_num_optimization_steps: int):
             ConfigurationKnobs.max_num_optimization_steps = max_num_optimization_steps
             try:
-                run(allow_toplevel_static_asserts_after_optimization=True)
+                run(True)
                 return True
             except (TestFailedException, AttributeError, AssertionError) as e:
                 return False
@@ -110,7 +114,7 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
             ConfigurationKnobs.verbose = True
             ConfigurationKnobs.max_num_optimization_steps = bisect_result
             try:
-                run(allow_toplevel_static_asserts_after_optimization=True)
+                run(True)
             except TestFailedException as e:
                 [message] = e.args
                 raise TestFailedException('Found test that fails after ir0_optimization.\n%s\nNon-optimized C++ code:\n%s' % (textwrap.dedent(message),
@@ -126,7 +130,7 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
             bisect_result = bisect_with_predicate(0, ConfigurationKnobs.optimization_step_counter, lambda n: not predicate(n))
             ConfigurationKnobs.verbose = True
             ConfigurationKnobs.max_num_optimization_steps = bisect_result
-            run(allow_toplevel_static_asserts_after_optimization=True)
+            run(True)
             raise TestFailedException('Found test that succeeds only after ir0_optimization: ' + e1_traceback)
     except TestFailedException as e:
         [message] = e.args
@@ -178,8 +182,8 @@ class CommandFailedException(Exception):
         {stderr}
         ''').format(command=pretty_print_command(self.command), error_code=self.error_code, stdout=self.stdout, stderr=self.stderr)
 
-def run_command(executable, args=[]):
-    command = [executable] + args
+def run_command(executable: str, args: List[str] = ()):
+    command = [executable, *args]
     # print('Executing command:', pretty_print_command(command))
     try:
         p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -195,17 +199,17 @@ def run_command(executable, args=[]):
     # print('stderr:')
     # print(stderr)
     # print('')
-    return (stdout, stderr)
+    return stdout, stderr
 
-def run_compiled_executable(executable):
-    run_command(executable)
+def run_compiled_executable(executable: str):
+    return run_command(executable)
 
 class CompilationFailedException(Exception):
-    def __init__(self, command, error_message):
+    def __init__(self, command, error_message) -> None:
         self.command = command
         self.error_message = error_message
 
-    def __str__(self):
+    def __str__(self) -> str:
         return textwrap.dedent('''\
         Ran command: {command}
         Error message:
@@ -213,18 +217,18 @@ class CompilationFailedException(Exception):
         ''').format(command=pretty_print_command(self.command), error_message=self.error_message)
 
 class PosixCompiler:
-    def __init__(self):
+    def __init__(self) -> None:
         self.executable = config.CXX
         self.name = config.CXX_COMPILER_NAME
 
-    def compile_discarding_output(self, source, include_dirs, args=[]):
+    def compile_discarding_output(self, source: str, include_dirs: List[str], args: List[str] = ()):
         try:
             args = args + ['-c', source, '-o', os.path.devnull]
             self._compile(include_dirs, args=args)
         except CommandFailedException as e:
             raise CompilationFailedException(e.command, e.stderr)
 
-    def compile_and_link(self, source, include_dirs, output_file_name, args=[]):
+    def compile_and_link(self, source: str, include_dirs: List[str], output_file_name: str, args: List[str] = ()):
         self._compile(
             include_dirs,
             args = (
@@ -234,7 +238,7 @@ class PosixCompiler:
                 + ['-o', output_file_name]
             ))
 
-    def _compile(self, include_dirs, args):
+    def _compile(self, include_dirs: List[str], args: List[str]):
         include_flags = ['-I%s' % include_dir for include_dir in include_dirs]
         args = (
             ['-W', '-Wall', '-g0', '-Werror', '-Wno-error=tautological-compare', '-std=c++11']
@@ -245,11 +249,11 @@ class PosixCompiler:
         run_command(self.executable, args)
 
 class MsvcCompiler:
-    def __init__(self):
+    def __init__(self) -> None:
         self.executable = config.CXX
         self.name = config.CXX_COMPILER_NAME
 
-    def compile_discarding_output(self, source, include_dirs, args=[]):
+    def compile_discarding_output(self, source: str, include_dirs: List[str], args: List[str] = ()) -> None:
         try:
             args = args + ['/c', source]
             self._compile(include_dirs, args = args)
@@ -257,17 +261,17 @@ class MsvcCompiler:
             # Note that we use stdout here, unlike above. MSVC reports compilation warnings and errors on stdout.
             raise CompilationFailedException(e.command, e.stdout)
 
-    def compile_and_link(self, source, include_dirs, output_file_name, args=[]):
+    def compile_and_link(self, source: str, include_dirs: List[str], output_file_name: str, args: List[str] = ()):
         self._compile(
             include_dirs,
-            args = (
+            args=(
                 [source]
                 + config.ADDITIONAL_LINKER_FLAGS.split()
                 + args
                 + ['/Fe' + output_file_name]
             ))
 
-    def _compile(self, include_dirs, args):
+    def _compile(self, include_dirs: List[str], args: List[str]):
         include_flags = ['-I%s' % include_dir for include_dir in include_dirs]
         args = (
             ['/nologo', '/FS', '/W4', '/D_SCL_SECURE_NO_WARNINGS', '/WX']
@@ -286,21 +290,22 @@ else:
 
 _assert_helper = unittest.TestCase()
 
-def _create_temporary_file(file_content, file_name_suffix=''):
+def _create_temporary_file(file_content: str, file_name_suffix: str = ''):
     file_descriptor, file_name = tempfile.mkstemp(text=True, suffix=file_name_suffix)
     file = os.fdopen(file_descriptor, mode='w')
     file.write(file_content)
     file.close()
     return file_name
 
-def _cap_to_lines(s, n):
+def _cap_to_lines(s: str, n: int):
     lines = s.splitlines()
     if len(lines) <= n:
         return s
     else:
         return '\n'.join(lines[0:n] + ['...'])
 
-def try_remove_temporary_file(filename):
+def try_remove_temporary_file(filename: str):
+    # noinspection PyBroadException
     try:
         os.remove(filename)
     except:
@@ -438,13 +443,13 @@ def expect_cpp_code_compile_error(
                     try:
                         replacement_lines = []
                         if normalized_error_message_lines[line_number + 1].strip() == 'with':
-                            for line in itertools.islice(normalized_error_message_lines, line_number + 3, None):
-                                line = line.strip()
-                                if line == ']':
+                            for line1 in itertools.islice(normalized_error_message_lines, line_number + 3, None):
+                                line1 = line1.strip()
+                                if line1 == ']':
                                     break
-                                if line.endswith(','):
-                                    line = line[:-1]
-                                replacement_lines.append(line)
+                                if line1.endswith(','):
+                                    line1 = line1[:-1]
+                                replacement_lines.append(line1)
                         for replacement_line in replacement_lines:
                             match = re.search('([A-Za-z0-9_-]*)=(.*)', replacement_line)
                             if not match:
@@ -716,6 +721,7 @@ def link(object_file_content: ObjectFileContent,
                 object_file_content=object_file_content)
 
 def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization):
+    object_file_content = None
     try:
         object_file_content = compile(tmppy_source)
         e = None
@@ -1000,6 +1006,7 @@ def assert_conversion_fails(f):
         def run_test(allow_toplevel_static_asserts_after_optimization: bool):
             tmppy_source = _get_function_body(f)
             e = None
+            object_file_content = None
             try:
                 object_file_content = compile(tmppy_source)
             except CompilationError as e1:

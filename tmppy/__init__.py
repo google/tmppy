@@ -12,5 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# noinspection PyUnresolvedReferences
 from _tmppy.type import Type, match
+# noinspection PyUnresolvedReferences
 from _tmppy.lists import empty_list, empty_set

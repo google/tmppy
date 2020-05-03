@@ -24,14 +24,14 @@ class ExprKind(Enum):
     TYPE = 3
     TEMPLATE = 4
 
-class TemplateBodyElementOrExprOrTemplateDefn(ValueType):
+class _TemplateBodyElementOrExprOrTemplateDefn(ValueType):
     def get_referenced_identifiers(self) -> Iterable[str]:
         for expr in self.get_transitive_subexpressions():
             for identifier in expr.get_local_referenced_identifiers():
                 yield identifier
 
     # Returns all transitive subexpressions
-    def get_transitive_subexpressions(self):
+    def get_transitive_subexpressions(self) -> Iterable['Expr']:
         if isinstance(self, Expr):
             yield self
         for elem in self.get_direct_subelements():
@@ -45,34 +45,37 @@ class TemplateBodyElementOrExprOrTemplateDefn(ValueType):
 
     def get_direct_subexpressions(self) -> Iterable['Expr']: ...
 
-class ExprType(ValueType):
+class _ExprType(ValueType):
     def __init__(self, kind: ExprKind):
         self.kind = kind
 
-class BoolType(ExprType):
-    def __init__(self):
+class BoolType(_ExprType):
+    def __init__(self) -> None:
         super().__init__(kind=ExprKind.BOOL)
 
-class Int64Type(ExprType):
-    def __init__(self):
+class Int64Type(_ExprType):
+    def __init__(self) -> None:
         super().__init__(kind=ExprKind.INT64)
 
-class TypeType(ExprType):
-    def __init__(self):
+class TypeType(_ExprType):
+    def __init__(self) -> None:
         super().__init__(kind=ExprKind.TYPE)
 
 class TemplateArgType(ValueType):
-    def __init__(self, expr_type: ExprType, is_variadic: bool):
+    def __init__(self, expr_type: 'ExprType', is_variadic: bool):
         self.expr_type = expr_type
         self.is_variadic = is_variadic
 
-class TemplateType(ExprType):
+class TemplateType(_ExprType):
     def __init__(self, args: Sequence[TemplateArgType]):
         super().__init__(kind=ExprKind.TEMPLATE)
         self.args = tuple(TemplateArgType(arg.expr_type, arg.is_variadic)
                           for arg in args)
 
-class Expr(TemplateBodyElementOrExprOrTemplateDefn):
+# Similar to _ExprType but more precise, to help type checking.
+ExprType = Union[BoolType, Int64Type, TypeType, TemplateType]
+
+class Expr(_TemplateBodyElementOrExprOrTemplateDefn):
     def __init__(self, expr_type: ExprType):
         self.expr_type = expr_type
 
@@ -96,10 +99,10 @@ class Expr(TemplateBodyElementOrExprOrTemplateDefn):
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence['Expr']): ...
 
-class TemplateBodyElement(TemplateBodyElementOrExprOrTemplateDefn):
+class _TemplateBodyElement(_TemplateBodyElementOrExprOrTemplateDefn):
     pass
 
-class StaticAssert(TemplateBodyElement):
+class StaticAssert(_TemplateBodyElement):
     def __init__(self, expr: Expr, message: str):
         assert isinstance(expr.expr_type, BoolType)
         self.expr = expr
@@ -111,7 +114,7 @@ class StaticAssert(TemplateBodyElement):
     def get_direct_subexpressions(self):
         yield self.expr
 
-class ConstantDef(TemplateBodyElement):
+class ConstantDef(_TemplateBodyElement):
     def __init__(self, name: str, expr: Expr):
         assert isinstance(expr.expr_type, (BoolType, Int64Type))
         self.name = name
@@ -123,12 +126,12 @@ class ConstantDef(TemplateBodyElement):
     def get_direct_subexpressions(self):
         yield self.expr
 
-class Typedef(TemplateBodyElement):
+class Typedef(_TemplateBodyElement):
     def __init__(self,
                  name: str,
                  expr: Expr,
                  description: str = '',
-                 template_args: List['TemplateArgDecl'] = []):
+                 template_args: List['TemplateArgDecl'] = ()):
         assert isinstance(expr.expr_type, (TypeType, TemplateType))
         self.name = name
         self.expr = expr
@@ -140,6 +143,11 @@ class Typedef(TemplateBodyElement):
 
     def get_direct_subexpressions(self):
         yield self.expr
+
+
+# Similar to _TemplateBodyElement but more precise, to help type checking.
+TemplateBodyElement = Union[StaticAssert, ConstantDef, Typedef]
+
 
 class TemplateArgDecl(ValueType):
     def __init__(self, expr_type: ExprType, name: str, is_variadic: bool):
@@ -172,7 +180,7 @@ class TemplateSpecialization(ValueType):
                        for elem in body)), 'body was:\n%s' % '\n'.join(ir_to_string(elem)
                                                                        for elem in body)
 
-class TemplateDefn(TemplateBodyElementOrExprOrTemplateDefn):
+class TemplateDefn(_TemplateBodyElementOrExprOrTemplateDefn):
     def __init__(self,
                  main_definition: Optional[TemplateSpecialization],
                  specializations: Sequence[TemplateSpecialization],

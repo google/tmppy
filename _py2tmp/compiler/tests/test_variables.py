@@ -252,4 +252,4 @@ def test_match_variable_named_error_in_match_returning_value_ok():
     assert f(True) == 15
 
 if __name__== '__main__':
-    main(__file__)
+    main()

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List, Iterator, Tuple, Union, Callable, Iterable
+from typing import List, Iterator, Tuple, Union, Callable, Iterable, Optional
 
 from _py2tmp.ir0 import ir0, compute_template_dependency_graph, Visitor, is_expr_variadic
 from _py2tmp.utils import clang_format, compute_condensation_in_topological_order
@@ -603,7 +603,7 @@ def template_defns_to_cpp(template_defns: Iterable[ir0.TemplateDefn], writer: To
                 if template_defn.main_definition:
                     specializations.append(template_defn.main_definition)
 
-                last_specialization: ir0.TemplateSpecialization = None
+                last_specialization: Optional[ir0.TemplateSpecialization] = None
                 for specialization in specializations:
                     if any(template_name in connected_component_names
                            for template_name in compute_template_defns_that_must_come_before_specialization(specialization)):

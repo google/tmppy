@@ -213,7 +213,7 @@ class CompilationContext:
 
 
 class CompilationError(Exception):
-    def __init__(self, compilation_context: CompilationContext, ast_node: ast.AST, error_message: str, notes: List[Tuple[ast.AST, str]] = []):
+    def __init__(self, compilation_context: CompilationContext, ast_node: ast.AST, error_message: str, notes: List[Tuple[ast.AST, str]] = ()):
         error_message = CompilationError._diagnostic_to_string(compilation_context=compilation_context,
                                                                ast_node=ast_node,
                                                                message='error: ' + error_message)
@@ -832,6 +832,8 @@ def function_def_ast_to_ir2(ast_node: ast.FunctionDef, compilation_context: Comp
                                                           check_block_always_returns=True,
                                                           stmts_are_toplevel_in_function=True)
 
+    return_type = None
+    first_return_stmt_ast_node = None
     if first_return_stmt:
         return_type, first_return_stmt_ast_node = first_return_stmt
 
@@ -2087,6 +2089,7 @@ def list_expression_ast_to_ir2(ast_node: ast.List,
     if len(elem_exprs) > 0:
         elem_type = elem_exprs[0].expr_type
     elif list_extraction_expr:
+        assert isinstance(list_extraction_expr.expr_type, ir2.ListType)
         elem_type = list_extraction_expr.expr_type.elem_type
     else:
         raise CompilationError(compilation_context, ast_node, 'Untyped empty lists are not supported. Please import empty_list from pytmp and then write e.g. empty_list(int) to create an empty list of ints.')
@@ -2258,6 +2261,7 @@ def class_definition_ast_to_ir2(ast_node: ast.ClassDef, compilation_context: Com
                                                expr_type = type_declaration_ast_to_ir2_expression_type(arg.annotation, compilation_context)))
 
     init_body_ast_nodes = init_defn_ast_node.body
+    exception_message = None
     if is_exception_class:
         first_stmt = init_body_ast_nodes[0]
         if not (_is_class_field_initialization(first_stmt)

@@ -100,7 +100,9 @@ class Visitor:
             self.visit_expr(pattern)
     
     def visit_match_expr(self, match_expr: ir.MatchExpr):
-        for expr in itertools.chain(match_expr.match_cases, match_expr.matched_exprs):
+        for expr in match_expr.match_cases:
+            self.visit_match_case(expr)
+        for expr in match_expr.matched_exprs:
             self.visit_expr(expr)
     
     def visit_bool_literal(self, bool_literal: ir.BoolLiteral):

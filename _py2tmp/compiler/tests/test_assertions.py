@@ -308,4 +308,4 @@ def test_assert_expression_wrong_type():
     assert 1  # error: The value passed to assert must have type bool, but got a value with type int.
 
 if __name__== '__main__':
-    main(__file__)
+    main()

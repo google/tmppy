@@ -27,7 +27,7 @@ class Writer(PlainWriter):
         PlainWriter.__init__(self)
         self.identifier_generator = identifier_generator
 
-    def new_id(self):
+    def new_id(self) -> str:
         return next(self.identifier_generator)
 
     def get_is_instance_template_name_for_error(self, error_name: str) -> str: ...  # pragma: no cover
@@ -65,7 +65,7 @@ class TemplateBodyWriter(Writer, PlainTemplateBodyWriter):
                  parent_arbitrary_arg: ir0.TemplateArgDecl,
                  parent_return_type: Optional[ir0.ExprType]):
         Writer.__init__(self, parent_writer.identifier_generator)
-        PlainTemplateBodyWriter.__init__(self, parent_writer)
+        PlainTemplateBodyWriter.__init__(self, parent_writer.get_toplevel_writer())
         self.parent_arbitrary_arg = parent_arbitrary_arg
         self.parent_return_type = parent_return_type
         self.result_body_elements_written = False
@@ -1567,7 +1567,7 @@ def list_expr_to_ir1(list_expr: Union[ir1.ListExpr, ir1.ListPatternExpr], writer
 
     arg_exprs = list_expr.elems.copy()
     if isinstance(list_expr, ir1.ListPatternExpr) and list_expr.list_extraction_expr:
-        arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(expr_type=ir1.ParameterPackType(list_expr.list_extraction_expr),
+        arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(expr_type=ir1.ParameterPackType(list_expr.list_extraction_expr.expr_type),
                                                                      name=list_expr.list_extraction_expr.name,
                                                                      is_global_function=list_expr.list_extraction_expr.is_global_function,
                                                                      is_function_that_may_throw=list_expr.list_extraction_expr.is_function_that_may_throw)))

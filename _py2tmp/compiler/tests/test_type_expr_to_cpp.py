@@ -251,4 +251,4 @@ def test_type_expr_to_cpp_simple_member_access_as_return_type_of_function_type()
     assert type_expr_to_cpp_simple(expr) == 'typename X::some_type (Y)'
 
 if __name__== '__main__':
-    main(__file__)
+    main()

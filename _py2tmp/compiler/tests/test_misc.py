@@ -49,4 +49,4 @@ def test_in_expr_not_list_nor_set():
         return 1 in 2  # error: The object on the RHS of "in" must be a list or a set, but found type: int
 
 if __name__== '__main__':
-    main(__file__)
+    main()

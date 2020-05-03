@@ -388,4 +388,4 @@ def test_type_undefined_static_method():
         return Type.i_do_not_exist()  # error: Undefined Type factory method
 
 if __name__== '__main__':
-    main(__file__)
+    main()

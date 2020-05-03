@@ -126,4 +126,4 @@ def test_pass_in_except_alone():
     assert f(42) == 4
 
 if __name__== '__main__':
-    main(__file__)
+    main()

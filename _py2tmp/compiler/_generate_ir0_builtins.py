@@ -228,14 +228,14 @@ def _local_variadic_type(cpp_type: str):
     return ir0.AtomicTypeLiteral.for_local(cpp_type, ir0.TypeType(), is_variadic=True)
 
 def _specialization(args: List[ir0.TemplateArgDecl],
-                    body_prefix: List[ir0.TemplateBodyElement] = [],
+                    body_prefix: List[ir0.TemplateBodyElement] = (),
                     patterns: Optional[List[ir0.Expr]] = None,
                     value_expr: Optional[ir0.Expr] = None,
                     type_expr: Optional[ir0.Expr] = None,
                     error_expr: Optional[ir0.Expr] = None):
     assert (value_expr is None) != (type_expr is None)
     if error_expr:
-        body_prefix = body_prefix + [ir0.Typedef(name='error', expr=error_expr)]
+        body_prefix = [*body_prefix, ir0.Typedef(name='error', expr=error_expr)]
     if value_expr:
         if value_expr.expr_type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
             stmt = ir0.ConstantDef(name='value', expr=value_expr)
@@ -243,12 +243,12 @@ def _specialization(args: List[ir0.TemplateArgDecl],
             stmt = ir0.Typedef(name='value', expr=value_expr)
         return ir0.TemplateSpecialization(args=args,
                                           patterns=patterns,
-                                          body=body_prefix + [stmt],
+                                          body=[*body_prefix, stmt],
                                           is_metafunction=True)
     if type_expr:
         return ir0.TemplateSpecialization(args=args,
                                           patterns=patterns,
-                                          body=body_prefix + [ir0.Typedef(name='type',
+                                          body=[*body_prefix, ir0.Typedef(name='type',
                                                                           expr=type_expr)],
                                           is_metafunction=True)
 
@@ -269,7 +269,7 @@ def _define_template(main_definition: Optional[ir0.TemplateSpecialization],
 
 def _define_template_with_no_specializations(name: str,
                                              args: List[ir0.TemplateArgDecl],
-                                             body_prefix: List[ir0.TemplateBodyElement] = [],
+                                             body_prefix: List[ir0.TemplateBodyElement] = (),
                                              value_expr: Optional[ir0.Expr] = None,
                                              type_expr: Optional[ir0.Expr] = None,
                                              error_expr: Optional[ir0.Expr] = None):
@@ -299,7 +299,7 @@ def _define_template_with_single_specialization(name: str,
                                                 main_definition_args: List[ir0.TemplateArgDecl],
                                                 specialization_args: List[ir0.TemplateArgDecl],
                                                 patterns: List[ir0.Expr],
-                                                body_prefix: List[ir0.TemplateBodyElement] = [],
+                                                body_prefix: List[ir0.TemplateBodyElement] = (),
                                                 value_expr: Optional[ir0.Expr] = None,
                                                 type_expr: Optional[ir0.Expr] = None,
                                                 error_expr: Optional[ir0.Expr] = None):

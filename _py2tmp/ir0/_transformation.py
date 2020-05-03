@@ -18,6 +18,8 @@ from _py2tmp.ir0 import ir
 from _py2tmp.ir0._is_variadic import is_expr_variadic
 from _py2tmp.ir0._writers import Writer, ToplevelWriter, TemplateBodyWriter
 
+
+# noinspection PyMethodMayBeStatic
 class Transformation:
     def __init__(self, identifier_generator: Optional[Iterator[str]] = None):
         self.writer: Optional[Writer] = None
@@ -144,7 +146,7 @@ class Transformation:
     def transform_exprs(self, exprs: List[ir.Expr], original_parent_element: ir.Expr) -> List[ir.Expr]:
         return [self.transform_expr(expr) for expr in exprs]
 
-    def transform_template_body_elem(self, elem: Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]):
+    def transform_template_body_elem(self, elem: Union[ir.TemplateDefn, ir.StaticAssert, ir.ConstantDef, ir.Typedef]):
         if isinstance(elem, ir.TemplateDefn):
             self.transform_template_defn(elem)
         elif isinstance(elem, ir.StaticAssert):

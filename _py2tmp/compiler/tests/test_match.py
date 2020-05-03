@@ -969,4 +969,4 @@ def test_match_expr_extract_list_also_used_as_type_after_different_branch_ok():
     assert f(Type.template_instantiation('std::tuple', [Type('double'), Type('int')])) == [Type('double'), Type('int')]
 
 if __name__== '__main__':
-    main(__file__)
+    main()

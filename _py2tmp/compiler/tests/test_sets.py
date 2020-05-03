@@ -539,4 +539,4 @@ def test_set_in_type_mismatch():
         return 1 in {True}  # error: Type mismatch in in: int vs Set\[bool\]
 
 if __name__== '__main__':
-    main(__file__)
+    main()

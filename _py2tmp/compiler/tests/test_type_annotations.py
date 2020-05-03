@@ -30,4 +30,4 @@ def test_unsupported_type_declaration_int_with_bracket():
         return x
 
 if __name__== '__main__':
-    main(__file__)
+    main()

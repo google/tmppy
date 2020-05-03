@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import Dict, Iterator, Set, List, Union
+from typing import Dict, Iterator, Set, List, Union, AbstractSet
 
 from _py2tmp.compiler.stages import expr_to_cpp_simple, template_defn_to_cpp_simple
 from _py2tmp.compiler.output_files import ObjectFileContent
@@ -215,12 +215,11 @@ class _TemplateInstantiationInliningTransformation(Transformation):
         if (isinstance(class_member_access.expr, ir.TemplateInstantiation)
                 and isinstance(class_member_access.expr.template_expr, ir.AtomicTypeLiteral)
                 and class_member_access.expr.template_expr.cpp_type in self.inlineable_templates_by_name):
-            template_instantiation = class_member_access.expr
-            template_defn_to_inline = self.inlineable_templates_by_name[template_instantiation.template_expr.cpp_type]
+            template_defn_to_inline = self.inlineable_templates_by_name[class_member_access.expr.template_expr.cpp_type]
         else:
             return class_member_access
 
-        unification = unify_template_instantiation_with_definition(template_instantiation,
+        unification = unify_template_instantiation_with_definition(class_member_access.expr,
                                                                    self.parent_template_specialization_definitions,
                                                                    class_member_access.member_name,
                                                                    template_defn_to_inline,
@@ -233,6 +232,7 @@ class _TemplateInstantiationInliningTransformation(Transformation):
             self.needs_another_loop = True
             return _ensure_remains_variadic_if_it_was(original_expr=class_member_access, transformed_expr=unification)
 
+        # noinspection PyTupleAssignmentBalance
         specialization, value_by_pattern_variable, value_by_expanded_pattern_variable = unification
         assert len(value_by_pattern_variable) + len(value_by_expanded_pattern_variable) == len(specialization.args)
 
@@ -299,7 +299,7 @@ class _TemplateInstantiationInliningTransformation(Transformation):
             [message] = e.args
             # We thought we could perform the inlining but we actually can't.
             if ConfigurationKnobs.verbose:
-                print('VariadicVarReplacementNotPossibleException raised for template %s (reason: %s), we can\'t inline that.' % (template_instantiation.template_expr.cpp_type, message))
+                print('VariadicVarReplacementNotPossibleException raised for template %s (reason: %s), we can\'t inline that.' % (class_member_access.expr.template_expr.cpp_type, message))
             return class_member_access
 
         result_expr = _ensure_remains_variadic_if_it_was(original_expr=class_member_access,
@@ -373,9 +373,8 @@ def perform_template_inlining(template_defn: ir.TemplateDefn,
 
     return template_defn, needs_another_loop1 or needs_another_loop2
 
-def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[
-    ir.StaticAssert, ir.ConstantDef, ir.Typedef]],
-                                                inlineable_refs: Set[str],
+def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]],
+                                                inlineable_refs: AbstractSet[str],
                                                 template_defn_by_name: Dict[str, ir.TemplateDefn],
                                                 identifier_generator: Iterator[str],
                                                 context_object_file_content: ObjectFileContent):

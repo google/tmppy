@@ -13,7 +13,7 @@
 # limitations under the License.
 import itertools
 from contextlib import contextmanager
-from typing import List, Set, Dict
+from typing import List, Set, Dict, Union, Generator
 
 from _py2tmp.ir1 import ir
 from _py2tmp.ir1._visitor import Visitor
@@ -22,7 +22,7 @@ from _py2tmp.ir1._visitor import Visitor
 class _GetFreeVariablesVisitor(Visitor):
     def __init__(self):
         self.local_var_names: Set[str] = set()
-        self.free_vars_by_name: Dict[str, ir.VarReference] = dict()
+        self.free_vars_by_name: Dict[str, Union[ir.VarReference, ir.VarReferencePattern]] = dict()
 
     def visit_assignment(self, stmt: ir.Assignment):
         self.visit_expr(stmt.rhs)
@@ -59,7 +59,7 @@ class _GetFreeVariablesVisitor(Visitor):
             self.visit_expr(expr.result_elem_expr)
 
     @contextmanager
-    def open_scope(self):
+    def open_scope(self) -> Generator[None, None, None]:
         old_names = self.local_var_names.copy()
         yield
         self.local_var_names = old_names

@@ -76,4 +76,4 @@ def test_ignore_return_value_of_function_that_throws():
     assert g(True) == 1
 
 if __name__== '__main__':
-    main(__file__)
+    main()

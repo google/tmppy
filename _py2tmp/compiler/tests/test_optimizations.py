@@ -1140,4 +1140,4 @@ def test_optimization_type_set_equals():
     assert eq({Type('int')}, {Type('float')}) == False
 
 if __name__== '__main__':
-    main(__file__)
+    main()

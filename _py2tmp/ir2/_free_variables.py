@@ -32,7 +32,7 @@ class _GetFreeVariablesVisitor(Visitor):
             self.visit_expr(expr)
         for expr in match_expr.match_cases:
             with self.add_local_variable_names(set(expr.matched_var_names)):
-                self.visit_expr(expr)
+                self.visit_match_case(expr)
 
     def visit_list_comprehension(self, expr: ir.ListComprehension):
         self.visit_expr(expr.list_expr)

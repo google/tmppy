@@ -248,4 +248,4 @@ def test_bool_greater_than_or_equal_to_int_error():
             >= 1)
 
 if __name__== '__main__':
-    main(__file__)
+    main()

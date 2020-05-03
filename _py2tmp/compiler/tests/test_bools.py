@@ -158,4 +158,4 @@ def test_or_int_bool_error():
         return True
 
 if __name__== '__main__':
-    main(__file__)
+    main()

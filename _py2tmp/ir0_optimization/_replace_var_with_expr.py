@@ -25,7 +25,7 @@ class _ReplaceVarWithExprTransformation(Transformation):
     def __init__(self,
                  replacement_expr_by_var: Dict[str, Union[ir.Expr, List[ir.Expr]]],
                  replacement_expr_by_expanded_var: Dict[str, Union[ir.Expr, List[ir.Expr]]],
-                 variadic_vars_with_expansion_in_progress: Set[str] = set()):
+                 variadic_vars_with_expansion_in_progress: Set[str] = frozenset()):
         super().__init__()
         self.replacement_expr_by_var = replacement_expr_by_var
         self.replacement_expr_by_expanded_var = replacement_expr_by_expanded_var
@@ -107,9 +107,9 @@ class _ReplaceVarWithExprTransformation(Transformation):
             results = []
             for expr in exprs:
                 expr_or_expr_list = self.transform_expr(expr)
-                for expr in (expr_or_expr_list if isinstance(expr_or_expr_list, list) else [expr_or_expr_list]):
-                    assert isinstance(expr, ir.Expr)
-                    results.append(expr)
+                for expr1 in (expr_or_expr_list if isinstance(expr_or_expr_list, list) else [expr_or_expr_list]):
+                    assert isinstance(expr1, ir.Expr)
+                    results.append(expr1)
             return results
         else:
             results = []

@@ -39,7 +39,7 @@ def determine_tests(smoke_tests, exclude_tests, include_only_tests):
       'Tests to run (ignoring the possible NoPch prefix): %s'
       % (excessive_excluded_tests, tests))
   if include_only_tests is not None:
-    if exclude_tests != []:
+    if exclude_tests:
       raise Exception('Using exclude_tests and include_only_tests together is not supported.')
     tests = include_only_tests
   else:
@@ -52,7 +52,7 @@ def generate_export_statements_for_env(env):
 def generate_env_string_for_env(env):
   return ' '.join(['%s=%s' % (var_name, value) for (var_name, value) in sorted(env.items())])
 
-def add_ubuntu_tests(ubuntu_version, compiler, stl=None, smoke_tests=[], exclude_tests=[], include_only_tests=None):
+def add_ubuntu_tests(ubuntu_version, compiler, stl=None, smoke_tests=(), exclude_tests=(), include_only_tests=None):
   env = {
     'UBUNTU': ubuntu_version,
     'COMPILER': compiler
@@ -77,7 +77,7 @@ def add_ubuntu_tests(ubuntu_version, compiler, stl=None, smoke_tests=[], exclude
       build_matrix_rows.append(test_environment)
 
 
-def add_osx_tests(compiler, xcode_version=None, stl=None, smoke_tests=[], exclude_tests=[], include_only_tests=None):
+def add_osx_tests(compiler, xcode_version=None, stl=None, smoke_tests=(), exclude_tests=(), include_only_tests=None):
   env = {'COMPILER': compiler}
   if stl is not None:
     env['STL'] = stl

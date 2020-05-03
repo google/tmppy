@@ -421,4 +421,4 @@ def test_custom_type_non_argument_assigned_to_field_error():
             self.f = f  # error: Unsupported assignment. All assigments in __init__ methods must assign a parameter to a field with the same name.
 
 if __name__== '__main__':
-    main(__file__)
+    main()

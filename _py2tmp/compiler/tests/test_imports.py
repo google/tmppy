@@ -260,4 +260,4 @@ def h(b: bool):
                             main_module_name=module_baz_name)
 
 if __name__== '__main__':
-    main(__file__)
+    main()

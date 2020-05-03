@@ -735,4 +735,4 @@ def test_list_in_type_mismatch():
         return 1 in [True]  # error: Type mismatch in in: int vs List\[bool\]
 
 if __name__== '__main__':
-    main(__file__)
+    main()

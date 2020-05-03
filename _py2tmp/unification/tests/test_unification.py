@@ -95,7 +95,7 @@ def expr_to_str(expr: Expr):
 
 def unify(expr_expr_equations: List[Tuple[Expr, Expr]],
           canonicalize: bool,
-          vars_forbidden_on_lhs: List[str] = []):
+          vars_forbidden_on_lhs: List[str] = ()):
     strategy = ExampleUnificationStrategy(vars_forbidden_on_lhs)
     var_expr_equations, expanded_var_expr_equations = _unification.unify(expr_expr_equations, dict(), strategy)
 
@@ -549,4 +549,4 @@ def test_unify_lists_many_to_many_list_vars_ok_if_same(canonicalize):
     assert equations == {}
 
 if __name__== '__main__':
-    main(__file__)
+    main()

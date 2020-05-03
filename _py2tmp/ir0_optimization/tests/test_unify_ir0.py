@@ -472,4 +472,4 @@ def test_unify_ir0_variadic_type_variable_matches_multiple_variadics():
     ]
 
 if __name__== '__main__':
-    main(__file__)
+    main()

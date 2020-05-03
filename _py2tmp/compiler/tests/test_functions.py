@@ -212,12 +212,14 @@ def test_calling_bool_error():
 @assert_conversion_fails
 def test_calling_list_error():
     def f(x: bool):
-        return [x](x)  # error: Attempting to call an object that is not a function. It has type: List\[bool\]
+        y = [x]
+        return y(x)  # error: Attempting to call an object that is not a function. It has type: List\[bool\]
 
 @assert_conversion_fails
 def test_calling_set_error():
     def f(x: bool):
-        return {x}(x)  # error: Attempting to call an object that is not a function. It has type: Set\[bool\]
+        y = {x}
+        return y(x)  # error: Attempting to call an object that is not a function. It has type: Set\[bool\]
 
 @assert_conversion_fails
 def test_calling_type_error():
@@ -493,4 +495,4 @@ def test_function_call_with_result_not_assigned():
     assert g(True) == 42
 
 if __name__== '__main__':
-    main(__file__)
+    main()

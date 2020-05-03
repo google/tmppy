@@ -16,6 +16,7 @@ from typing import List
 from _py2tmp.ir2 import ir as ir2
 
 
+# noinspection PyMethodMayBeStatic
 class Transformation:
     def transform_module(self, module: ir2.Module) -> ir2.Module:
         return ir2.Module(function_defns=[self.transform_function_defn(function_defn)

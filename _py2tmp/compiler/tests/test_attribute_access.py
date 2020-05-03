@@ -65,4 +65,4 @@ def test_attribute_access_on_function_error():
     assert f.type == Type('int')  # error: Attribute access is not supported for values of type \(Type\) -> Type.
 
 if __name__== '__main__':
-    main(__file__)
+    main()

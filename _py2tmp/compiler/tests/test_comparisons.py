@@ -99,4 +99,4 @@ def test_custom_class_second_field_not_equal_success():
     assert MyType(True, 15) != MyType(True, 17)
 
 if __name__== '__main__':
-    main(__file__)
+    main()

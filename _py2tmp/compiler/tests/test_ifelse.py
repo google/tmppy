@@ -637,4 +637,4 @@ def test_three_nested_if_else():
     assert g(False, False, False) == 8
 
 if __name__== '__main__':
-    main(__file__)
+    main()

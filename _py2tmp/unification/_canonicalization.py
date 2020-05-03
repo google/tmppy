@@ -197,8 +197,8 @@ def _replace_variables_in_exprs(exprs: List[_Expr],
     for expr in exprs:
         result = strategy.replace_variables_in_expr(expr, replacements, expanded_var_replacements)
         if isinstance(result, list):
-            for expr in result:
-                results.append(expr)
+            for expr1 in result:
+                results.append(expr1)
         else:
             results.append(result)
     return results
