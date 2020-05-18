@@ -629,6 +629,7 @@ def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
     writer = ToplevelWriter(identifier_generator)
     writer.write_toplevel_elem('''\
         #include <tmppy/tmppy.h>
+        #include <tuple>
         #include <type_traits>
         ''')
     template_defns_to_cpp(header.template_defns, writer)

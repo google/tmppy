@@ -814,11 +814,12 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
                 main_module = object_file_content.modules_by_name[TEST_MODULE_NAME]
 
                 cpp_source_lines = cpp_source.splitlines(True)
-                assert cpp_source_lines[0:2] == [
+                assert cpp_source_lines[0:3] == [
                     '#include <tmppy/tmppy.h>\n',
+                    '#include <tuple>\n',
                     '#include <type_traits>\n',
-                ]
-                cpp_source = ''.join(cpp_source_lines[2:])
+                ], cpp_source_lines[0:3]
+                cpp_source = ''.join(cpp_source_lines[3:])
 
                 assert expected_cpp_source[0] == '\n'
                 if cpp_source != expected_cpp_source[1:]:
