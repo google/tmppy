@@ -56,6 +56,7 @@ brew unlink python@2
 install_brew_package boost
 install_brew_package python
 time pip3 install absl-py
+time pip3 install bidict
 time pip3 install networkx
 time pip3 install pytest
 time pip3 install pytest-xdist
