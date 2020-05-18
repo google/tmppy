@@ -16,7 +16,7 @@ import re
 import textwrap
 from typing import List, Tuple, Dict, Optional, Union, Callable, Iterator, Set
 
-import typed_ast.ast3 as ast
+import ast
 
 from _py2tmp.compiler.output_files import ObjectFileContent
 from _py2tmp.ir2 import ir2, get_free_variables, get_return_type

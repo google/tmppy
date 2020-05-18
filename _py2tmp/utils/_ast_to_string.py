@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typed_ast import ast3 as ast
+import ast
 
 
 def ast_to_string(ast_node, line_indent=''):

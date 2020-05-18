@@ -172,8 +172,8 @@ def test_function_default_argument_error():
 
 @assert_conversion_fails
 def test_function_decorator_error():
-    @staticmethod  # error: Function decorators are not supported.
-    def f(x: bool):
+    @staticmethod
+    def f(x: bool):  # error: Function decorators are not supported.
         return x
 
 @assert_compilation_succeeds()

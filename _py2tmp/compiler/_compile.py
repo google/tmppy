@@ -15,7 +15,7 @@ import itertools
 import pickle
 from typing import List
 
-import typed_ast.ast3 as ast
+import ast
 
 from _py2tmp.compiler.stages import module_ast_to_ir2, module_to_ir1, module_to_ir0
 from _py2tmp.compiler.output_files import ObjectFileContent, ModuleInfo, merge_object_files
@@ -47,7 +47,7 @@ def compile_source_code(module_name: str,
                         include_intermediate_irs_for_debugging: bool,
                         file_name: str = '<unknown>'):
 
-    source_ast = ast.parse(source_code, filename=file_name)
+    source_ast = ast.parse(source_code, filename=file_name, type_comments=True)
 
     unique_identifier_prefix = 'tmppy_internal_'+ module_name.replace('.', '_') + '_x'
 
