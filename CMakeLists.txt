@@ -12,7 +12,7 @@ add_custom_target(builtins-tmppyc ALL
 option(TMPPY_TESTS_USE_PRECOMPILED_HEADERS "Whether to use pre-compiled headers (PCHs) in TMPPy tests." ON)
 
 set(TMPPY_COMPILE_FLAGS
-"-W -Wall -g0 -Werror -Wno-error=tautological-compare -std=c++11")
+"-W -Wall -g0 -Werror -std=c++11")
 
 if ("${TMPPY_TESTS_USE_PRECOMPILED_HEADERS}")
     if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
