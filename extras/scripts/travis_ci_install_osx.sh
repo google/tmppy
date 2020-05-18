@@ -54,7 +54,7 @@ esac
 brew unlink python@2
 
 install_brew_package boost
-install_brew_package python
+install_brew_package python@3.8
 time pip3 install absl-py
 time pip3 install bidict
 time pip3 install networkx
