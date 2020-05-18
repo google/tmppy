@@ -106,7 +106,7 @@ add_ubuntu_tests(ubuntu_version='20.04', compiler='gcc-7')
 add_ubuntu_tests(ubuntu_version='20.04', compiler='gcc-10',
                  smoke_tests=['DebugPlain', 'ReleasePlain'])
 add_ubuntu_tests(ubuntu_version='20.04', compiler='clang-6.0', stl='libstdc++',
-                 smoke_tests=['DebugPlain' 'ReleasePlain'])
+                 smoke_tests=['DebugPlain', 'ReleasePlain'])
 add_ubuntu_tests(ubuntu_version='20.04', compiler='clang-10.0', stl='libstdc++')
 add_ubuntu_tests(ubuntu_version='20.04', compiler='clang-10.0', stl='libc++')
 
