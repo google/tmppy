@@ -3,7 +3,7 @@ project(TMPPy VERSION 3.5.0 LANGUAGES CXX)
 
 add_custom_command(OUTPUT builtins.tmppyc
                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                   COMMAND PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR} python3 _py2tmp/compiler/_generate_ir0_builtins.py -o ${CMAKE_CURRENT_BINARY_DIR}/builtins.tmppyc
+                   COMMAND PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR} python3.8 _py2tmp/compiler/_generate_ir0_builtins.py -o ${CMAKE_CURRENT_BINARY_DIR}/builtins.tmppyc
                    )
 
 add_custom_target(builtins-tmppyc ALL
