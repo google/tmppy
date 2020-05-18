@@ -50,8 +50,9 @@ clang-9.0)
 *) echo "Compiler not supported: ${COMPILER}. See travis_ci_install_osx.sh"; exit 1 ;;
 esac
 
-# So that we can "brew link" python@3 instead.
+# So that we can "brew link" python@3.8 instead.
 brew unlink python@2
+brew unlink python
 
 install_brew_package boost
 install_brew_package python@3.8
