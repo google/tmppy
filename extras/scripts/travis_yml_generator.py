@@ -27,7 +27,7 @@ def determine_compiler_kind(compiler):
   else:
     raise Exception('Unexpected _compiler: %s' % compiler)
 
-def determine_tests(smoke_tests, exclude_tests, include_only_tests):
+def determine_tests(smoke_tests, exclude_tests, include_only_tests, use_precompiled_headers_in_tests=True):
   tests = ['ReleasePlain', 'DebugPlain']
   for smoke_test in smoke_tests:
     if smoke_test not in tests:
@@ -44,6 +44,8 @@ def determine_tests(smoke_tests, exclude_tests, include_only_tests):
     tests = include_only_tests
   else:
     tests = [test for test in tests if test not in exclude_tests]
+  if not use_precompiled_headers_in_tests:
+    tests = [test + 'NoPch' for test in tests]
   return tests
 
 def generate_export_statements_for_env(env):
@@ -77,7 +79,8 @@ def add_ubuntu_tests(ubuntu_version, compiler, stl=None, smoke_tests=(), exclude
       build_matrix_rows.append(test_environment)
 
 
-def add_osx_tests(compiler, xcode_version=None, stl=None, smoke_tests=(), exclude_tests=(), include_only_tests=None):
+def add_osx_tests(compiler, xcode_version=None, stl=None, smoke_tests=(), exclude_tests=(), include_only_tests=None,
+                  use_precompiled_headers_in_tests=True):
   env = {'COMPILER': compiler}
   if stl is not None:
     env['STL'] = stl
@@ -90,7 +93,8 @@ def add_osx_tests(compiler, xcode_version=None, stl=None, smoke_tests=(), exclud
 
   tests = determine_tests(smoke_tests,
                           exclude_tests=exclude_tests,
-                          include_only_tests=include_only_tests)
+                          include_only_tests=include_only_tests,
+                          use_precompiled_headers_in_tests=use_precompiled_headers_in_tests)
   for test in tests:
     test_environment = test_environment_template.copy()
     test_environment['script'] = '%s extras/scripts/postsubmit.sh %s' % (export_statements, test)
@@ -122,7 +126,9 @@ add_ubuntu_tests(ubuntu_version='16.04', compiler='clang-3.9', stl='libstdc++')
 add_osx_tests(compiler='gcc-6', xcode_version='11.4')
 add_osx_tests(compiler='gcc-9', xcode_version='11.4', smoke_tests=['DebugPlain'])
 add_osx_tests(compiler='clang-6.0', xcode_version='11.4', stl='libc++')
-add_osx_tests(compiler='clang-8.0', xcode_version='11.4', stl='libc++', smoke_tests=['DebugPlain'])
+add_osx_tests(compiler='clang-8.0', xcode_version='11.4', stl='libc++', smoke_tests=['DebugPlain'],
+              # Disabled due to https://bugs.llvm.org/show_bug.cgi?id=41625.
+              use_precompiled_headers_in_tests=False)
 
 add_osx_tests(compiler='clang-default', xcode_version='9.4', stl='libc++')
 add_osx_tests(compiler='clang-default', xcode_version='11.3', stl='libc++',
