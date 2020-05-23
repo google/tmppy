@@ -11,443 +11,538 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from typing import List, Optional, Set
-
-from _py2tmp.utils import ValueType
+from dataclasses import dataclass, field
+from typing import Optional, Tuple, FrozenSet
 
 
-class ExprType(ValueType):
+@dataclass(frozen=True)
+class ExprType:
     def __str__(self) -> str: ...  # pragma: no cover
 
+@dataclass(frozen=True)
 class BoolType(ExprType):
-    def __str__(self):
+    def __str__(self) -> str:
         return 'bool'
 
 # A type with no values. This is the return type of functions that never return.
+@dataclass(frozen=True)
 class BottomType(ExprType):
-    def __str__(self):
+    def __str__(self) -> str:
         return 'BottomType'
 
+@dataclass(frozen=True)
 class IntType(ExprType):
-    def __str__(self):
+    def __str__(self) -> str:
         return 'int'
 
+@dataclass(frozen=True)
 class TypeType(ExprType):
-    def __str__(self):
+    def __str__(self) -> str:
         return 'Type'
 
+@dataclass(frozen=True)
 class FunctionType(ExprType):
-    def __init__(self, argtypes: List[ExprType], returns: ExprType):
-        self.argtypes = argtypes
-        self.returns = returns
+    argtypes: Tuple[ExprType, ...]
+    returns: ExprType
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "(%s) -> %s" % (
             ', '.join(str(arg)
                       for arg in self.argtypes),
             str(self.returns))
 
+@dataclass(frozen=True)
 class ListType(ExprType):
-    def __init__(self, elem_type: ExprType):
-        assert not isinstance(elem_type, FunctionType)
-        self.elem_type = elem_type
+    elem_type: ExprType
 
-    def __str__(self):
+    def __post_init__(self) -> None:
+        assert not isinstance(self.elem_type, FunctionType)
+
+    def __str__(self) -> str:
         return "List[%s]" % str(self.elem_type)
 
+@dataclass(frozen=True)
 class SetType(ExprType):
-    def __init__(self, elem_type: ExprType):
-        assert not isinstance(elem_type, FunctionType)
-        self.elem_type = elem_type
+    elem_type: ExprType
 
-    def __str__(self):
+    def __post_init__(self) -> None:
+        assert not isinstance(self.elem_type, FunctionType)
+
+    def __str__(self) -> str:
         return "Set[%s]" % str(self.elem_type)
 
+@dataclass(frozen=True)
 class CustomTypeArgDecl:
-    def __init__(self, name: str, expr_type: ExprType):
-        self.name = name
-        self.expr_type = expr_type
+    name: str
+    expr_type: ExprType
 
+@dataclass(frozen=True)
 class CustomType(ExprType):
-    def __init__(self,
-                 name: str,
-                 arg_types: List[CustomTypeArgDecl],
-                 is_exception_class: bool,
-                 exception_message: Optional[str]):
-        assert (exception_message is not None) == is_exception_class
-        self.name = name
-        self.arg_types = arg_types
-        self.is_exception_class = is_exception_class
-        self.exception_message = exception_message
+    name: str
+    arg_types: Tuple[CustomTypeArgDecl, ...]
+    is_exception_class: bool
+    exception_message: Optional[str]
 
-    def __str__(self):
+    def __post_init__(self) -> None:
+        assert (self.exception_message is not None) == self.is_exception_class
+
+    def __str__(self) -> str:
         return self.name
 
+@dataclass(frozen=True)
 class Expr:
-    def __init__(self, expr_type: ExprType):
-        self.expr_type = expr_type
+    expr_type: ExprType
 
+    def _init_expr_type(self, expr_type: ExprType):
+        object.__setattr__(self, 'expr_type', expr_type)
+
+@dataclass(frozen=True)
 class FunctionArgDecl:
-    def __init__(self, expr_type: ExprType, name: str = ''):
-        self.expr_type = expr_type
-        self.name = name
+    expr_type: ExprType
+    name: str = ''
 
+@dataclass(frozen=True)
 class VarReference(Expr):
-    def __init__(self,
-                 expr_type: ExprType,
-                 name: str,
-                 is_global_function: bool,
-                 is_function_that_may_throw: bool,
-                 source_module: Optional[str] = None):
-        super().__init__(expr_type=expr_type)
-        assert name
-        self.name = name
-        self.is_global_function = is_global_function
-        self.is_function_that_may_throw = is_function_that_may_throw
-        self.source_module = source_module
+    expr_type: ExprType
+    name: str
+    is_global_function: bool
+    is_function_that_may_throw: bool
+    source_module: Optional[str] = None
 
+    def __post_init__(self) -> None:
+        assert self.name
+
+@dataclass(frozen=True)
 class MatchCase:
-    def __init__(self, matched_var_names: Set[str], matched_variadic_var_names: Set[str], type_patterns: List[Expr], expr: Expr):
-        self.matched_var_names = matched_var_names
-        self.matched_variadic_var_names = matched_variadic_var_names
-        self.type_patterns = type_patterns
-        self.expr = expr
+    matched_var_names: FrozenSet[str]
+    matched_variadic_var_names: FrozenSet[str]
+    type_patterns: Tuple[Expr, ...]
+    expr: Expr
 
-    def is_main_definition(self):
+    def is_main_definition(self) -> bool:
         matched_var_names_set = set(self.matched_var_names).union(self.matched_variadic_var_names)
         return all(isinstance(pattern, VarReference) and pattern.name in matched_var_names_set
                    for pattern in self.type_patterns)
 
+@dataclass(frozen=True)
 class MatchExpr(Expr):
-    def __init__(self, matched_exprs: List[Expr], match_cases: List[MatchCase]):
-        assert matched_exprs
-        assert match_cases
-        for match_case in match_cases:
-            assert len(match_case.type_patterns) == len(matched_exprs)
-            assert match_case.expr.expr_type == match_cases[0].expr.expr_type
-        super().__init__(expr_type=match_cases[0].expr.expr_type)
-        self.matched_exprs = matched_exprs
-        self.match_cases = match_cases
+    expr_type: ExprType = field(init=False)
+    matched_exprs: Tuple[Expr, ...]
+    match_cases: Tuple[MatchCase, ...]
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(self.match_cases[0].expr.expr_type)
+
+        assert self.matched_exprs
+        assert self.match_cases
+        for match_case in self.match_cases:
+            assert len(match_case.type_patterns) == len(self.matched_exprs)
+            assert match_case.expr.expr_type == self.match_cases[0].expr.expr_type
 
         assert len([match_case
-                    for match_case in match_cases
+                    for match_case in self.match_cases
                     if match_case.is_main_definition()]) <= 1
 
+@dataclass(frozen=True)
 class BoolLiteral(Expr):
-    def __init__(self, value: bool):
-        super().__init__(BoolType())
-        self.value = value
+    expr_type: ExprType = field(init=False)
+    value: bool
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+
+@dataclass(frozen=True)
 class AtomicTypeLiteral(Expr):
-    def __init__(self, cpp_type: str):
-        super().__init__(expr_type=TypeType())
-        self.cpp_type = cpp_type
+    expr_type: ExprType = field(init=False)
+    cpp_type: str
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+
+@dataclass(frozen=True)
 class PointerTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
+
+@dataclass(frozen=True)
 class ReferenceTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
+
+@dataclass(frozen=True)
 class RvalueReferenceTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
+
+@dataclass(frozen=True)
 class ConstTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
+
+@dataclass(frozen=True)
 class ArrayTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
+
+@dataclass(frozen=True)
 class FunctionTypeExpr(Expr):
-    def __init__(self, return_type_expr: Expr, arg_list_expr: Expr):
-        assert return_type_expr.expr_type == TypeType()
-        assert arg_list_expr.expr_type == ListType(TypeType())
+    expr_type: ExprType = field(init=False)
+    return_type_expr: Expr
+    arg_list_expr: Expr
 
-        super().__init__(expr_type=TypeType())
-        self.return_type_expr = return_type_expr
-        self.arg_list_expr = arg_list_expr
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+
+        assert self.return_type_expr.expr_type == TypeType()
+        assert self.arg_list_expr.expr_type == ListType(TypeType())
 
 # E.g. TemplateInstantiationExpr('std::vector', [AtomicTypeLiteral('int')]) is the type 'std::vector<int>'.
-class TemplateInstantiationExpr(Expr):
-    def __init__(self, template_atomic_cpp_type: str, arg_list_expr: Expr):
-        assert arg_list_expr.expr_type == ListType(TypeType())
 
-        super().__init__(expr_type=TypeType())
-        self.template_atomic_cpp_type = template_atomic_cpp_type
-        self.arg_list_expr = arg_list_expr
+@dataclass(frozen=True)
+class TemplateInstantiationExpr(Expr):
+    expr_type: ExprType = field(init=False)
+    template_atomic_cpp_type: str
+    arg_list_expr: Expr
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+
+        assert self.arg_list_expr.expr_type == ListType(TypeType())
 
 # E.g. TemplateMemberAccessExpr(AtomicTypeLiteral('foo'), 'bar', [AtomicTypeLiteral('int')]) is the type 'foo::bar<int>'.
+
+@dataclass(frozen=True)
 class TemplateMemberAccessExpr(Expr):
-    def __init__(self, class_type_expr: Expr, member_name: str, arg_list_expr: Expr):
-        assert class_type_expr.expr_type == TypeType()
-        assert arg_list_expr.expr_type == ListType(TypeType())
+    expr_type: ExprType = field(init=False)
+    class_type_expr: Expr
+    member_name: str
+    arg_list_expr: Expr
 
-        super().__init__(expr_type=TypeType())
-        self.class_type_expr = class_type_expr
-        self.member_name = member_name
-        self.arg_list_expr = arg_list_expr
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
 
+        assert self.class_type_expr.expr_type == TypeType()
+        assert self.arg_list_expr.expr_type == ListType(TypeType())
+
+@dataclass(frozen=True)
 class ListExpr(Expr):
-    def __init__(self, elem_type: ExprType, elem_exprs: List[Expr], list_extraction_expr: Optional[VarReference]):
-        assert not isinstance(elem_type, FunctionType)
-        super().__init__(expr_type=ListType(elem_type))
-        self.elem_type = elem_type
-        self.elem_exprs = elem_exprs
-        self.list_extraction_expr = list_extraction_expr
+    expr_type: ExprType = field(init=False)
+    elem_type: ExprType
+    elem_exprs: Tuple[Expr, ...]
+    list_extraction_expr: Optional[VarReference]
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(ListType(self.elem_type))
+        assert not isinstance(self.elem_type, FunctionType)
+
+@dataclass(frozen=True)
 class SetExpr(Expr):
-    def __init__(self, elem_type: ExprType, elem_exprs: List[Expr]):
-        assert not isinstance(elem_type, FunctionType)
-        super().__init__(expr_type=SetType(elem_type))
-        self.elem_type = elem_type
-        self.elem_exprs = elem_exprs
+    expr_type: ExprType = field(init=False)
+    elem_type: ExprType
+    elem_exprs: Tuple[Expr, ...]
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(SetType(self.elem_type))
+        assert not isinstance(self.elem_type, FunctionType)
+
+@dataclass(frozen=True)
 class IntListSumExpr(Expr):
-    def __init__(self, list_expr: Expr):
-        assert isinstance(list_expr.expr_type, ListType)
-        assert isinstance(list_expr.expr_type.elem_type, IntType)
-        super().__init__(expr_type=IntType())
-        self.list_expr = list_expr
+    expr_type: ExprType = field(init=False)
+    list_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(IntType())
+        assert isinstance(self.list_expr.expr_type, ListType)
+        assert isinstance(self.list_expr.expr_type.elem_type, IntType)
+
+@dataclass(frozen=True)
 class IntSetSumExpr(Expr):
-    def __init__(self, set_expr: Expr):
-        assert isinstance(set_expr.expr_type, SetType)
-        assert isinstance(set_expr.expr_type.elem_type, IntType)
-        super().__init__(expr_type=IntType())
-        self.set_expr = set_expr
+    expr_type: ExprType = field(init=False)
+    set_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(IntType())
+        assert isinstance(self.set_expr.expr_type, SetType)
+        assert isinstance(self.set_expr.expr_type.elem_type, IntType)
+
+@dataclass(frozen=True)
 class BoolListAllExpr(Expr):
-    def __init__(self, list_expr: Expr):
-        assert isinstance(list_expr.expr_type, ListType)
-        assert isinstance(list_expr.expr_type.elem_type, BoolType)
-        super().__init__(expr_type=BoolType())
-        self.list_expr = list_expr
+    expr_type: ExprType = field(init=False)
+    list_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert isinstance(self.list_expr.expr_type, ListType)
+        assert isinstance(self.list_expr.expr_type.elem_type, BoolType)
+
+@dataclass(frozen=True)
 class BoolSetAllExpr(Expr):
-    def __init__(self, set_expr: Expr):
-        assert isinstance(set_expr.expr_type, SetType)
-        assert isinstance(set_expr.expr_type.elem_type, BoolType)
-        super().__init__(expr_type=BoolType())
-        self.set_expr = set_expr
+    expr_type: ExprType = field(init=False)
+    set_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert isinstance(self.set_expr.expr_type, SetType)
+        assert isinstance(self.set_expr.expr_type.elem_type, BoolType)
+
+@dataclass(frozen=True)
 class BoolListAnyExpr(Expr):
-    def __init__(self, list_expr: Expr):
-        assert isinstance(list_expr.expr_type, ListType)
-        assert isinstance(list_expr.expr_type.elem_type, BoolType)
-        super().__init__(expr_type=BoolType())
-        self.list_expr = list_expr
+    expr_type: ExprType = field(init=False)
+    list_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert isinstance(self.list_expr.expr_type, ListType)
+        assert isinstance(self.list_expr.expr_type.elem_type, BoolType)
+
+@dataclass(frozen=True)
 class BoolSetAnyExpr(Expr):
-    def __init__(self, set_expr: Expr):
-        assert isinstance(set_expr.expr_type, SetType)
-        assert isinstance(set_expr.expr_type.elem_type, BoolType)
-        super().__init__(expr_type=BoolType())
-        self.set_expr = set_expr
+    expr_type: ExprType = field(init=False)
+    set_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert isinstance(self.set_expr.expr_type, SetType)
+        assert isinstance(self.set_expr.expr_type.elem_type, BoolType)
+
+@dataclass(frozen=True)
 class FunctionCall(Expr):
-    def __init__(self,
-                 fun_expr: Expr,
-                 args: List[Expr],
-                 may_throw: bool):
-        assert isinstance(fun_expr.expr_type, FunctionType)
-        assert len(fun_expr.expr_type.argtypes) == len(args)
-        super().__init__(expr_type=fun_expr.expr_type.returns)
-        self.fun_expr = fun_expr
-        self.args = args
-        self.may_throw = may_throw
+    expr_type: ExprType = field(init=False)
+    fun_expr: Expr
+    args: Tuple[Expr, ...]
+    may_throw: bool
 
+    def __post_init__(self) -> None:
+        assert isinstance(self.fun_expr.expr_type, FunctionType)
+        assert len(self.fun_expr.expr_type.argtypes) == len(self.args)
+        self._init_expr_type(self.fun_expr.expr_type.returns)
+
+@dataclass(frozen=True)
 class EqualityComparison(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr):
-        super().__init__(expr_type=BoolType())
-        assert lhs.expr_type == rhs.expr_type
-        assert not isinstance(lhs.expr_type, FunctionType)
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType = field(init=False)
+    lhs: Expr
+    rhs: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert self.lhs.expr_type == self.rhs.expr_type
+        assert not isinstance(self.lhs.expr_type, FunctionType)
+
+@dataclass(frozen=True)
 class InExpr(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr):
-        super().__init__(expr_type=BoolType())
-        assert isinstance(rhs.expr_type, (ListType, SetType))
-        assert lhs.expr_type == rhs.expr_type.elem_type
-        assert not isinstance(lhs.expr_type, FunctionType)
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType = field(init=False)
+    lhs: Expr
+    rhs: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert isinstance(self.rhs.expr_type, (ListType, SetType))
+        assert self.lhs.expr_type == self.rhs.expr_type.elem_type
+        assert not isinstance(self.lhs.expr_type, FunctionType)
+
+@dataclass(frozen=True)
 class AttributeAccessExpr(Expr):
-    def __init__(self, expr: Expr, attribute_name: str, expr_type: ExprType):
-        super().__init__(expr_type=expr_type)
-        assert isinstance(expr.expr_type, (TypeType, CustomType))
-        self.expr = expr
-        self.attribute_name = attribute_name
+    expr: Expr
+    attribute_name: str
 
+    def __post_init__(self) -> None:
+        assert isinstance(self.expr.expr_type, (TypeType, CustomType))
+
+@dataclass(frozen=True)
 class AndExpr(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr):
-        assert lhs.expr_type == BoolType()
-        assert rhs.expr_type == BoolType()
-        super().__init__(expr_type=BoolType())
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType = field(init=False)
+    lhs: Expr
+    rhs: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert self.lhs.expr_type == BoolType()
+        assert self.rhs.expr_type == BoolType()
+
+@dataclass(frozen=True)
 class OrExpr(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr):
-        assert lhs.expr_type == BoolType()
-        assert rhs.expr_type == BoolType()
-        super().__init__(expr_type=BoolType())
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType = field(init=False)
+    lhs: Expr
+    rhs: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert self.lhs.expr_type == BoolType()
+        assert self.rhs.expr_type == BoolType()
+
+@dataclass(frozen=True)
 class NotExpr(Expr):
-    def __init__(self, expr: Expr):
-        assert expr.expr_type == BoolType()
-        super().__init__(expr_type=BoolType())
-        self.expr = expr
+    expr_type: ExprType = field(init=False)
+    expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert self.expr.expr_type == BoolType()
+
+@dataclass(frozen=True)
 class IntLiteral(Expr):
-    def __init__(self, value: int):
-        super().__init__(expr_type=IntType())
-        self.value = value
+    expr_type: ExprType = field(init=False)
+    value: int
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(IntType())
+
+@dataclass(frozen=True)
 class IntComparisonExpr(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        assert lhs.expr_type == IntType()
-        assert rhs.expr_type == IntType()
-        assert op in ('<', '>', '<=', '>=')
-        super().__init__(expr_type=BoolType())
-        self.lhs = lhs
-        self.rhs = rhs
-        self.op = op
+    expr_type: ExprType = field(init=False)
+    lhs: Expr
+    rhs: Expr
+    op: str
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert self.lhs.expr_type == IntType()
+        assert self.rhs.expr_type == IntType()
+        assert self.op in ('<', '>', '<=', '>=')
+
+@dataclass(frozen=True)
 class IntUnaryMinusExpr(Expr):
-    def __init__(self, expr: Expr):
-        assert expr.expr_type == IntType()
-        super().__init__(expr_type=IntType())
-        self.expr = expr
+    expr_type: ExprType = field(init=False)
+    expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(IntType())
+        assert self.expr.expr_type == IntType()
+
+@dataclass(frozen=True)
 class IntBinaryOpExpr(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        assert lhs.expr_type == IntType()
-        assert rhs.expr_type == IntType()
-        super().__init__(expr_type=IntType())
-        self.lhs = lhs
-        self.rhs = rhs
-        self.op = op
+    expr_type: ExprType = field(init=False)
+    lhs: Expr
+    rhs: Expr
+    op: str
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(IntType())
+        assert self.lhs.expr_type == IntType()
+        assert self.rhs.expr_type == IntType()
+
+@dataclass(frozen=True)
 class ListConcatExpr(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr):
-        assert isinstance(lhs.expr_type, ListType)
-        assert lhs.expr_type == rhs.expr_type
-        super().__init__(expr_type=lhs.expr_type)
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType = field(init=False)
+    lhs: Expr
+    rhs: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(self.lhs.expr_type)
+        assert isinstance(self.lhs.expr_type, ListType)
+        assert self.lhs.expr_type == self.rhs.expr_type
+
+@dataclass(frozen=True)
 class ListComprehension(Expr):
-    def __init__(self,
-                 list_expr: Expr,
-                 loop_var: VarReference,
-                 result_elem_expr: Expr):
-        super().__init__(expr_type=ListType(result_elem_expr.expr_type))
-        self.list_expr = list_expr
-        self.loop_var = loop_var
-        self.result_elem_expr = result_elem_expr
+    expr_type: ExprType = field(init=False)
+    list_expr: Expr
+    loop_var: VarReference
+    result_elem_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(ListType(self.result_elem_expr.expr_type))
+
+@dataclass(frozen=True)
 class SetComprehension(Expr):
-    def __init__(self,
-                 set_expr: Expr,
-                 loop_var: VarReference,
-                 result_elem_expr: Expr):
-        assert isinstance(set_expr.expr_type, SetType)
-        super().__init__(expr_type=SetType(result_elem_expr.expr_type))
-        self.set_expr = set_expr
-        self.loop_var = loop_var
-        self.result_elem_expr = result_elem_expr
+    expr_type: ExprType = field(init=False)
+    set_expr: Expr
+    loop_var: VarReference
+    result_elem_expr: Expr
 
+    def __post_init__(self) -> None:
+        self._init_expr_type(SetType(self.result_elem_expr.expr_type))
+        assert isinstance(self.set_expr.expr_type, SetType)
+
+@dataclass(frozen=True)
 class Stmt:
     pass
 
+@dataclass(frozen=True)
 class Assert(Stmt):
-    def __init__(self, expr: Expr, message: str):
-        assert isinstance(expr.expr_type, BoolType)
-        self.expr = expr
-        self.message = message
+    expr: Expr
+    message: str
 
+    def __post_init__(self) -> None:
+        assert isinstance(self.expr.expr_type, BoolType)
+
+@dataclass(frozen=True)
 class Assignment(Stmt):
-    def __init__(self, lhs: VarReference, rhs: Expr):
-        assert lhs.expr_type == rhs.expr_type
-        self.lhs = lhs
-        self.rhs = rhs
+    lhs: VarReference
+    rhs: Expr
 
+    def __post_init__(self) -> None:
+        assert self.lhs.expr_type == self.rhs.expr_type
+
+@dataclass(frozen=True)
 class UnpackingAssignment(Stmt):
-    def __init__(self, lhs_list: List[VarReference], rhs: Expr, error_message: str):
-        assert isinstance(rhs.expr_type, ListType)
-        assert lhs_list
-        for lhs in lhs_list:
-            assert lhs.expr_type == rhs.expr_type.elem_type
-        self.lhs_list = lhs_list
-        self.rhs = rhs
-        self.error_message = error_message
+    lhs_list: Tuple[VarReference, ...]
+    rhs: Expr
+    error_message: str
 
+    def __post_init__(self) -> None:
+        assert isinstance(self.rhs.expr_type, ListType)
+        assert self.lhs_list
+        for lhs in self.lhs_list:
+            assert lhs.expr_type == self.rhs.expr_type.elem_type
+
+@dataclass(frozen=True)
 class ReturnStmt(Stmt):
-    def __init__(self, expr: Expr):
-        self.expr = expr
+    expr: Expr
 
+@dataclass(frozen=True)
 class IfStmt(Stmt):
-    def __init__(self, cond_expr: Expr, if_stmts: List[Stmt], else_stmts: List[Stmt]):
-        assert cond_expr.expr_type == BoolType()
-        self.cond_expr = cond_expr
-        self.if_stmts = if_stmts
-        self.else_stmts = else_stmts
+    cond_expr: Expr
+    if_stmts: Tuple[Stmt, ...]
+    else_stmts: Tuple[Stmt, ...]
 
+    def __post_init__(self) -> None:
+        assert self.cond_expr.expr_type == BoolType()
+
+@dataclass(frozen=True)
 class RaiseStmt(Stmt):
-    def __init__(self, expr: Expr):
-        assert isinstance(expr.expr_type, CustomType)
-        assert expr.expr_type.is_exception_class
-        self.expr = expr
+    expr: Expr
 
+    def __post_init__(self) -> None:
+        assert isinstance(self.expr.expr_type, CustomType)
+        assert self.expr.expr_type.is_exception_class
+
+@dataclass(frozen=True)
 class TryExcept(Stmt):
-    def __init__(self,
-                 try_body: List[Stmt],
-                 caught_exception_type: ExprType,
-                 caught_exception_name: str,
-                 except_body: List[Stmt]):
-        self.try_body = try_body
-        self.caught_exception_type = caught_exception_type
-        self.caught_exception_name = caught_exception_name
-        self.except_body = except_body
+    try_body: Tuple[Stmt, ...]
+    caught_exception_type: ExprType
+    caught_exception_name: str
+    except_body: Tuple[Stmt, ...]
 
+@dataclass(frozen=True)
 class FunctionDefn:
-    def __init__(self,
-                 name: str,
-                 args: List[FunctionArgDecl],
-                 body: List[Stmt],
-                 return_type: ExprType):
-        self.name = name
-        self.args = args
-        self.body = body
-        self.return_type = return_type
+    name: str
+    args: Tuple[FunctionArgDecl, ...]
+    body: Tuple[Stmt, ...]
+    return_type: ExprType
 
+@dataclass(frozen=True)
 class Module:
-    def __init__(self,
-                 function_defns: List[FunctionDefn],
-                 assertions: List[Assert],
-                 custom_types: List[CustomType],
-                 public_names: Set[str]):
-        self.function_defns = function_defns
-        self.assertions = assertions
-        self.custom_types = custom_types
-        self.public_names = public_names
+    function_defns: Tuple[FunctionDefn, ...]
+    assertions: Tuple[Assert, ...]
+    custom_types: Tuple[CustomType, ...]
+    public_names: FrozenSet[str]

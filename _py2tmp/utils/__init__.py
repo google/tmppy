@@ -16,4 +16,3 @@ from ._ast_to_string import ast_to_string
 from ._clang_format import clang_format
 from ._graphs import compute_condensation_in_topological_order
 from ._ir_to_string import ir_to_string
-from ._value_type import ValueType

@@ -701,7 +701,7 @@ def assert_to_ir1(assert_stmt: ir2.Assert, writer: StmtWriter):
                                  message=assert_stmt.message))
 
 def try_except_stmt_to_ir1(try_except_stmt: ir2.TryExcept,
-                           then_stmts: List[ir2.Stmt],
+                           then_stmts: Tuple[ir2.Stmt, ...],
                            writer: StmtWriter):
     # try:
     #   x = f()
@@ -889,7 +889,7 @@ def if_stmt_to_ir1(if_stmt: ir2.IfStmt, writer: StmtWriter):
                                  if_stmts=tuple(if_branch_writer.stmts),
                                  else_stmts=tuple(else_branch_writer.stmts)))
 
-def stmts_to_ir1(stmts: List[ir2.Stmt], writer: StmtWriter):
+def stmts_to_ir1(stmts: Tuple[ir2.Stmt, ...], writer: StmtWriter):
     for index, stmt in enumerate(stmts):
         if isinstance(stmt, ir2.IfStmt):
             if_stmt_to_ir1(stmt, writer)
@@ -934,5 +934,5 @@ def module_to_ir1(module: ir2.Module, identifier_generator: Iterator[str]):
     custom_types_defns = [type_to_ir1(expr_type) for expr_type in module.custom_types]
     check_if_error_defn = ir1.CheckIfErrorDefn(tuple((type_to_ir1(expr_type), expr_type.exception_message)
                                                      for expr_type in module.custom_types if expr_type.is_exception_class))
-    return ir1.Module(body=custom_types_defns + [check_if_error_defn] + writer.function_defns + stmt_writer.stmts,
+    return ir1.Module(body=(*custom_types_defns, check_if_error_defn, *writer.function_defns, *stmt_writer.stmts),
                       public_names=frozenset(module.public_names))

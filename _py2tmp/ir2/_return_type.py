@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List, Optional
+from typing import Optional, Tuple, Sequence
 
 from _py2tmp.ir2 import ir
 from _py2tmp.ir2._visitor import Visitor
 
-def _combine_return_type_of_branches(branch1_stmts: List[ir.Stmt], branch2_stmts: List[ir.Stmt]):
+def _combine_return_type_of_branches(branch1_stmts: Tuple[ir.Stmt, ...], branch2_stmts: Tuple[ir.Stmt, ...]):
     branch1_return_type_info = get_return_type(branch1_stmts)
     branch2_return_type_info = get_return_type(branch2_stmts)
 
@@ -57,7 +57,7 @@ class ReturnTypeInfo:
         self.expr_type = expr_type
         self.always_returns = always_returns
 
-def get_return_type(stmts: List[ir.Stmt]):
+def get_return_type(stmts: Sequence[ir.Stmt]):
     visitor = _GetReturnTypeVisitor()
     if stmts:
         visitor.visit_stmt(stmts[-1])

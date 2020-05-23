@@ -18,9 +18,6 @@ from contextlib import contextmanager
 import itertools
 from dataclasses import dataclass, field
 
-from _py2tmp.utils import ValueType
-
-
 class Writer:
     def __init__(self) -> None:
         self.strings = []
@@ -109,7 +106,7 @@ class ParameterPackType(_ExprType):
             str(self.element_type))
 
 @dataclass(frozen=True)
-class CustomTypeArgDecl(ValueType):
+class CustomTypeArgDecl:
     name: str
     expr_type: 'ExprType'
 

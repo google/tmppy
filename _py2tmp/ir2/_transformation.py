@@ -12,33 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
+from typing import Tuple
 from _py2tmp.ir2 import ir as ir2
 
 
 # noinspection PyMethodMayBeStatic
 class Transformation:
     def transform_module(self, module: ir2.Module) -> ir2.Module:
-        return ir2.Module(function_defns=[self.transform_function_defn(function_defn)
-                                          for function_defn in module.function_defns],
-                          assertions=[self.transform_assert(assertion)
-                                      for assertion in module.assertions],
+        return ir2.Module(function_defns=tuple(self.transform_function_defn(function_defn)
+                                               for function_defn in module.function_defns),
+                          assertions=tuple(self.transform_assert(assertion)
+                                           for assertion in module.assertions),
                           custom_types=module.custom_types,
                           public_names=module.public_names)
 
     def transform_function_defn(self, function_defn: ir2.FunctionDefn) -> ir2.FunctionDefn:
         return ir2.FunctionDefn(name=function_defn.name,
-                                args=[self.transform_function_arg_decl(arg)
-                                      for arg in function_defn.args],
+                                args=tuple(self.transform_function_arg_decl(arg)
+                                           for arg in function_defn.args),
                                 body=self.transform_stmts(function_defn.body),
                                 return_type=function_defn.return_type)
 
     def transform_function_arg_decl(self, arg_decl: ir2.FunctionArgDecl):
         return arg_decl
 
-    def transform_stmts(self, stmts: List[ir2.Stmt]) -> List[ir2.Stmt]:
-        return [self.transform_stmt(stmt)
-                for stmt in stmts]
+    def transform_stmts(self, stmts: Tuple[ir2.Stmt, ...]) -> Tuple[ir2.Stmt, ...]:
+        return tuple(self.transform_stmt(stmt)
+                     for stmt in stmts)
 
     def transform_stmt(self, stmt: ir2.Stmt) -> ir2.Stmt:
         if isinstance(stmt, ir2.TryExcept):
@@ -77,8 +77,8 @@ class Transformation:
         return ir2.ReturnStmt(expr=self.transform_expr(stmt.expr))
 
     def transform_unpacking_assignment(self, assignment: ir2.UnpackingAssignment) -> ir2.UnpackingAssignment:
-        return ir2.UnpackingAssignment(lhs_list=[self.transform_var_reference(var)
-                                                 for var in assignment.lhs_list],
+        return ir2.UnpackingAssignment(lhs_list=tuple(self.transform_var_reference(var)
+                                                      for var in assignment.lhs_list),
                                        rhs=self.transform_expr(assignment.rhs),
                                        error_message=assignment.error_message)
 
@@ -218,8 +218,8 @@ class Transformation:
 
     def transform_function_call(self, expr: ir2.FunctionCall) -> ir2.FunctionCall:
         return ir2.FunctionCall(fun_expr=self.transform_expr(expr.fun_expr),
-                                args=[self.transform_expr(arg)
-                                      for arg in expr.args],
+                                args=tuple(self.transform_expr(arg)
+                                           for arg in expr.args),
                                 may_throw=expr.may_throw)
 
     def transform_bool_set_any_expr(self, expr: ir2.BoolSetAnyExpr) -> ir2.BoolSetAnyExpr:
@@ -242,15 +242,15 @@ class Transformation:
 
     def transform_set_expr(self, expr: ir2.SetExpr) -> ir2.SetExpr:
         return ir2.SetExpr(elem_type=expr.elem_type,
-                           elem_exprs=[self.transform_expr(elem)
-                                       for elem in expr.elem_exprs])
+                           elem_exprs=tuple(self.transform_expr(elem)
+                                            for elem in expr.elem_exprs))
 
     def transform_list_expr(self, expr: ir2.ListExpr) -> ir2.ListExpr:
         return ir2.ListExpr(elem_type=expr.elem_type,
-                            elem_exprs=[self.transform_expr(elem)
-                                        for elem in expr.elem_exprs],
-                            list_extraction_expr=self.transform_var_reference(expr.list_extraction_expr)
-                                                 if expr.list_extraction_expr else None)
+                            elem_exprs=tuple(self.transform_expr(elem)
+                                             for elem in expr.elem_exprs),
+                            list_extraction_expr=(self.transform_var_reference(expr.list_extraction_expr)
+                                                  if expr.list_extraction_expr else None))
 
     def transform_atomic_type_literal_expr(self, expr: ir2.AtomicTypeLiteral) -> ir2.AtomicTypeLiteral:
         return expr
@@ -287,10 +287,10 @@ class Transformation:
         return expr
 
     def transform_match_expr(self, expr: ir2.MatchExpr) -> ir2.MatchExpr:
-        return ir2.MatchExpr(matched_exprs=[self.transform_expr(matched_expr)
-                                            for matched_expr in expr.matched_exprs],
-                             match_cases=[self.transform_match_case(match_case)
-                                          for match_case in expr.match_cases])
+        return ir2.MatchExpr(matched_exprs=tuple(self.transform_expr(matched_expr)
+                                                 for matched_expr in expr.matched_exprs),
+                             match_cases=tuple(self.transform_match_case(match_case)
+                                               for match_case in expr.match_cases))
 
     def transform_match_case(self, match_case: ir2.MatchCase) -> ir2.MatchCase:
       return ir2.MatchCase(type_patterns=match_case.type_patterns,

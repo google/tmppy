@@ -86,8 +86,8 @@ class ApplyFunctionCanThrowInfo(Transformation):
         if may_throw and isinstance(fun_expr, ir.VarReference) and fun_expr.is_global_function and not fun_expr.is_function_that_may_throw:
             may_throw = False
         return ir.FunctionCall(fun_expr=fun_expr,
-                               args=[self.transform_expr(arg)
-                                      for arg in expr.args],
+                               args=tuple(self.transform_expr(arg)
+                                          for arg in expr.args),
                                may_throw=may_throw)
 
 def apply_function_can_throw_info(module: ir.Module,
