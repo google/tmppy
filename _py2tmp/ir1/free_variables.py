@@ -13,14 +13,14 @@
 # limitations under the License.
 import itertools
 from contextlib import contextmanager
-from typing import List, Set, Dict, Union, Generator
+from typing import List, Set, Dict, Union, Generator, Tuple, Iterable
 
 from _py2tmp.ir1 import ir
 from _py2tmp.ir1._visitor import Visitor
 
 
 class _GetFreeVariablesVisitor(Visitor):
-    def __init__(self):
+    def __init__(self) -> None:
         self.local_var_names: Set[str] = set()
         self.free_vars_by_name: Dict[str, Union[ir.VarReference, ir.VarReferencePattern]] = dict()
 
@@ -64,12 +64,12 @@ class _GetFreeVariablesVisitor(Visitor):
         yield
         self.local_var_names = old_names
 
-def get_unique_free_variables_in_stmts(stmts: List[ir.Stmt]) -> List[ir.VarReference]:
+def get_unique_free_variables_in_stmts(stmts: Iterable[ir.Stmt]) -> Tuple[ir.VarReference, ...]:
     visitor = _GetFreeVariablesVisitor()
     visitor.visit_stmts(stmts)
-    return list(sorted(visitor.free_vars_by_name.values(), key=lambda var: var.name))
+    return tuple(sorted(visitor.free_vars_by_name.values(), key=lambda var: var.name))
 
-def get_unique_free_variables_in_expr(expr: ir.Expr) -> List[ir.VarReference]:
+def get_unique_free_variables_in_expr(expr: ir.Expr) -> Tuple[ir.VarReference, ...]:
     visitor = _GetFreeVariablesVisitor()
     visitor.visit_expr(expr)
-    return list(sorted(visitor.free_vars_by_name.values(), key=lambda var: var.name))
+    return tuple(sorted(visitor.free_vars_by_name.values(), key=lambda var: var.name))

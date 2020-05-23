@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union, Tuple, Set, Generator
+from typing import Optional, Union, Tuple, FrozenSet, Generator
 from contextlib import contextmanager
 
 import itertools
+from dataclasses import dataclass, field
 
 from _py2tmp.utils import ValueType
 
@@ -45,34 +46,40 @@ class Writer:
         yield
         self.current_indent = old_indent
 
-class _ExprType(ValueType):
+@dataclass(frozen=True)
+class _ExprType:
     def __str__(self) -> str: ...  # pragma: no cover
 
+@dataclass(frozen=True)
 class BoolType(_ExprType):
     def __str__(self) -> str:
         return 'bool'
 
 # A type with no values. This is the return type of functions that never return.
+@dataclass(frozen=True)
 class BottomType(_ExprType):
     def __str__(self) -> str:
         return 'BottomType'
 
+@dataclass(frozen=True)
 class IntType(_ExprType):
     def __str__(self) -> str:
         return 'int'
 
+@dataclass(frozen=True)
 class TypeType(_ExprType):
     def __str__(self) -> str:
         return 'Type'
 
+@dataclass(frozen=True)
 class ErrorOrVoidType(_ExprType):
     def __str__(self) -> str:
         return 'ErrorOrVoid'
 
+@dataclass(frozen=True)
 class FunctionType(_ExprType):
-    def __init__(self, argtypes: List['ExprType'], returns: 'ExprType'):
-        self.argtypes = argtypes
-        self.returns = returns
+    argtypes: Tuple['ExprType', ...]
+    returns: 'ExprType'
 
     def __str__(self) -> str:
         return 'Callable[[%s], %s]' % (
@@ -80,35 +87,39 @@ class FunctionType(_ExprType):
                       for arg in self.argtypes),
             str(self.returns))
 
+@dataclass(frozen=True)
 class ListType(_ExprType):
-    def __init__(self, elem_type: 'ExprType'):
-        assert not isinstance(elem_type, FunctionType)
-        self.elem_type = elem_type
+    elem_type: 'ExprType'
+
+    def __post_init__(self) -> None:
+        assert not isinstance(self.elem_type, FunctionType)
 
     def __str__(self) -> str:
         return 'List[%s]' % str(self.elem_type)
 
+@dataclass(frozen=True)
 class ParameterPackType(_ExprType):
-    def __init__(self, element_type: Union[BoolType, IntType, TypeType, ErrorOrVoidType]):
-        assert not isinstance(element_type, (FunctionType, ParameterPackType, BottomType))
-        self.element_type = element_type
+    element_type: Union[BoolType, IntType, TypeType, ErrorOrVoidType]
+
+    def __post_init__(self) -> None:
+        assert not isinstance(self.element_type, (FunctionType, ParameterPackType, BottomType))
 
     def __str__(self) -> str:
         return 'Sequence[%s]' % (
             str(self.element_type))
 
+@dataclass(frozen=True)
 class CustomTypeArgDecl(ValueType):
-    def __init__(self, name: str, expr_type: 'ExprType'):
-        self.name = name
-        self.expr_type = expr_type
+    name: str
+    expr_type: 'ExprType'
 
     def __str__(self) -> str:
         return '%s: %s' % (self.name, str(self.expr_type))
 
+@dataclass(frozen=True)
 class CustomType(_ExprType):
-    def __init__(self, name: str, arg_types: List[CustomTypeArgDecl]):
-        self.name = name
-        self.arg_types = arg_types
+    name: str
+    arg_types: Tuple[CustomTypeArgDecl, ...]
 
     def __str__(self) -> str:
         return self.name
@@ -124,17 +135,23 @@ class CustomType(_ExprType):
 
 ExprType = Union[BoolType, BottomType, CustomType, ErrorOrVoidType, FunctionType, IntType, ListType, ParameterPackType, TypeType]
 
+@dataclass(frozen=True)
 class _Expr:
-    def __init__(self, expr_type: ExprType):
-        self.expr_type = expr_type
+    expr_type: ExprType
+    
+    def _init_expr_type(self, expr_type: ExprType):
+        object.__setattr__(self, 'expr_type', expr_type)
 
     def __str__(self) -> str: ...  # pragma: no cover
 
     def describe_other_fields(self) -> str: ...  # pragma: no cover
 
+@dataclass(frozen=True)
 class PatternExpr:
-    def __init__(self, expr_type: ExprType):
-        self.expr_type = expr_type
+    expr_type: ExprType
+
+    def _init_expr_type(self, expr_type: ExprType):
+        object.__setattr__(self, 'expr_type', expr_type)
 
     def __str__(self) -> str: ...  # pragma: no cover
 
@@ -144,21 +161,22 @@ class PatternExpr:
 Expr = Union[_Expr, PatternExpr]
 
 
+@dataclass(frozen=True)
 class FunctionArgDecl:
-    def __init__(self, expr_type: ExprType, name: str = ''):
-        self.expr_type = expr_type
-        self.name = name
+    expr_type: ExprType
+    name: str = ''
 
     def __str__(self) -> str:
         return '%s: %s' % (self.name, str(self.expr_type))
 
+@dataclass(frozen=True)
 class VarReference(_Expr):
-    def __init__(self, expr_type: ExprType, name: str, is_global_function: bool, is_function_that_may_throw: bool):
-        super().__init__(expr_type=expr_type)
-        assert name
-        self.name = name
-        self.is_global_function = is_global_function
-        self.is_function_that_may_throw = is_function_that_may_throw
+    name: str
+    is_global_function: bool
+    is_function_that_may_throw: bool
+
+    def __post_init__(self) -> None:
+        assert self.name
 
     def __str__(self) -> str:
         return self.name
@@ -168,13 +186,14 @@ class VarReference(_Expr):
             self.is_global_function,
             self.is_function_that_may_throw)
 
+@dataclass(frozen=True)
 class VarReferencePattern(PatternExpr):
-    def __init__(self, expr_type: ExprType, name: str, is_global_function: bool, is_function_that_may_throw: bool):
-        super().__init__(expr_type=expr_type)
-        assert name
-        self.name = name
-        self.is_global_function = is_global_function
-        self.is_function_that_may_throw = is_function_that_may_throw
+    name: str
+    is_global_function: bool
+    is_function_that_may_throw: bool
+
+    def __post_init__(self) -> None:
+        assert self.name
 
     def __str__(self) -> str:
         return self.name
@@ -184,16 +203,12 @@ class VarReferencePattern(PatternExpr):
             self.is_global_function,
             self.is_function_that_may_throw)
 
+@dataclass(frozen=True)
 class MatchCase:
-    def __init__(self,
-                 type_patterns: List[PatternExpr],
-                 matched_var_names: List[str],
-                 matched_variadic_var_names: List[str],
-                 expr: 'FunctionCall'):
-        self.type_patterns = type_patterns
-        self.matched_var_names = matched_var_names
-        self.matched_variadic_var_names = matched_variadic_var_names
-        self.expr = expr
+    type_patterns: Tuple[PatternExpr, ...]
+    matched_var_names: Tuple[str, ...]
+    matched_variadic_var_names: Tuple[str, ...]
+    expr: 'FunctionCall'
 
     def is_main_definition(self) -> bool:
         return set(self.type_patterns) == set(self.matched_var_names).union(self.matched_variadic_var_names)
@@ -208,18 +223,22 @@ class MatchCase:
                 writer.write(str(self.expr))
                 writer.writeln(',')
 
+@dataclass(frozen=True)
 class MatchExpr(_Expr):
-    def __init__(self, matched_vars: List[VarReference], match_cases: List[MatchCase]):
-        assert matched_vars
-        assert match_cases
-        for match_case in match_cases:
-            assert len(match_case.type_patterns) == len(matched_vars)
-        super().__init__(expr_type=match_cases[0].expr.expr_type)
-        self.matched_vars = matched_vars
-        self.match_cases = match_cases
+    expr_type: ExprType = field(init=False)
+    matched_vars: Tuple[VarReference, ...]
+    match_cases: Tuple[MatchCase, ...]
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(self.match_cases[0].expr.expr_type)
+
+        assert self.matched_vars
+        assert self.match_cases
+        for match_case in self.match_cases:
+            assert len(match_case.type_patterns) == len(self.matched_vars)
 
         assert len([match_case
-                    for match_case in match_cases
+                    for match_case in self.match_cases
                     if match_case.is_main_definition()]) <= 1
 
     def write(self, writer: Writer):
@@ -233,10 +252,13 @@ class MatchExpr(_Expr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class BoolLiteral(_Expr):
-    def __init__(self, value: bool):
-        super().__init__(BoolType())
-        self.value = value
+    expr_type: ExprType = field(init=False)
+    value: bool
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
 
     def __str__(self) -> str:
         return repr(self.value)
@@ -244,10 +266,13 @@ class BoolLiteral(_Expr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class AtomicTypeLiteral(_Expr):
-    def __init__(self, cpp_type: str):
-        super().__init__(expr_type=TypeType())
-        self.cpp_type = cpp_type
+    expr_type: ExprType = field(init=False)
+    cpp_type: str
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
 
     def __str__(self) -> str:
         return 'Type(\'%s\')' % self.cpp_type
@@ -255,10 +280,13 @@ class AtomicTypeLiteral(_Expr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class AtomicTypeLiteralPattern(PatternExpr):
-    def __init__(self, cpp_type: str):
-        super().__init__(expr_type=TypeType())
-        self.cpp_type = cpp_type
+    expr_type: ExprType = field(init=False)
+    cpp_type: str
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
 
     def __str__(self) -> str:
         return 'Type(\'%s\')' % self.cpp_type
@@ -266,11 +294,14 @@ class AtomicTypeLiteralPattern(PatternExpr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class PointerTypeExpr(_Expr):
-    def __init__(self, type_expr: VarReference):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.pointer(%s)' % str(self.type_expr)
@@ -278,11 +309,14 @@ class PointerTypeExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class PointerTypePatternExpr(PatternExpr):
-    def __init__(self, type_expr: PatternExpr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: PatternExpr
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.pointer(%s)' % str(self.type_expr)
@@ -290,11 +324,14 @@ class PointerTypePatternExpr(PatternExpr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class ReferenceTypeExpr(_Expr):
-    def __init__(self, type_expr: VarReference):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.reference(%s)' % str(self.type_expr)
@@ -302,11 +339,14 @@ class ReferenceTypeExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class ReferenceTypePatternExpr(PatternExpr):
-    def __init__(self, type_expr: PatternExpr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: PatternExpr
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.reference(%s)' % str(self.type_expr)
@@ -314,11 +354,14 @@ class ReferenceTypePatternExpr(PatternExpr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class RvalueReferenceTypeExpr(_Expr):
-    def __init__(self, type_expr: VarReference):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.rvalue_reference(%s)' % str(self.type_expr)
@@ -326,11 +369,14 @@ class RvalueReferenceTypeExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class RvalueReferenceTypePatternExpr(PatternExpr):
-    def __init__(self, type_expr: PatternExpr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: PatternExpr
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.rvalue_reference(%s)' % str(self.type_expr)
@@ -338,11 +384,14 @@ class RvalueReferenceTypePatternExpr(PatternExpr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class ConstTypeExpr(_Expr):
-    def __init__(self, type_expr: VarReference):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.const(%s)' % str(self.type_expr)
@@ -350,11 +399,14 @@ class ConstTypeExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class ConstTypePatternExpr(PatternExpr):
-    def __init__(self, type_expr: PatternExpr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: PatternExpr
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.const(%s)' % str(self.type_expr)
@@ -362,11 +414,14 @@ class ConstTypePatternExpr(PatternExpr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class ArrayTypeExpr(_Expr):
-    def __init__(self, type_expr: VarReference):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.array(%s)' % str(self.type_expr)
@@ -374,11 +429,14 @@ class ArrayTypeExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class ArrayTypePatternExpr(PatternExpr):
-    def __init__(self, type_expr: PatternExpr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: ExprType = field(init=False)
+    type_expr: PatternExpr
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.type_expr.expr_type == TypeType()
 
     def __str__(self) -> str:
         return 'Type.array(%s)' % str(self.type_expr)
@@ -386,14 +444,16 @@ class ArrayTypePatternExpr(PatternExpr):
     def describe_other_fields(self) -> str:
         return self.type_expr.describe_other_fields()
 
+@dataclass(frozen=True)
 class FunctionTypeExpr(_Expr):
-    def __init__(self, return_type_expr: VarReference, arg_list_expr: VarReference):
-        assert return_type_expr.expr_type == TypeType()
-        assert arg_list_expr.expr_type == ListType(TypeType())
+    expr_type: ExprType = field(init=False)
+    return_type_expr: VarReference
+    arg_list_expr: VarReference
 
-        super().__init__(expr_type=TypeType())
-        self.return_type_expr = return_type_expr
-        self.arg_list_expr = arg_list_expr
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.return_type_expr.expr_type == TypeType()
+        assert self.arg_list_expr.expr_type == ListType(TypeType())
 
     def __str__(self) -> str:
         return 'Type.function(%s, %s)' % (str(self.return_type_expr), str(self.arg_list_expr))
@@ -402,14 +462,16 @@ class FunctionTypeExpr(_Expr):
         return 'return_type: %s; arg_type_list: %s' % (str(self.return_type_expr.describe_other_fields()),
                                                        str(self.arg_list_expr.describe_other_fields()))
 
+@dataclass(frozen=True)
 class FunctionTypePatternExpr(PatternExpr):
-    def __init__(self, return_type_expr: PatternExpr, arg_list_expr: PatternExpr):
-        assert return_type_expr.expr_type == TypeType()
-        assert arg_list_expr.expr_type == ListType(TypeType())
+    expr_type: ExprType = field(init=False)
+    return_type_expr: PatternExpr
+    arg_list_expr: PatternExpr
 
-        super().__init__(expr_type=TypeType())
-        self.return_type_expr = return_type_expr
-        self.arg_list_expr = arg_list_expr
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.return_type_expr.expr_type == TypeType()
+        assert self.arg_list_expr.expr_type == ListType(TypeType())
 
     def __str__(self) -> str:
         return 'Type.function(%s, %s)' % (str(self.return_type_expr), str(self.arg_list_expr))
@@ -418,11 +480,14 @@ class FunctionTypePatternExpr(PatternExpr):
         return 'return_type: %s; arg_type_list: %s' % (str(self.return_type_expr.describe_other_fields()),
                                                        str(self.arg_list_expr.describe_other_fields()))
 
+@dataclass(frozen=True)
 class ParameterPackExpansion(_Expr):
-    def __init__(self, expr: VarReference):
-        assert isinstance(expr.expr_type, ParameterPackType)
-        super().__init__(expr.expr_type.element_type)
-        self.expr = expr
+    expr_type: ExprType = field(init=False)
+    expr: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(self.expr.expr_type.element_type)
+        assert isinstance(self.expr.expr_type, ParameterPackType)
 
     def __str__(self) -> str:
         return '*(%s)' % str(self.expr)
@@ -431,13 +496,15 @@ class ParameterPackExpansion(_Expr):
         return self.expr.describe_other_fields()
 
 # E.g. TemplateInstantiationExpr('std::vector', [AtomicTypeLiteral('int')]) is the type 'std::vector<int>'.
+@dataclass(frozen=True)
 class TemplateInstantiationExpr(_Expr):
-    def __init__(self, template_atomic_cpp_type: str, arg_list_expr: VarReference):
-        assert arg_list_expr.expr_type == ListType(TypeType())
+    expr_type: ExprType = field(init=False)
+    template_atomic_cpp_type: str
+    arg_list_expr: VarReference
 
-        super().__init__(expr_type=TypeType())
-        self.template_atomic_cpp_type = template_atomic_cpp_type
-        self.arg_list_expr = arg_list_expr
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.arg_list_expr.expr_type == ListType(TypeType())
 
     def __str__(self) -> str:
         return 'Type.template_instantiation(\'%s\', %s)' % (self.template_atomic_cpp_type, str(self.arg_list_expr))
@@ -446,17 +513,19 @@ class TemplateInstantiationExpr(_Expr):
         return self.arg_list_expr.describe_other_fields()
 
 # E.g. TemplateInstantiationExpr('std::vector', [AtomicTypeLiteral('int')]) is the type 'std::vector<int>'.
+@dataclass(frozen=True)
 class TemplateInstantiationPatternExpr(PatternExpr):
-    def __init__(self, template_atomic_cpp_type: str, arg_exprs: List[PatternExpr], list_extraction_arg_expr: Optional[VarReferencePattern]):
-        for arg in arg_exprs:
-            assert arg.expr_type == TypeType()
-        if list_extraction_arg_expr:
-            assert list_extraction_arg_expr.expr_type == ListType(TypeType())
+    expr_type: ExprType = field(init=False)
+    template_atomic_cpp_type: str
+    arg_exprs: Tuple[PatternExpr, ...]
+    list_extraction_arg_expr: Optional[VarReferencePattern]
 
-        super().__init__(expr_type=TypeType())
-        self.template_atomic_cpp_type = template_atomic_cpp_type
-        self.arg_exprs = arg_exprs
-        self.list_extraction_arg_expr = list_extraction_arg_expr
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        for arg in self.arg_exprs:
+            assert arg.expr_type == TypeType()
+        if self.list_extraction_arg_expr:
+            assert self.list_extraction_arg_expr.expr_type == ListType(TypeType())
 
     def __str__(self) -> str:
         return 'Type.template_instantiation(\'%s\', [%s%s])' % (self.template_atomic_cpp_type,
@@ -469,15 +538,17 @@ class TemplateInstantiationPatternExpr(PatternExpr):
                                                          (self.list_extraction_arg_expr,) if self.list_extraction_arg_expr else tuple()))
 
 # E.g. TemplateMemberAccessExpr(AtomicTypeLiteral('foo'), 'bar', [AtomicTypeLiteral('int')]) is the type 'foo::bar<int>'.
+@dataclass(frozen=True)
 class TemplateMemberAccessExpr(_Expr):
-    def __init__(self, class_type_expr: VarReference, member_name: str, arg_list_expr: VarReference):
-        assert class_type_expr.expr_type == TypeType()
-        assert arg_list_expr.expr_type == ListType(TypeType())
+    expr_type: ExprType = field(init=False)
+    class_type_expr: VarReference
+    member_name: str
+    arg_list_expr: VarReference
 
-        super().__init__(expr_type=TypeType())
-        self.class_type_expr = class_type_expr
-        self.member_name = member_name
-        self.arg_list_expr = arg_list_expr
+    def __post_init__(self) -> None:
+        self._init_expr_type(TypeType())
+        assert self.class_type_expr.expr_type == TypeType()
+        assert self.arg_list_expr.expr_type == ListType(TypeType())
 
     def __str__(self) -> str:
         return 'Type.template_member(%s, \'%s\', %s)' % (str(self.class_type_expr),
@@ -488,12 +559,15 @@ class TemplateMemberAccessExpr(_Expr):
         return 'class_type: %s; arg_type_list: %s' % (str(self.class_type_expr.describe_other_fields()),
                                                       str(self.arg_list_expr.describe_other_fields()))
 
+@dataclass(frozen=True)
 class ListExpr(_Expr):
-    def __init__(self, elem_type: ExprType, elems: List[VarReference]):
-        assert not isinstance(elem_type, FunctionType)
-        super().__init__(expr_type=ListType(elem_type))
-        self.elem_type = elem_type
-        self.elems = elems
+    expr_type: ExprType = field(init=False)
+    elem_type: ExprType
+    elems: Tuple[VarReference, ...]
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(ListType(self.elem_type))
+        assert not isinstance(self.elem_type, FunctionType)
 
     def __str__(self) -> str:
         return '[%s]' % ', '.join(var.name
@@ -502,13 +576,16 @@ class ListExpr(_Expr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class ListPatternExpr(PatternExpr):
-    def __init__(self, elem_type: ExprType, elems: List[PatternExpr], list_extraction_expr: Optional[VarReference]):
-        assert not isinstance(elem_type, FunctionType)
-        super().__init__(expr_type=ListType(elem_type))
-        self.elem_type = elem_type
-        self.elems = elems
-        self.list_extraction_expr = list_extraction_expr
+    expr_type: ExprType = field(init=False)
+    elem_type: ExprType
+    elems: Tuple[PatternExpr, ...]
+    list_extraction_expr: Optional[VarReference]
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(ListType(self.elem_type))
+        assert not isinstance(self.elem_type, FunctionType)
 
     def __str__(self) -> str:
         return '[%s]' % ', '.join(str(elem)
@@ -518,13 +595,16 @@ class ListPatternExpr(PatternExpr):
         return '[%s]' % '; '.join(elem.describe_other_fields()
                                   for elem in self.elems)
 
+@dataclass(frozen=True)
 class AddToSetExpr(_Expr):
-    def __init__(self, set_expr: VarReference, elem_expr: VarReference):
-        assert isinstance(set_expr.expr_type, ListType)
-        assert set_expr.expr_type.elem_type == elem_expr.expr_type
-        super().__init__(expr_type=ListType(set_expr.expr_type.elem_type))
-        self.set_expr = set_expr
-        self.elem_expr = elem_expr
+    expr_type: ExprType = field(init=False)
+    set_expr: VarReference
+    elem_expr: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(ListType(self.set_expr.expr_type.elem_type))
+        assert isinstance(self.set_expr.expr_type, ListType)
+        assert self.set_expr.expr_type.elem_type == self.elem_expr.expr_type
 
     def __str__(self) -> str:
         return 'add_to_set(%s, %s)' % (
@@ -534,11 +614,14 @@ class AddToSetExpr(_Expr):
     def describe_other_fields(self) -> str:
         return 'set: %s; elem: %s' % (self.set_expr.describe_other_fields(), self.elem_expr.describe_other_fields())
 
+@dataclass(frozen=True)
 class SetToListExpr(_Expr):
-    def __init__(self, var: VarReference):
-        assert isinstance(var.expr_type, ListType)
-        super().__init__(expr_type=ListType(elem_type=var.expr_type.elem_type))
-        self.var = var
+    expr_type: ExprType = field(init=False)
+    var: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(ListType(self.var.expr_type.elem_type))
+        assert isinstance(self.var.expr_type, ListType)
 
     def __str__(self) -> str:
         return 'set_to_list(%s)' % self.var.name
@@ -546,11 +629,14 @@ class SetToListExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.var.describe_other_fields()
 
+@dataclass(frozen=True)
 class ListToSetExpr(_Expr):
-    def __init__(self, var: VarReference):
-        assert isinstance(var.expr_type, ListType)
-        super().__init__(expr_type=ListType(elem_type=var.expr_type.elem_type))
-        self.var = var
+    expr_type: ExprType = field(init=False)
+    var: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(ListType(self.var.expr_type.elem_type))
+        assert isinstance(self.var.expr_type, ListType)
 
     def __str__(self) -> str:
         return 'list_to_set(%s)' % self.var.name
@@ -558,14 +644,17 @@ class ListToSetExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.var.describe_other_fields()
 
+@dataclass(frozen=True)
 class FunctionCall(_Expr):
-    def __init__(self, fun: VarReference, args: List[VarReference]):
-        assert isinstance(fun.expr_type, FunctionType)
-        assert len(fun.expr_type.argtypes) == len(args)
-        assert args
-        super().__init__(expr_type=fun.expr_type.returns)
-        self.fun = fun
-        self.args = args
+    expr_type: ExprType = field(init=False)
+    fun: VarReference
+    args: Tuple[VarReference, ...]
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(self.fun.expr_type.returns)
+        assert isinstance(self.fun.expr_type, FunctionType)
+        assert len(self.fun.expr_type.argtypes) == len(self.args)
+        assert self.args
 
     def __str__(self) -> str:
         return '%s(%s)' % (
@@ -578,14 +667,18 @@ class FunctionCall(_Expr):
                          for vars in ([self.fun], self.args)
                          for var in vars)
 
+@dataclass(frozen=True)
 class EqualityComparison(_Expr):
-    def __init__(self, lhs: VarReference, rhs: VarReference):
-        super().__init__(expr_type=BoolType())
-        assert (lhs.expr_type == ErrorOrVoidType() and rhs.expr_type == TypeType()) or (lhs.expr_type == rhs.expr_type), '%s (%s) vs %s (%s)' % (
-            str(lhs.expr_type), lhs.expr_type.__dict__, str(rhs.expr_type), rhs.expr_type.__dict__)
-        assert not isinstance(lhs.expr_type, FunctionType)
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType = field(init=False)
+    lhs: VarReference
+    rhs: VarReference
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert ((self.lhs.expr_type == ErrorOrVoidType() and self.rhs.expr_type == TypeType())
+                or self.lhs.expr_type == self.rhs.expr_type), \
+            f'{self.lhs.expr_type} ({self.lhs.expr_type!r}) vs {self.rhs.expr_type} ({self.rhs.expr_type!r})'
+        assert not isinstance(self.lhs.expr_type, FunctionType)
 
     def __str__(self) -> str:
         return '%s == %s' % (self.lhs.name, self.rhs.name)
@@ -593,13 +686,16 @@ class EqualityComparison(_Expr):
     def describe_other_fields(self) -> str:
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
+@dataclass(frozen=True)
 class SetEqualityComparison(_Expr):
-    def __init__(self, lhs: VarReference, rhs: VarReference):
-        super().__init__(expr_type=BoolType())
-        assert isinstance(lhs.expr_type, ListType)
-        assert lhs.expr_type == rhs.expr_type
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType = field(init=False)
+    lhs: VarReference
+    rhs: VarReference
+    
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert isinstance(self.lhs.expr_type, ListType)
+        assert self.lhs.expr_type == self.rhs.expr_type
 
     def __str__(self) -> str:
         return 'set_equals(%s, %s)' % (self.lhs.name, self.rhs.name)
@@ -607,13 +703,16 @@ class SetEqualityComparison(_Expr):
     def describe_other_fields(self) -> str:
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
+@dataclass(frozen=True)
 class IsInListExpr(_Expr):
-    def __init__(self, lhs: VarReference, rhs: VarReference):
-        super().__init__(expr_type=BoolType())
-        assert isinstance(rhs.expr_type, ListType)
-        assert lhs.expr_type == rhs.expr_type.elem_type
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType = field(init=False)
+    lhs: VarReference
+    rhs: VarReference
+    
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
+        assert isinstance(self.rhs.expr_type, ListType)
+        assert self.lhs.expr_type == self.rhs.expr_type.elem_type
 
     def __str__(self) -> str:
         return '%s in %s' % (self.lhs.name, self.rhs.name)
@@ -621,13 +720,14 @@ class IsInListExpr(_Expr):
     def describe_other_fields(self) -> str:
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
+@dataclass(frozen=True)
 class AttributeAccessExpr(_Expr):
-    def __init__(self, var: VarReference, attribute_name: str, expr_type: ExprType):
-        super().__init__(expr_type=expr_type)
-        assert isinstance(var.expr_type, (TypeType, CustomType))
-        self.var = var
-        self.attribute_name = attribute_name
-        self.expr_type = expr_type
+    var: VarReference
+    attribute_name: str
+    expr_type: ExprType
+    
+    def __post_init__(self) -> None:
+        assert isinstance(self.var.expr_type, (TypeType, CustomType))
 
     def __str__(self) -> str:
         return '%s.%s' % (self.var.name, self.attribute_name)
@@ -635,10 +735,13 @@ class AttributeAccessExpr(_Expr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class IntLiteral(_Expr):
-    def __init__(self, value: int):
-        super().__init__(expr_type=IntType())
-        self.value = value
+    expr_type: ExprType = field(init=False)
+    value: int
+    
+    def __post_init__(self) -> None:
+        self._init_expr_type(IntType())
 
     def __str__(self) -> str:
         return str(self.value)
@@ -646,11 +749,14 @@ class IntLiteral(_Expr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class NotExpr(_Expr):
-    def __init__(self, var: VarReference):
-        assert var.expr_type == BoolType()
-        super().__init__(expr_type=BoolType())
-        self.var = var
+    expr_type: ExprType = field(init=False)
+    var: VarReference
+
+    def __post_init__(self) -> None:
+        assert self.var.expr_type == BoolType()
+        self._init_expr_type(BoolType())
 
     def __str__(self) -> str:
         return 'not %s' % self.var.name
@@ -658,11 +764,14 @@ class NotExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.var.describe_other_fields()
 
+@dataclass(frozen=True)
 class UnaryMinusExpr(_Expr):
-    def __init__(self, var: VarReference):
-        assert var.expr_type == IntType()
-        super().__init__(expr_type=IntType())
-        self.var = var
+    expr_type: ExprType = field(init=False)
+    var: VarReference
+
+    def __post_init__(self) -> None:
+        assert self.var.expr_type == IntType()
+        self._init_expr_type(IntType())
 
     def __str__(self) -> str:
         return '-%s' % self.var.name
@@ -670,12 +779,15 @@ class UnaryMinusExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.var.describe_other_fields()
 
+@dataclass(frozen=True)
 class IntListSumExpr(_Expr):
-    def __init__(self, var: VarReference):
-        assert isinstance(var.expr_type, ListType)
-        assert isinstance(var.expr_type.elem_type, IntType)
-        super().__init__(expr_type=IntType())
-        self.var = var
+    expr_type: ExprType = field(init=False)
+    var: VarReference
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.var.expr_type, ListType)
+        assert isinstance(self.var.expr_type.elem_type, IntType)
+        self._init_expr_type(IntType())
 
     def __str__(self) -> str:
         return 'sum(%s)' % self.var.name
@@ -683,12 +795,15 @@ class IntListSumExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.var.describe_other_fields()
 
+@dataclass(frozen=True)
 class BoolListAllExpr(_Expr):
-    def __init__(self, var: VarReference):
-        assert isinstance(var.expr_type, ListType)
-        assert isinstance(var.expr_type.elem_type, BoolType)
-        super().__init__(expr_type=BoolType())
-        self.var = var
+    expr_type: ExprType = field(init=False)
+    var: VarReference
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.var.expr_type, ListType)
+        assert isinstance(self.var.expr_type.elem_type, BoolType)
+        self._init_expr_type(BoolType())
 
     def __str__(self) -> str:
         return 'all(%s)' % self.var.name
@@ -696,12 +811,15 @@ class BoolListAllExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.var.describe_other_fields()
 
+@dataclass(frozen=True)
 class BoolListAnyExpr(_Expr):
-    def __init__(self, var: VarReference):
-        assert isinstance(var.expr_type, ListType)
-        assert isinstance(var.expr_type.elem_type, BoolType)
-        super().__init__(expr_type=BoolType())
-        self.var = var
+    expr_type: ExprType = field(init=False)
+    var: VarReference
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.var.expr_type, ListType)
+        assert isinstance(self.var.expr_type.elem_type, BoolType)
+        self._init_expr_type(BoolType())
 
     def __str__(self) -> str:
         return 'any(%s)' % self.var.name
@@ -709,15 +827,18 @@ class BoolListAnyExpr(_Expr):
     def describe_other_fields(self) -> str:
         return self.var.describe_other_fields()
 
+@dataclass(frozen=True)
 class IntComparisonExpr(_Expr):
-    def __init__(self, lhs: VarReference, rhs: VarReference, op: str):
-        assert lhs.expr_type == IntType()
-        assert rhs.expr_type == IntType()
-        assert op in ('<', '>', '<=', '>=')
-        super().__init__(expr_type=BoolType())
-        self.lhs = lhs
-        self.rhs = rhs
-        self.op = op
+    expr_type: ExprType = field(init=False)
+    lhs: VarReference
+    rhs: VarReference
+    op: str
+
+    def __post_init__(self) -> None:
+        assert self.lhs.expr_type == IntType()
+        assert self.rhs.expr_type == IntType()
+        assert self.op in ('<', '>', '<=', '>=')
+        self._init_expr_type(BoolType())
 
     def __str__(self) -> str:
         return '%s %s %s' % (self.lhs.name, self.op, self.rhs.name)
@@ -725,15 +846,18 @@ class IntComparisonExpr(_Expr):
     def describe_other_fields(self) -> str:
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
+@dataclass(frozen=True)
 class IntBinaryOpExpr(_Expr):
-    def __init__(self, lhs: VarReference, rhs: VarReference, op: str):
-        assert lhs.expr_type == IntType()
-        assert rhs.expr_type == IntType()
-        assert op in ('+', '-', '*', '//', '%')
-        super().__init__(expr_type=IntType())
-        self.lhs = lhs
-        self.rhs = rhs
-        self.op = op
+    expr_type: ExprType = field(init=False)
+    lhs: VarReference
+    rhs: VarReference
+    op: str
+
+    def __post_init__(self) -> None:
+        assert self.lhs.expr_type == IntType()
+        assert self.rhs.expr_type == IntType()
+        assert self.op in ('+', '-', '*', '//', '%')
+        self._init_expr_type(IntType())
 
     def __str__(self) -> str:
         return '%s %s %s' % (self.lhs.name, self.op, self.rhs.name)
@@ -741,13 +865,16 @@ class IntBinaryOpExpr(_Expr):
     def describe_other_fields(self) -> str:
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
+@dataclass(frozen=True)
 class ListConcatExpr(_Expr):
-    def __init__(self, lhs: VarReference, rhs: VarReference):
-        assert isinstance(lhs.expr_type, ListType)
-        assert lhs.expr_type == rhs.expr_type
-        super().__init__(expr_type=lhs.expr_type)
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType = field(init=False)
+    lhs: VarReference
+    rhs: VarReference
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.lhs.expr_type, ListType)
+        assert self.lhs.expr_type == self.rhs.expr_type
+        self._init_expr_type(self.lhs.expr_type)
 
     def __str__(self) -> str:
         return '%s + %s' % (self.lhs.name, self.rhs.name)
@@ -755,11 +882,14 @@ class ListConcatExpr(_Expr):
     def describe_other_fields(self) -> str:
         return '(lhs: %s; rhs: %s)' % (self.lhs.describe_other_fields(), self.rhs.describe_other_fields())
 
+@dataclass(frozen=True)
 class IsInstanceExpr(_Expr):
-    def __init__(self, var: VarReference, checked_type: CustomType):
-        super().__init__(expr_type=BoolType())
-        self.var = var
-        self.checked_type = checked_type
+    expr_type: ExprType = field(init=False)
+    var: VarReference
+    checked_type: CustomType
+
+    def __post_init__(self) -> None:
+        self._init_expr_type(BoolType())
 
     def __str__(self) -> str:
         return 'isinstance(%s, %s)' % (self.var.name, str(self.checked_type))
@@ -767,12 +897,13 @@ class IsInstanceExpr(_Expr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class SafeUncheckedCast(_Expr):
-    def __init__(self, var: VarReference, expr_type: ExprType):
-        assert isinstance(var.expr_type, ErrorOrVoidType)
-        assert isinstance(expr_type, CustomType)
-        super().__init__(expr_type=expr_type)
-        self.var = var
+    var: VarReference
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.var.expr_type, ErrorOrVoidType)
+        assert isinstance(self.expr_type, CustomType)
 
     def __str__(self) -> str:
         return '%s  # type: %s' % (self.var.name, str(self.expr_type))
@@ -780,14 +911,17 @@ class SafeUncheckedCast(_Expr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class ListComprehensionExpr(_Expr):
-    def __init__(self, list_var: VarReference, loop_var: VarReference, result_elem_expr: FunctionCall):
-        assert isinstance(list_var.expr_type, ListType)
-        assert list_var.expr_type.elem_type == loop_var.expr_type
-        super().__init__(expr_type=ListType(result_elem_expr.expr_type))
-        self.list_var = list_var
-        self.loop_var = loop_var
-        self.result_elem_expr = result_elem_expr
+    expr_type: ExprType = field(init=False)
+    list_var: VarReference
+    loop_var: VarReference
+    result_elem_expr: FunctionCall
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.list_var.expr_type, ListType)
+        assert self.list_var.expr_type.elem_type == self.loop_var.expr_type
+        self._init_expr_type(ListType(self.result_elem_expr.expr_type))
 
     def __str__(self) -> str:
         return '[%s for %s in %s]' % (str(self.result_elem_expr), self.loop_var.name, self.list_var.name)
@@ -795,21 +929,28 @@ class ListComprehensionExpr(_Expr):
     def describe_other_fields(self) -> str:
         return ''
 
+@dataclass(frozen=True)
 class ReturnTypeInfo:
-    def __init__(self, expr_type: Optional[ExprType], always_returns: bool):
-        # When expr_type is None, the statement never returns.
-        # expr_type can't be None if always_returns is True.
-        self.expr_type = expr_type
-        self.always_returns = always_returns
+    # When expr_type is None, the statement never returns.
+    # expr_type can't be None if always_returns is True.
+    expr_type: Optional[ExprType]
+    always_returns: bool
 
+    def __post_init__(self) -> None:
+        if self.always_returns:
+            assert self.expr_type
+
+@dataclass(frozen=True)
 class Stmt:
     def write(self, writer: Writer, verbose: bool): ...  # pragma: no cover
 
+@dataclass(frozen=True)
 class Assert(Stmt):
-    def __init__(self, var: VarReference, message: str):
-        assert isinstance(var.expr_type, BoolType)
-        self.var = var
-        self.message = message
+    var: VarReference
+    message: str
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.var.expr_type, BoolType)
 
     def write(self, writer: Writer, verbose: bool):
         writer.write('assert ')
@@ -819,18 +960,17 @@ class Assert(Stmt):
         else:
             writer.writeln('')
 
+@dataclass(frozen=True)
 class Assignment(Stmt):
-    def __init__(self,
-                 lhs: VarReference,
-                 rhs: Expr,
-                 lhs2: Optional[VarReference] = None):
-        assert lhs.expr_type == rhs.expr_type, '%s vs %s' % (str(lhs.expr_type), str(rhs.expr_type))
-        if lhs2:
-            assert isinstance(lhs2.expr_type, ErrorOrVoidType)
-            assert isinstance(rhs, (MatchExpr, FunctionCall, ListComprehensionExpr))
-        self.lhs = lhs
-        self.lhs2 = lhs2
-        self.rhs = rhs
+    lhs: VarReference
+    rhs: Expr
+    lhs2: Optional[VarReference] = None
+
+    def __post_init__(self) -> None:
+        assert self.lhs.expr_type == self.rhs.expr_type, '%s vs %s' % (str(self.lhs.expr_type), str(self.rhs.expr_type))
+        if self.lhs2:
+            assert isinstance(self.lhs2.expr_type, ErrorOrVoidType)
+            assert isinstance(self.rhs, (MatchExpr, FunctionCall, ListComprehensionExpr))
 
     def write(self, writer: Writer, verbose: bool):
         writer.write(self.lhs.name)
@@ -847,11 +987,12 @@ class Assignment(Stmt):
             else:
                 writer.writeln('')
 
+@dataclass(frozen=True)
 class CheckIfError(Stmt):
-    def __init__(self,
-                 var: VarReference):
-        assert var.expr_type == ErrorOrVoidType()
-        self.var = var
+    var: VarReference
+
+    def __post_init__(self) -> None:
+        assert self.var.expr_type == ErrorOrVoidType()
 
     def write(self, writer: Writer, verbose: bool):
         writer.write('check_if_error(')
@@ -862,18 +1003,17 @@ class CheckIfError(Stmt):
         else:
             writer.writeln(')')
 
+@dataclass(frozen=True)
 class UnpackingAssignment(Stmt):
-    def __init__(self,
-                 lhs_list: List[VarReference],
-                 rhs: VarReference,
-                 error_message: str):
-        assert isinstance(rhs.expr_type, ListType)
-        assert lhs_list
-        for lhs in lhs_list:
-            assert lhs.expr_type == rhs.expr_type.elem_type
-        self.lhs_list = lhs_list
-        self.rhs = rhs
-        self.error_message = error_message
+    lhs_list: Tuple[VarReference, ...]
+    rhs: VarReference
+    error_message: str
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.rhs.expr_type, ListType)
+        assert self.lhs_list
+        for lhs in self.lhs_list:
+            assert lhs.expr_type == self.rhs.expr_type.elem_type
 
     def write(self, writer: Writer, verbose: bool):
         writer.write('[')
@@ -889,11 +1029,13 @@ class UnpackingAssignment(Stmt):
         else:
             writer.writeln('')
 
+@dataclass(frozen=True)
 class ReturnStmt(Stmt):
-    def __init__(self, result: Optional[VarReference], error: Optional[VarReference]):
-        assert result or error
-        self.result = result
-        self.error = error
+    result: Optional[VarReference]
+    error: Optional[VarReference]
+
+    def __post_init__(self) -> None:
+        assert self.result or self.error
 
     def write(self, writer: Writer, verbose: bool):
         writer.write('return ')
@@ -907,12 +1049,14 @@ class ReturnStmt(Stmt):
         else:
             writer.writeln('')
 
+@dataclass(frozen=True)
 class IfStmt(Stmt):
-    def __init__(self, cond: VarReference, if_stmts: List[Stmt], else_stmts: List[Stmt]):
-        assert cond.expr_type == BoolType()
-        self.cond = cond
-        self.if_stmts = if_stmts
-        self.else_stmts = else_stmts
+    cond: VarReference
+    if_stmts: Tuple[Stmt, ...]
+    else_stmts: Tuple[Stmt, ...]
+
+    def __post_init__(self) -> None:
+        assert self.cond.expr_type == BoolType()
 
     def write(self, writer: Writer, verbose: bool):
         writer.write('if %s:' % self.cond.name)
@@ -931,19 +1075,16 @@ class IfStmt(Stmt):
                 for stmt in self.else_stmts:
                     stmt.write(writer, verbose)
 
+@dataclass(frozen=True)
 class FunctionDefn:
-    def __init__(self,
-                 name: str,
-                 description: str,
-                 args: List[FunctionArgDecl],
-                 body: List[Stmt],
-                 return_type: ExprType):
-        assert body
-        self.name = name
-        self.description = description
-        self.args = args
-        self.body = body
-        self.return_type = return_type
+    name: str
+    description: str
+    args: Tuple[FunctionArgDecl, ...]
+    body: Tuple[Stmt, ...]
+    return_type: ExprType
+
+    def __post_init__(self) -> None:
+        assert self.body
 
     def write(self, writer: Writer, verbose: bool):
         if self.description:
@@ -959,9 +1100,9 @@ class FunctionDefn:
                 stmt.write(writer, verbose)
         writer.writeln('')
 
+@dataclass(frozen=True)
 class CheckIfErrorDefn:
-    def __init__(self, error_types_and_messages: List[Tuple[CustomType, str]]):
-        self.error_types_and_messages = error_types_and_messages
+    error_types_and_messages: Tuple[Tuple[CustomType, str], ...]
 
     def write(self, writer: Writer, verbose: bool):
         writer.writeln('def check_if_error(x):')
@@ -974,12 +1115,10 @@ class CheckIfErrorDefn:
                 writer.writeln('... # builtin')
         writer.writeln('')
 
+@dataclass(frozen=True)
 class Module:
-    def __init__(self,
-                 body: List[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn]],
-                 public_names: Set[str]):
-        self.body = body
-        self.public_names = public_names
+    body: Tuple[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn], ...]
+    public_names: FrozenSet[str]
 
     def __str__(self) -> str:
         writer = Writer()

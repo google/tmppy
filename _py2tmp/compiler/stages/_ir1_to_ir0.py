@@ -1511,8 +1511,8 @@ def function_defn_to_ir0(function_defn: ir1.FunctionDefn, writer: ToplevelWriter
                                                         specializations=(),
                                                         result_element_names=result_element_names))
     except (AssertionError, AttributeError, TypeError) as e:  # pragma: no cover
-        print('While converting a function defn to low IR:\n' + str(ir1.Module(body=[function_defn],
-                                                                              public_names=set())))
+        print('While converting a function defn to low IR:\n' + str(ir1.Module(body=(function_defn,),
+                                                                               public_names=frozenset())))
         raise e
 
 def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer: ToplevelWriter):
@@ -1523,19 +1523,19 @@ def check_if_error_defn_to_ir0(check_if_error_defn: ir1.CheckIfErrorDefn, writer
     #   using type = void;
     # };
     specializations = [ir0.TemplateSpecialization(args=tuple(ir0.TemplateArgDecl(expr_type=type_to_ir0(arg_decl.expr_type),
-                                                                            name=arg_decl.name,
-                                                                            is_variadic=isinstance(arg_decl.expr_type, ir1.ParameterPackType))
-                                                        for arg_decl in custom_error_type.arg_types),
+                                                                                 name=arg_decl.name,
+                                                                                 is_variadic=isinstance(arg_decl.expr_type, ir1.ParameterPackType))
+                                                             for arg_decl in custom_error_type.arg_types),
                                                   patterns=(ir0.TemplateInstantiation(ir0.AtomicTypeLiteral.for_nonlocal_template(cpp_type=writer.get_holder_template_name_for_error(custom_error_type.name),
                                                                                                                                   args=tuple(ir0.TemplateArgType(type_to_ir0(arg_type.expr_type),
-                                                                                                                                                            is_variadic=isinstance(arg_type.expr_type, ir1.ParameterPackType))
-                                                                                                                                        for arg_type in custom_error_type.arg_types),
+                                                                                                                                                                 is_variadic=isinstance(arg_type.expr_type, ir1.ParameterPackType))
+                                                                                                                                             for arg_type in custom_error_type.arg_types),
                                                                                                                                   is_metafunction_that_may_return_error=False,
                                                                                                                                   may_be_alias=False),
                                                                                       args=tuple(ir0.AtomicTypeLiteral.for_local(arg.name,
-                                                                                                                            expr_type=type_to_ir0(arg.expr_type),
-                                                                                                                            is_variadic=isinstance(arg.expr_type, ir1.ParameterPackType))
-                                                                                            for arg in custom_error_type.arg_types),
+                                                                                                                                 expr_type=type_to_ir0(arg.expr_type),
+                                                                                                                                 is_variadic=isinstance(arg.expr_type, ir1.ParameterPackType))
+                                                                                                 for arg in custom_error_type.arg_types),
                                                                                       instantiation_might_trigger_static_asserts=False),),
                                                   body=(ir0.StaticAssert(expr=ir0.Literal(value=False),
                                                                          message=error_message),
@@ -1564,12 +1564,13 @@ def list_expr_to_ir1(list_expr: Union[ir1.ListExpr, ir1.ListPatternExpr], writer
 
     list_template_name = list_template_name_for_type(type_to_ir0(list_expr.elem_type))
 
-    arg_exprs = list_expr.elems.copy()
+    arg_exprs = list(list_expr.elems)
     if isinstance(list_expr, ir1.ListPatternExpr) and list_expr.list_extraction_expr:
         arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(expr_type=ir1.ParameterPackType(list_expr.list_extraction_expr.expr_type),
                                                                      name=list_expr.list_extraction_expr.name,
                                                                      is_global_function=list_expr.list_extraction_expr.is_global_function,
-                                                                     is_function_that_may_throw=list_expr.list_extraction_expr.is_function_that_may_throw)))
+                                                                     is_function_that_may_throw=list_expr.list_extraction_expr.is_function_that_may_throw),
+                                                    ))
 
     return _create_template_instantiation(template_name=list_template_name,
                                           arg_exprs=arg_exprs,
@@ -1652,7 +1653,7 @@ def list_concat_expr_to_ir0(expr: ir1.ListConcatExpr, writer: Writer):
                                  expr_type=type_to_ir0(expr.expr_type))
 
 def template_instantiation_pattern_expr_to_ir0(expr: ir1.TemplateInstantiationPatternExpr, writer: Writer):
-    arg_exprs = expr.arg_exprs.copy()
+    arg_exprs = list(expr.arg_exprs)
     if expr.list_extraction_arg_expr:
         arg_exprs.append(ir1.ParameterPackExpansion(ir1.VarReference(expr_type=ir1.ParameterPackType(expr.list_extraction_arg_expr.expr_type),
                                                                      name=expr.list_extraction_arg_expr.name,
@@ -1668,7 +1669,7 @@ def set_to_list_expr_to_ir0(expr: ir1.SetToListExpr):
 
 def module_to_ir0(module: ir1.Module, identifier_generator: Iterator[str]):
     writer = ToplevelWriter(identifier_generator)
-    public_names = module.public_names.copy()
+    public_names = set(module.public_names)
     for toplevel_elem in module.body:
         if isinstance(toplevel_elem, ir1.FunctionDefn):
             function_defn_to_ir0(toplevel_elem, writer)

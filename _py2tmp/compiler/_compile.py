@@ -13,7 +13,7 @@
 # limitations under the License.
 import itertools
 import pickle
-from typing import List
+from typing import List, Iterable
 
 import ast
 
@@ -51,7 +51,7 @@ def compile_source_code(module_name: str,
 
     unique_identifier_prefix = 'tmppy_internal_'+ module_name.replace('.', '_') + '_x'
 
-    def identifier_generator_fun():
+    def identifier_generator_fun() -> Iterable[str]:
         for i in itertools.count():
             yield unique_identifier_prefix + str(i)
 

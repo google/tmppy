@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List
+from typing import Tuple, Iterable
 
 from _py2tmp.ir1 import ir
 
@@ -285,7 +285,7 @@ class Visitor:
         if stmt.error:
             self.visit_expr(stmt.error)
 
-    def visit_stmts(self, stmts: List[ir.Stmt]):
+    def visit_stmts(self, stmts: Iterable[ir.Stmt]):
         for stmt in stmts:
             self.visit_stmt(stmt)
     
@@ -300,7 +300,7 @@ class Visitor:
     def visit_check_if_error_defn(self, check_if_error_defn: ir.CheckIfErrorDefn):
         pass
 
-    def visit_custom_type_definition(self, elem):
+    def visit_custom_type_definition(self, elem: ir.CustomType):
         pass
 
     def visit_module(self, module: ir.Module):
