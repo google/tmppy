@@ -85,7 +85,7 @@ class _ExprUnificationStrategy(UnificationStrategyForCanonicalization[ir.Expr]):
 
     def get_term_args(self, term: ir.Expr) -> Tuple[Union[str, ir.Expr]]:
         return tuple(_unpack_if_variable(expr, self.var_names, self.literal_expr_by_unique_name)
-                     for expr in term.get_direct_subexpressions())
+                     for expr in term.direct_subexpressions)
 
     def replace_variables_in_expr(self, expr: UnificationStrategy.Expr,
                                   replacements: Dict[str, Tuple[UnificationStrategy.Expr, ...]],
@@ -198,7 +198,7 @@ def find_matches_in_unification_of_template_instantiation_with_definition(templa
                                                                                                               Tuple[Tuple[ir.AtomicTypeLiteral, Tuple[ir.Expr, ...]], ...]], ...],
                                                                                                   Tuple[ir.TemplateSpecialization, ...]]:
     instantiation_vars = {var.cpp_type
-                          for var in template_instantiation.get_free_vars()}
+                          for var in template_instantiation.free_vars}
 
     certain_matches: List[Tuple[ir.TemplateSpecialization,
                                 Tuple[Tuple[ir.AtomicTypeLiteral,
@@ -279,8 +279,8 @@ def find_matches_in_unification_of_template_instantiation_with_definition(templa
 def is_syntactically_equal(expr1: ir.Expr, expr2: ir.Expr):
     if not expr1.is_same_expr_excluding_subexpressions(expr2):
         return False
-    subexpressions1 = list(expr1.get_direct_subexpressions())
-    subexpressions2 = list(expr2.get_direct_subexpressions())
+    subexpressions1 = list(expr1.direct_subexpressions)
+    subexpressions2 = list(expr2.direct_subexpressions)
     if len(subexpressions1) != len(subexpressions2):
         return False
     return all(is_syntactically_equal(expr1, expr2)
@@ -319,7 +319,7 @@ def unify_template_instantiation_with_definition(template_instantiation: ir.Temp
                              for elem in specialization.body
                              if isinstance(elem, (ir.ConstantDef, ir.Typedef)) and elem.name == result_elem_name]
             assert isinstance(result_elem, (ir.ConstantDef, ir.Typedef))
-            if any(True for _ in result_elem.expr.get_free_vars()):
+            if any(True for _ in result_elem.expr.free_vars):
                 break
             result_exprs.append(result_elem.expr)
         else:
@@ -373,7 +373,7 @@ def _unify(initial_exprs: Tuple[ir.Expr, ...],
 
     lhs_type_literal_names = set(local_var_definitions.keys())
     for expr in itertools.chain(initial_exprs, local_var_definitions.values()):
-        for expr_literal in expr.get_free_vars():
+        for expr_literal in expr.free_vars:
             lhs_type_literal_names.add(expr_literal.cpp_type)
 
     unique_var_name_by_expr_type_literal_name = bidict({lhs_type_literal_name: next(identifier_generator)
@@ -381,7 +381,7 @@ def _unify(initial_exprs: Tuple[ir.Expr, ...],
 
     unique_var_name_by_pattern_type_literal_name = bidict({pattern_literal.cpp_type: next(identifier_generator)
                                                            for pattern in patterns
-                                                           for pattern_literal in pattern.get_free_vars()})
+                                                           for pattern_literal in pattern.free_vars})
 
     unique_var_names = set()
     for expr_var_name, unique_var_name in unique_var_name_by_expr_type_literal_name.items():
@@ -495,10 +495,10 @@ def _unify(initial_exprs: Tuple[ir.Expr, ...],
         if lhs_var.cpp_type in unique_var_name_by_pattern_type_literal_name.inv:
             if isinstance(exprs, tuple):
                 for expr in exprs:
-                    for rhs_var in expr.get_free_vars():
+                    for rhs_var in expr.free_vars:
                         assert rhs_var.cpp_type not in unique_var_name_by_pattern_type_literal_name.inv
             else:
-                for rhs_var in exprs.get_free_vars():
+                for rhs_var in exprs.free_vars:
                     assert rhs_var.cpp_type not in unique_var_name_by_pattern_type_literal_name.inv
 
     # We reverse the var renaming done above

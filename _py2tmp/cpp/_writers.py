@@ -24,7 +24,8 @@ class Writer:
 
     def create_child_writer(self) -> 'TemplateElemWriter': ...  # pragma: no cover
 
-    def get_toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
+    @property
+    def toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
 
 class ToplevelWriter(Writer):
     def __init__(self, identifier_generator: Iterator[str]):
@@ -46,12 +47,13 @@ class ToplevelWriter(Writer):
     def create_child_writer(self):
         return TemplateElemWriter(self)
 
-    def get_toplevel_writer(self):
+    @property
+    def toplevel_writer(self):
         return self
 
 class TemplateElemWriter(Writer):
     def __init__(self, toplevel_writer: ToplevelWriter):
-        self.toplevel_writer = toplevel_writer
+        self._toplevel_writer = toplevel_writer
         self.strings = []
 
     def new_id(self):
@@ -69,8 +71,9 @@ class TemplateElemWriter(Writer):
     def create_child_writer(self):
         return TemplateElemWriter(self.toplevel_writer)
 
-    def get_toplevel_writer(self):
-        return self.toplevel_writer
+    @property
+    def toplevel_writer(self):
+        return self._toplevel_writer
 
 class ExprWriter(Writer):
     def __init__(self, parent_writer: Writer):
@@ -93,8 +96,9 @@ class ExprWriter(Writer):
     def create_child_writer(self):
         raise NotImplementedError('This is not supported at the expression level')
 
-    def get_toplevel_writer(self):
-        return self.parent_writer.get_toplevel_writer()
+    @property
+    def toplevel_writer(self):
+        return self.parent_writer.toplevel_writer
 
     @contextmanager
     def enter_pattern_context(self):

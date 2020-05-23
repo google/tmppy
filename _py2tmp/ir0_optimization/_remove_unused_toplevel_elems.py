@@ -40,11 +40,11 @@ def remove_unused_toplevel_elems(header: ir.Header, linking_final_header: bool):
         elem_dependency_graph.add_node(elem_name)
 
         if elem_name in public_names or (isinstance(elem, (ir.ConstantDef, ir.Typedef)) and any(isinstance(expr, ir.TemplateInstantiation) and expr.instantiation_might_trigger_static_asserts
-                                                                                                for expr in elem.get_transitive_subexpressions())):
+                                                                                                for expr in elem.transitive_subexpressions)):
             # We also add an edge from the node '' to all toplevel defns that must remain, so that we can use '' as a source below.
             elem_dependency_graph.add_edge('', elem_name)
 
-        for identifier in elem.get_referenced_identifiers():
+        for identifier in elem.referenced_identifiers:
             if identifier in toplevel_elem_names:
                 elem_dependency_graph.add_edge(elem_name, identifier)
 

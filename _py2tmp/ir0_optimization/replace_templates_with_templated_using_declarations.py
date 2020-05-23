@@ -29,7 +29,7 @@ def _determine_template_arg_indexes_that_can_be_moved_to_typedef_args(template_d
     arguments_with_non_trivial_patterns = set()
     contains_only_simple_typedefs = True
 
-    for specialization in template_defn.get_all_definitions():
+    for specialization in template_defn.all_definitions:
         contains_only_simple_typedefs &= all(isinstance(elem, ir0.Typedef) and not elem.template_args
                                              for elem in specialization.body)
         if specialization.patterns:

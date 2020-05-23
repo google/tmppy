@@ -252,8 +252,8 @@ class ExpressionSimplificationTransformation(Transformation):
     def _is_syntactically_equal(self, lhs: ir.Expr, rhs: ir.Expr):
         if not lhs.is_same_expr_excluding_subexpressions(rhs):
             return False
-        lhs_exprs = list(lhs.get_direct_subexpressions())
-        rhs_exprs = list(rhs.get_direct_subexpressions())
+        lhs_exprs = list(lhs.direct_subexpressions)
+        rhs_exprs = list(rhs.direct_subexpressions)
         if len(lhs_exprs) != len(rhs_exprs):
             return False
         return all(self._is_syntactically_equal(lhs_expr, rhs_expr)
@@ -368,13 +368,13 @@ class ExpressionSimplificationTransformation(Transformation):
         # First preference to non-expanded variadic vars, to keep the Select1st* expression variadic if it is now.
         for var_name in compute_non_expanded_variadic_vars(rhs):
             [best_var] = (var
-                          for var in rhs.get_free_vars()
+                          for var in rhs.free_vars
                           if var.cpp_type == var_name)
             break
 
         # If there are none, then any non-variadic var is also ok.
         if not best_var:
-            for var in rhs.get_free_vars():
+            for var in rhs.free_vars:
                 if not var.is_variadic and isinstance(var.expr_type, (ir.BoolType, ir.Int64Type, ir.TypeType)):
                     best_var = var
                     break

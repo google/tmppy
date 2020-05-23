@@ -25,7 +25,7 @@ def compute_template_dependency_graph(template_defns: Iterable[ir.TemplateDefn],
     for template_defn in template_defns:
         template_dependency_graph.add_node(template_defn.name)
 
-        for identifier in template_defn.get_referenced_identifiers():
+        for identifier in template_defn.referenced_identifiers:
             if identifier in template_defn_by_name.keys():
                 template_dependency_graph.add_edge(template_defn.name, identifier)
     return template_dependency_graph

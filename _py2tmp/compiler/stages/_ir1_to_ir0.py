@@ -65,7 +65,7 @@ class TemplateBodyWriter(Writer, PlainTemplateBodyWriter):
                  parent_arbitrary_arg: ir0.TemplateArgDecl,
                  parent_return_type: Optional[ir0.ExprType]):
         Writer.__init__(self, parent_writer.identifier_generator)
-        PlainTemplateBodyWriter.__init__(self, parent_writer.get_toplevel_writer())
+        PlainTemplateBodyWriter.__init__(self, parent_writer.toplevel_writer)
         self.parent_arbitrary_arg = parent_arbitrary_arg
         self.parent_return_type = parent_return_type
         self.result_body_elements_written = False
@@ -1169,7 +1169,7 @@ def _get_free_vars_in_elements(elements: Sequence[ir0.TemplateBodyElement]):
     free_vars: List[ir0.AtomicTypeLiteral] = []
     for element in elements:
         if isinstance(element, ir0.StaticAssert) or isinstance(element, ir0.ConstantDef) or isinstance(element, ir0.Typedef):
-            for var in element.expr.get_free_vars():
+            for var in element.expr.free_vars:
                 if var.cpp_type not in bound_var_names and var.cpp_type not in free_var_names:
                     free_var_names.add(var.cpp_type)
                     free_vars.append(var)

@@ -353,7 +353,7 @@ def template_instantiation_to_cpp(instantiation_expr: ir0.TemplateInstantiation,
                 template_param_decl1 = _type_to_template_param_declaration(expr_type=arg_to_replace.expr_type, is_variadic=is_variadic)
                 template_param_decl2 = _type_to_template_param_declaration(expr_type=arg_decl.expr_type, is_variadic=arg_decl.is_variadic)
 
-                select1st_variant_body_writer = TemplateElemWriter(writer.get_toplevel_writer())
+                select1st_variant_body_writer = TemplateElemWriter(writer.toplevel_writer)
                 if arg_to_replace.expr_type.kind in (ir0.ExprKind.BOOL, ir0.ExprKind.INT64):
                     select1st_variant_body = ir0.ConstantDef(name='value',
                                                              expr=ir0.AtomicTypeLiteral.for_local(cpp_type=forwarded_param_id,

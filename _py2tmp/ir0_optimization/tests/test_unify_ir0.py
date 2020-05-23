@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import List, Union, Set, Iterable, Callable, Tuple
+from typing import Union, Set, Iterable, Callable, Tuple
 
 import pytest
 

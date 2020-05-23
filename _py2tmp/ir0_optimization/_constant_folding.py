@@ -70,7 +70,7 @@ class ConstantFoldingTransformation(Transformation):
         # the first occurrence of each var)
         referenced_var_list_by_stmt_index: List[List[str]] = [[] for stmt in stmts]
         for i, stmt in enumerate(stmts):
-            for identifier in stmt.get_referenced_identifiers():
+            for identifier in stmt.referenced_identifiers:
                 if identifier in var_name_to_defining_stmt_index:
                     remaining_uses_of_var[identifier] = remaining_uses_of_var[identifier] + 1
                     remaining_uses_of_var_by_stmt_index[i][identifier] = remaining_uses_of_var_by_stmt_index[i][identifier] + 1
@@ -138,7 +138,7 @@ class ConstantFoldingTransformation(Transformation):
                     want_to_inline_var = True
                 elif isinstance(defining_stmt.expr, ir.Literal):
                     want_to_inline_var = True
-                elif isinstance(defining_stmt.expr, ir.AtomicTypeLiteral) and len(list(defining_stmt.expr.get_referenced_identifiers())) <= 1:
+                elif isinstance(defining_stmt.expr, ir.AtomicTypeLiteral) and len(list(defining_stmt.expr.referenced_identifiers)) <= 1:
                     want_to_inline_var = True
                 else:
                     want_to_inline_var = (remaining_uses_of_var[var] == 1)

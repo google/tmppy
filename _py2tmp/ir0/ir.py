@@ -26,25 +26,29 @@ class ExprKind(Enum):
     TEMPLATE = 4
 
 class _TemplateBodyElementOrExprOrTemplateDefn:
-    def get_referenced_identifiers(self) -> Iterable[str]:
-        for expr in self.get_transitive_subexpressions():
-            for identifier in expr.get_local_referenced_identifiers():
+    @property
+    def referenced_identifiers(self) -> Iterable[str]:
+        for expr in self.transitive_subexpressions:
+            for identifier in expr.local_referenced_identifiers:
                 yield identifier
 
     # Returns all transitive subexpressions
-    def get_transitive_subexpressions(self) -> Iterable['Expr']:
+    @property
+    def transitive_subexpressions(self) -> Iterable['Expr']:
         if isinstance(self, Expr):
             yield self
-        for elem in self.get_direct_subelements():
-            for subexpr in elem.get_transitive_subexpressions():
+        for elem in self.direct_subelements:
+            for subexpr in elem.transitive_subexpressions:
                 yield subexpr
-        for expr in self.get_direct_subexpressions():
-            for subexpr in expr.get_transitive_subexpressions():
+        for expr in self.direct_subexpressions:
+            for subexpr in expr.transitive_subexpressions:
                 yield subexpr
 
-    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']: ...
+    @property
+    def direct_subelements(self) -> Iterable['TemplateBodyElement']: ...
 
-    def get_direct_subexpressions(self) -> Iterable['Expr']: ...
+    @property
+    def direct_subexpressions(self) -> Iterable['Expr']: ...
 
 @dataclass(frozen=True)
 class _ExprType:
@@ -81,18 +85,21 @@ class Expr(_TemplateBodyElementOrExprOrTemplateDefn):
 
     def references_any_of(self, variables: Set[str]):
         return any(isinstance(expr, AtomicTypeLiteral) and expr.cpp_type in variables
-                   for expr in self.get_transitive_subexpressions())
+                   for expr in self.transitive_subexpressions)
 
-    def get_free_vars(self) -> Iterable['AtomicTypeLiteral']:
-        for expr in self.get_transitive_subexpressions():
+    @property
+    def free_vars(self) -> Iterable['AtomicTypeLiteral']:
+        for expr in self.transitive_subexpressions:
             if isinstance(expr, AtomicTypeLiteral) and expr.is_local:
                 yield expr
 
-    def get_local_referenced_identifiers(self) -> Iterable[str]:
+    @property
+    def local_referenced_identifiers(self) -> Iterable[str]:
         if isinstance(self, AtomicTypeLiteral):
             yield self.cpp_type
 
-    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']:
+    @property
+    def direct_subelements(self) -> Iterable['TemplateBodyElement']:
         return []
 
     def is_same_expr_excluding_subexpressions(self, other: 'Expr') -> bool: ...
@@ -111,10 +118,12 @@ class StaticAssert(_TemplateBodyElement):
     def __post_init__(self) -> None:
         assert isinstance(self.expr.expr_type, BoolType)
 
-    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']:
+    @property
+    def direct_subelements(self) -> Iterable['TemplateBodyElement']:
         return []
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.expr
 
 @dataclass(frozen=True)
@@ -125,10 +134,12 @@ class ConstantDef(_TemplateBodyElement):
     def __post_init__(self) -> None:
         assert isinstance(self.expr.expr_type, (BoolType, Int64Type))
 
-    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']:
+    @property
+    def direct_subelements(self) -> Iterable['TemplateBodyElement']:
         return []
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.expr
 
 @dataclass(frozen=True)
@@ -141,10 +152,12 @@ class Typedef(_TemplateBodyElement):
     def __post_init__(self) -> None:
         assert isinstance(self.expr.expr_type, (TypeType, TemplateType))
 
-    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']:
+    @property
+    def direct_subelements(self) -> Iterable['TemplateBodyElement']:
         return []
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.expr
 
 
@@ -208,19 +221,22 @@ class TemplateDefn(_TemplateBodyElementOrExprOrTemplateDefn):
                 ', '.join('(%s, %s)' % (str(expr_type), name) for expr_type, name in declaration_args),
                 ', '.join('(%s, %s)' % (str(expr_type), name) for expr_type, name in main_defn_args))
 
-    def get_all_definitions(self) -> Iterable[TemplateSpecialization]:
+    @property
+    def all_definitions(self) -> Iterable[TemplateSpecialization]:
         if self.main_definition:
             yield self.main_definition
         for specialization in self.specializations:
             yield specialization
 
-    def get_direct_subelements(self) -> Iterable[TemplateBodyElement]:
-        for specialization in self.get_all_definitions():
+    @property
+    def direct_subelements(self) -> Iterable[TemplateBodyElement]:
+        for specialization in self.all_definitions:
             for elem in specialization.body:
                 yield elem
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
-        for specialization in self.get_all_definitions():
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
+        for specialization in self.all_definitions:
             if specialization.patterns:
                 for expr in specialization.patterns:
                     yield expr
@@ -242,7 +258,8 @@ class Literal(Expr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, Literal) and self.value == other.value
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         return []
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]) -> Expr:
@@ -264,7 +281,8 @@ class AtomicTypeLiteral(Expr):
         if self.is_variadic:
             assert self.expr_type.kind in (ExprKind.BOOL, ExprKind.INT64, ExprKind.TYPE)
 
-    def get_direct_free_vars(self) -> Iterable[Expr]:
+    @property
+    def direct_free_vars(self) -> Iterable[Expr]:
         if self.is_local:
             yield self
 
@@ -273,7 +291,8 @@ class AtomicTypeLiteral(Expr):
         # different information for different literal expressions (e.g. a 2-arg std::tuple vs a 3-arg one).
         return isinstance(other, AtomicTypeLiteral) and self.cpp_type == other.cpp_type and self.is_local == other.is_local
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         return []
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
@@ -340,7 +359,8 @@ class PointerTypeExpr(Expr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, PointerTypeExpr)
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
@@ -358,7 +378,8 @@ class ReferenceTypeExpr(Expr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ReferenceTypeExpr)
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
@@ -376,7 +397,8 @@ class RvalueReferenceTypeExpr(Expr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, RvalueReferenceTypeExpr)
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
@@ -394,7 +416,8 @@ class ConstTypeExpr(Expr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ConstTypeExpr)
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
     
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
@@ -412,7 +435,8 @@ class ArrayTypeExpr(Expr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ArrayTypeExpr)
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
     
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
@@ -431,7 +455,8 @@ class FunctionTypeExpr(Expr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, FunctionTypeExpr)
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.return_type_expr
         for expr in self.arg_exprs:
             yield expr
@@ -445,7 +470,8 @@ class UnaryExpr(Expr):
     expr_type: ExprType
     inner_expr: Expr
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.inner_expr
 
 @dataclass(frozen=True)
@@ -454,7 +480,8 @@ class BinaryExpr(Expr):
     lhs: Expr
     rhs: Expr
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.lhs
         yield self.rhs
 
@@ -535,7 +562,8 @@ class TemplateInstantiation(Expr):
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, TemplateInstantiation)
 
-    def get_direct_subexpressions(self) -> Iterable[Expr]:
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
         yield self.template_expr
         for expr in self.args:
             yield expr
@@ -584,7 +612,7 @@ class VariadicTypeExpansion(UnaryExpr):
     def __post_init__(self) -> None:
         object.__setattr__(self, 'expr_type', self.inner_expr.expr_type)
         assert any(var.is_variadic
-                   for var in self.inner_expr.get_free_vars())
+                   for var in self.inner_expr.free_vars)
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, VariadicTypeExpansion)

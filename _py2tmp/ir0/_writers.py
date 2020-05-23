@@ -24,7 +24,7 @@ class Writer:
     def write(self, elem: Union[ir.TemplateDefn, ir.StaticAssert, ir.ConstantDef, ir.Typedef]): ...  # pragma: no cover
 
     def write_toplevel_elem(self, elem: Union[ir.TemplateDefn, ir.StaticAssert, ir.ConstantDef, ir.Typedef]):
-        self.get_toplevel_writer().write(elem)
+        self.toplevel_writer.write(elem)
 
     def new_constant_or_typedef(self, expr: ir.Expr, identifier_generator: Iterator[str]) -> ir.AtomicTypeLiteral:
         id = next(identifier_generator)
@@ -37,7 +37,8 @@ class Writer:
 
         return ir.AtomicTypeLiteral.for_local(cpp_type=id, expr_type=expr.expr_type, is_variadic=False)
 
-    def get_toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
+    @property
+    def toplevel_writer(self) -> 'ToplevelWriter': ...  # pragma: no cover
 
 class ToplevelWriter(Writer):
     def __init__(self,
@@ -57,13 +58,14 @@ class ToplevelWriter(Writer):
             assert self.allow_toplevel_elems
             self.toplevel_elems.append(elem)
 
-    def get_toplevel_writer(self):
+    @property
+    def toplevel_writer(self):
         return self
 
 class TemplateBodyWriter(Writer):
     def __init__(self, toplevel_writer: Optional[ToplevelWriter]):
         super().__init__()
-        self.toplevel_writer = toplevel_writer
+        self._toplevel_writer = toplevel_writer
         self.elems: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]] = []
 
     def write_toplevel_elem(self, elem: Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef, ir.TemplateDefn]):
@@ -72,5 +74,6 @@ class TemplateBodyWriter(Writer):
     def write(self, elem: Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]):
         self.elems.append(elem)
 
-    def get_toplevel_writer(self):
-        return self.toplevel_writer
+    @property
+    def toplevel_writer(self):
+        return self._toplevel_writer

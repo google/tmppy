@@ -85,7 +85,7 @@ class Transformation:
 
     def transform_template_body_elems(self,
                                       elems: Tuple[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef], ...]) -> Tuple[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef], ...]:
-        body_writer = TemplateBodyWriter(self.writer.get_toplevel_writer()) if self.writer else TemplateBodyWriter(None)
+        body_writer = TemplateBodyWriter(self.writer.toplevel_writer) if self.writer else TemplateBodyWriter(None)
         with self.set_writer(body_writer):
             for elem in elems:
                 self.transform_template_body_elem(elem)
