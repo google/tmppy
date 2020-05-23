@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import re
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Sequence, Set, Optional, Iterable, Union, Tuple, Dict, List
+from typing import Sequence, Set, Optional, Iterable, Union, Tuple, FrozenSet
 
-from _py2tmp.utils import ir_to_string, ValueType
+from _py2tmp.utils import ir_to_string
 
 
 class ExprKind(Enum):
@@ -24,7 +25,7 @@ class ExprKind(Enum):
     TYPE = 3
     TEMPLATE = 4
 
-class _TemplateBodyElementOrExprOrTemplateDefn(ValueType):
+class _TemplateBodyElementOrExprOrTemplateDefn:
     def get_referenced_identifiers(self) -> Iterable[str]:
         for expr in self.get_transitive_subexpressions():
             for identifier in expr.get_local_referenced_identifiers():
@@ -45,39 +46,38 @@ class _TemplateBodyElementOrExprOrTemplateDefn(ValueType):
 
     def get_direct_subexpressions(self) -> Iterable['Expr']: ...
 
-class _ExprType(ValueType):
-    def __init__(self, kind: ExprKind):
-        self.kind = kind
+@dataclass(frozen=True)
+class _ExprType:
+    kind: ExprKind
 
+@dataclass(frozen=True)
 class BoolType(_ExprType):
-    def __init__(self) -> None:
-        super().__init__(kind=ExprKind.BOOL)
+    kind: ExprKind = field(default=ExprKind.BOOL, init=False)
 
+@dataclass(frozen=True)
 class Int64Type(_ExprType):
-    def __init__(self) -> None:
-        super().__init__(kind=ExprKind.INT64)
+    kind: ExprKind = field(default=ExprKind.INT64, init=False)
 
+@dataclass(frozen=True)
 class TypeType(_ExprType):
-    def __init__(self) -> None:
-        super().__init__(kind=ExprKind.TYPE)
+    kind: ExprKind = field(default=ExprKind.TYPE, init=False)
 
-class TemplateArgType(ValueType):
-    def __init__(self, expr_type: 'ExprType', is_variadic: bool):
-        self.expr_type = expr_type
-        self.is_variadic = is_variadic
+@dataclass(frozen=True)
+class TemplateArgType:
+    expr_type: 'ExprType'
+    is_variadic: bool
 
+@dataclass(frozen=True)
 class TemplateType(_ExprType):
-    def __init__(self, args: Sequence[TemplateArgType]):
-        super().__init__(kind=ExprKind.TEMPLATE)
-        self.args = tuple(TemplateArgType(arg.expr_type, arg.is_variadic)
-                          for arg in args)
+    kind: ExprKind = field(default=ExprKind.TEMPLATE, init=False)
+    args: Tuple[TemplateArgType, ...]
 
 # Similar to _ExprType but more precise, to help type checking.
 ExprType = Union[BoolType, Int64Type, TypeType, TemplateType]
 
+@dataclass(frozen=True)
 class Expr(_TemplateBodyElementOrExprOrTemplateDefn):
-    def __init__(self, expr_type: ExprType):
-        self.expr_type = expr_type
+    expr_type: ExprType
 
     def references_any_of(self, variables: Set[str]):
         return any(isinstance(expr, AtomicTypeLiteral) and expr.cpp_type in variables
@@ -92,56 +92,59 @@ class Expr(_TemplateBodyElementOrExprOrTemplateDefn):
         if isinstance(self, AtomicTypeLiteral):
             yield self.cpp_type
 
-    def get_direct_subelements(self):
+    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']:
         return []
 
     def is_same_expr_excluding_subexpressions(self, other: 'Expr') -> bool: ...
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence['Expr']): ...
 
+@dataclass(frozen=True)
 class _TemplateBodyElement(_TemplateBodyElementOrExprOrTemplateDefn):
     pass
 
+@dataclass(frozen=True)
 class StaticAssert(_TemplateBodyElement):
-    def __init__(self, expr: Expr, message: str):
-        assert isinstance(expr.expr_type, BoolType)
-        self.expr = expr
-        self.message = message
+    expr: Expr
+    message: str
 
-    def get_direct_subelements(self):
+    def __post_init__(self) -> None:
+        assert isinstance(self.expr.expr_type, BoolType)
+
+    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']:
         return []
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.expr
 
+@dataclass(frozen=True)
 class ConstantDef(_TemplateBodyElement):
-    def __init__(self, name: str, expr: Expr):
-        assert isinstance(expr.expr_type, (BoolType, Int64Type))
-        self.name = name
-        self.expr = expr
+    name: str
+    expr: Expr
 
-    def get_direct_subelements(self):
+    def __post_init__(self) -> None:
+        assert isinstance(self.expr.expr_type, (BoolType, Int64Type))
+
+    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']:
         return []
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.expr
 
+@dataclass(frozen=True)
 class Typedef(_TemplateBodyElement):
-    def __init__(self,
-                 name: str,
-                 expr: Expr,
-                 description: str = '',
-                 template_args: List['TemplateArgDecl'] = ()):
-        assert isinstance(expr.expr_type, (TypeType, TemplateType))
-        self.name = name
-        self.expr = expr
-        self.template_args = template_args
-        self.description = description
+    name: str
+    expr: Expr
+    description: str = ''
+    template_args: Tuple['TemplateArgDecl', ...] = ()
 
-    def get_direct_subelements(self):
+    def __post_init__(self) -> None:
+        assert isinstance(self.expr.expr_type, (TypeType, TemplateType))
+
+    def get_direct_subelements(self) -> Iterable['TemplateBodyElement']:
         return []
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.expr
 
 
@@ -149,125 +152,119 @@ class Typedef(_TemplateBodyElement):
 TemplateBodyElement = Union[StaticAssert, ConstantDef, Typedef]
 
 
-class TemplateArgDecl(ValueType):
-    def __init__(self, expr_type: ExprType, name: str, is_variadic: bool):
-        assert name
-        self.expr_type = expr_type
-        self.name = name
-        self.is_variadic = is_variadic
+@dataclass(frozen=True)
+class TemplateArgDecl:
+    expr_type: ExprType
+    name: str
+    is_variadic: bool
+
+    def __post_init__(self) -> None:
+        assert self.name
 
 _non_identifier_char_pattern = re.compile('[^a-zA-Z0-9_]+')
 
-class TemplateSpecialization(ValueType):
-    def __init__(self,
-                 args: Sequence[TemplateArgDecl],
-                 patterns: 'Optional[Sequence[Expr]]',
-                 body: Sequence[TemplateBodyElement],
-                 is_metafunction: bool):
-        self.args = tuple(args)
-        self.is_metafunction = is_metafunction
-        if body:
-            for arg in args:
+@dataclass(frozen=True)
+class TemplateSpecialization:
+    args: Tuple[TemplateArgDecl, ...]
+    patterns: Optional[Tuple[Expr, ...]]
+    body: Tuple[TemplateBodyElement, ...]
+    is_metafunction: bool
+
+    def __post_init__(self) -> None:
+        if self.body:
+            for arg in self.args:
                 assert arg.name
 
-        self.patterns = tuple(patterns) if patterns is not None else None
-        self.body = tuple(body)
-        assert (not body
-                or not is_metafunction
+        assert (not self.body
+                or not self.is_metafunction
                 or any(isinstance(elem, Typedef) and elem.name in ('type', 'error', 'value')
-                       for elem in body)
+                       for elem in self.body)
                 or any(isinstance(elem, ConstantDef) and elem.name == 'value'
-                       for elem in body)), 'body was:\n%s' % '\n'.join(ir_to_string(elem)
-                                                                       for elem in body)
+                       for elem in self.body)), ir_to_string(self)
 
+@dataclass(frozen=True)
 class TemplateDefn(_TemplateBodyElementOrExprOrTemplateDefn):
-    def __init__(self,
-                 main_definition: Optional[TemplateSpecialization],
-                 specializations: Sequence[TemplateSpecialization],
-                 name: str,
-                 description: str,
-                 result_element_names: Sequence[str],
-                 args: Optional[Sequence[TemplateArgDecl]] = None):
-        assert main_definition or specializations
-        assert not main_definition or main_definition.patterns is None
-        for specialization in specializations:
+    main_definition: Optional[TemplateSpecialization]
+    specializations: Tuple[TemplateSpecialization, ...]
+    name: str
+    description: str
+    result_element_names: FrozenSet[str]
+    args: Optional[Tuple[TemplateArgDecl, ...]] = None
+
+    def __post_init__(self) -> None:
+        if self.main_definition and not self.args:
+            object.__setattr__(self, 'args', self.main_definition.args)
+
+        assert self.main_definition or self.specializations
+        assert not self.main_definition or self.main_definition.patterns is None
+        for specialization in self.specializations:
             assert specialization.patterns is not None
-        assert '\n' not in description
-        if main_definition and not args:
-            args = main_definition.args
-        assert args is not None
-        self.name = name
-        self.args = tuple(args)
-        self.main_definition = main_definition
-        if main_definition:
-            declaration_args = [(arg.expr_type, arg.name) for arg in args]
-            main_defn_args = [(arg.expr_type, arg.name) for arg in main_definition.args]
+        assert '\n' not in self.description
+        assert self.args is not None
+        if self.main_definition:
+            declaration_args = [(arg.expr_type, arg.name) for arg in self.args]
+            main_defn_args = [(arg.expr_type, arg.name) for arg in self.main_definition.args]
             assert declaration_args == main_defn_args, '%s != %s' % (
                 ', '.join('(%s, %s)' % (str(expr_type), name) for expr_type, name in declaration_args),
                 ', '.join('(%s, %s)' % (str(expr_type), name) for expr_type, name in main_defn_args))
-        self.specializations = tuple(specializations)
-        self.description = description
-        self.result_element_names = tuple(sorted(result_element_names))
 
-    def get_all_definitions(self):
+    def get_all_definitions(self) -> Iterable[TemplateSpecialization]:
         if self.main_definition:
             yield self.main_definition
         for specialization in self.specializations:
             yield specialization
 
-    def get_direct_subelements(self):
+    def get_direct_subelements(self) -> Iterable[TemplateBodyElement]:
         for specialization in self.get_all_definitions():
             for elem in specialization.body:
                 yield elem
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         for specialization in self.get_all_definitions():
             if specialization.patterns:
                 for expr in specialization.patterns:
                     yield expr
 
+@dataclass(frozen=True)
 class Literal(Expr):
-    def __init__(self, value: Union[bool, int]):
-        if isinstance(value, bool):
-           expr_type = BoolType()
-        elif isinstance(value, int):
-           expr_type = Int64Type()
+    expr_type: ExprType = field(init=False)
+    value: Union[bool, int]
+
+    def __post_init__(self) -> None:
+        if isinstance(self.value, bool):
+            expr_type = BoolType()
+        elif isinstance(self.value, int):
+            expr_type = Int64Type()
         else:
-            raise NotImplementedError('Unexpected value: ' + repr(value))
-        super().__init__(expr_type)
-        self.value = value
+            raise NotImplementedError('Unexpected value: ' + repr(self.value))
+        object.__setattr__(self, 'expr_type', expr_type)
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, Literal) and self.value == other.value
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         return []
 
-    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
+    def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]) -> Expr:
         assert not new_subexpressions
         return self
 
+@dataclass(frozen=True)
 class AtomicTypeLiteral(Expr):
-    def __init__(self,
-                 cpp_type: str,
-                 is_local: bool,
-                 is_metafunction_that_may_return_error: bool,
-                 expr_type: ExprType,
-                 may_be_alias: bool,
-                 is_variadic: bool):
-        assert not (is_metafunction_that_may_return_error and not isinstance(expr_type, TemplateType))
-        if is_variadic:
-            assert expr_type.kind in (ExprKind.BOOL, ExprKind.INT64, ExprKind.TYPE)
-        super().__init__(expr_type=expr_type)
-        self.cpp_type = cpp_type
-        self.is_local = is_local
-        self.expr_type = expr_type
-        self.is_metafunction_that_may_return_error = is_metafunction_that_may_return_error
-        # Only relevant for non-local literals.
-        self.may_be_alias = may_be_alias
-        self.is_variadic = is_variadic
+    expr_type: ExprType = field()
+    cpp_type: str
+    is_local: bool
+    is_metafunction_that_may_return_error: bool
+    # Only relevant for non-local literals.
+    may_be_alias: bool
+    is_variadic: bool
 
-    def get_direct_free_vars(self):
+    def __post_init__(self) -> None:
+        assert not (self.is_metafunction_that_may_return_error and not isinstance(self.expr_type, TemplateType))
+        if self.is_variadic:
+            assert self.expr_type.kind in (ExprKind.BOOL, ExprKind.INT64, ExprKind.TYPE)
+
+    def get_direct_free_vars(self) -> Iterable[Expr]:
         if self.is_local:
             yield self
 
@@ -276,7 +273,7 @@ class AtomicTypeLiteral(Expr):
         # different information for different literal expressions (e.g. a 2-arg std::tuple vs a 3-arg one).
         return isinstance(other, AtomicTypeLiteral) and self.cpp_type == other.cpp_type and self.is_local == other.is_local
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         return []
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
@@ -315,7 +312,7 @@ class AtomicTypeLiteral(Expr):
 
     @staticmethod
     def for_nonlocal_template(cpp_type: str,
-                              args: Sequence[TemplateArgType],
+                              args: Tuple[TemplateArgType, ...],
                               is_metafunction_that_may_return_error: bool,
                               may_be_alias: bool):
         return AtomicTypeLiteral.for_nonlocal(cpp_type=cpp_type,
@@ -327,103 +324,114 @@ class AtomicTypeLiteral(Expr):
     def from_nonlocal_template_defn(template_defn: TemplateDefn,
                                     is_metafunction_that_may_return_error: bool):
         return AtomicTypeLiteral.for_nonlocal_template(cpp_type=template_defn.name,
-                                                       args=[TemplateArgType(expr_type=arg.expr_type, is_variadic=arg.is_variadic)
-                                                             for arg in template_defn.args],
+                                                       args=tuple(TemplateArgType(expr_type=arg.expr_type, is_variadic=arg.is_variadic)
+                                                                  for arg in template_defn.args),
                                                        is_metafunction_that_may_return_error=is_metafunction_that_may_return_error,
                                                        may_be_alias=False)
 
+@dataclass(frozen=True)
 class PointerTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: TypeType = field(default=TypeType(), init=False)
+    type_expr: Expr
+
+    def __post_init__(self) -> None:
+        assert self.type_expr.expr_type == TypeType()
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, PointerTypeExpr)
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return PointerTypeExpr(new_type_expr)
 
+@dataclass(frozen=True)
 class ReferenceTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: TypeType = field(default=TypeType(), init=False)
+    type_expr: Expr
+
+    def __post_init__(self) -> None:
+        assert self.type_expr.expr_type == TypeType()
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ReferenceTypeExpr)
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return ReferenceTypeExpr(new_type_expr)
 
+@dataclass(frozen=True)
 class RvalueReferenceTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: TypeType = field(default=TypeType(), init=False)
+    type_expr: Expr
+
+    def __post_init__(self) -> None:
+        assert self.type_expr.expr_type == TypeType()
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, RvalueReferenceTypeExpr)
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return RvalueReferenceTypeExpr(new_type_expr)
 
+@dataclass(frozen=True)
 class ConstTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: TypeType = field(default=TypeType(), init=False)
+    type_expr: Expr
+
+    def __post_init__(self) -> None:
+        assert self.type_expr.expr_type == TypeType()
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ConstTypeExpr)
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
     
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return ConstTypeExpr(new_type_expr)
 
+@dataclass(frozen=True)
 class ArrayTypeExpr(Expr):
-    def __init__(self, type_expr: Expr):
-        super().__init__(expr_type=TypeType())
-        assert type_expr.expr_type == TypeType()
-        self.type_expr = type_expr
+    expr_type: TypeType = field(default=TypeType(), init=False)
+    type_expr: Expr
+
+    def __post_init__(self) -> None:
+        assert self.type_expr.expr_type == TypeType()
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ArrayTypeExpr)
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.type_expr
     
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [new_type_expr] = new_subexpressions
         return ArrayTypeExpr(new_type_expr)
 
+@dataclass(frozen=True)
 class FunctionTypeExpr(Expr):
-    def __init__(self, return_type_expr: Expr, arg_exprs: Sequence[Expr]):
-        assert return_type_expr.expr_type == TypeType(), return_type_expr.expr_type.__class__.__name__
+    expr_type: TypeType = field(default=TypeType(), init=False)
+    return_type_expr: Expr
+    arg_exprs: Tuple[Expr, ...]
 
-        super().__init__(expr_type=TypeType())
-        self.return_type_expr = return_type_expr
-        self.arg_exprs = tuple(arg_exprs)
+    def __post_init__(self) -> None:
+        assert self.return_type_expr.expr_type == TypeType(), self.return_type_expr.expr_type
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, FunctionTypeExpr)
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.return_type_expr
         for expr in self.arg_exprs:
             yield expr
@@ -432,36 +440,37 @@ class FunctionTypeExpr(Expr):
         [new_return_type_expr, *new_arg_exprs] = new_subexpressions
         return FunctionTypeExpr(new_return_type_expr, new_arg_exprs)
 
+@dataclass(frozen=True)
 class UnaryExpr(Expr):
-    def __init__(self, expr: Expr, result_type: ExprType):
-        super().__init__(expr_type=result_type)
-        self.expr = expr
+    expr_type: ExprType
+    inner_expr: Expr
 
-    def get_direct_subexpressions(self):
-        yield self.expr
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
+        yield self.inner_expr
 
+@dataclass(frozen=True)
 class BinaryExpr(Expr):
-    def __init__(self, lhs: Expr, rhs: Expr, result_type: ExprType):
-        super().__init__(expr_type=result_type)
-        self.lhs = lhs
-        self.rhs = rhs
+    expr_type: ExprType
+    lhs: Expr
+    rhs: Expr
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.lhs
         yield self.rhs
 
+@dataclass(frozen=True)
 class ComparisonExpr(BinaryExpr):
-    def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        assert lhs.expr_type == rhs.expr_type
-        if isinstance(lhs.expr_type, BoolType):
-            assert op in ('==', '!=')
-        elif isinstance(lhs.expr_type, Int64Type):
-            assert op in ('==', '!=', '<', '>', '<=', '>=')
-        else:
-            raise NotImplementedError('Unexpected type: %s' % str(lhs.expr_type))
+    expr_type: BoolType = field(default=BoolType(), init=False)
+    op: str
 
-        super().__init__(lhs, rhs, result_type=BoolType())
-        self.op = op
+    def __post_init__(self) -> None:
+        assert self.lhs.expr_type == self.rhs.expr_type
+        if isinstance(self.lhs.expr_type, BoolType):
+            assert self.op in ('==', '!=')
+        elif isinstance(self.lhs.expr_type, Int64Type):
+            assert self.op in ('==', '!=', '<', '>', '<=', '>=')
+        else:
+            raise NotImplementedError('Unexpected type: %s' % str(self.lhs.expr_type))
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ComparisonExpr) and self.op == other.op
@@ -470,13 +479,15 @@ class ComparisonExpr(BinaryExpr):
         [lhs, rhs] = new_subexpressions
         return ComparisonExpr(lhs, rhs, self.op)
 
+@dataclass(frozen=True)
 class Int64BinaryOpExpr(BinaryExpr):
-    def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        super().__init__(lhs, rhs, result_type=Int64Type())
-        assert isinstance(lhs.expr_type, Int64Type)
-        assert isinstance(rhs.expr_type, Int64Type)
-        assert op in ('+', '-', '*', '/', '%')
-        self.op = op
+    expr_type: Int64Type = field(default=Int64Type(), init=False)
+    op: str
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.lhs.expr_type, Int64Type)
+        assert isinstance(self.rhs.expr_type, Int64Type)
+        assert self.op in ('+', '-', '*', '/', '%')
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, Int64BinaryOpExpr) and self.op == other.op
@@ -485,13 +496,15 @@ class Int64BinaryOpExpr(BinaryExpr):
         [lhs, rhs] = new_subexpressions
         return Int64BinaryOpExpr(lhs, rhs, self.op)
 
+@dataclass(frozen=True)
 class BoolBinaryOpExpr(BinaryExpr):
-    def __init__(self, lhs: Expr, rhs: Expr, op: str):
-        super().__init__(lhs, rhs, result_type=BoolType())
-        assert isinstance(lhs.expr_type, BoolType)
-        assert isinstance(rhs.expr_type, BoolType)
-        assert op in ('&&', '||')
-        self.op = op
+    expr_type: BoolType = field(default=BoolType(), init=False)
+    op: str
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.lhs.expr_type, BoolType)
+        assert isinstance(self.rhs.expr_type, BoolType)
+        assert self.op in ('&&', '||')
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, BoolBinaryOpExpr) and self.op == other.op
@@ -500,31 +513,29 @@ class BoolBinaryOpExpr(BinaryExpr):
         [lhs, rhs] = new_subexpressions
         return BoolBinaryOpExpr(lhs, rhs, self.op)
 
+@dataclass(frozen=True)
 class TemplateInstantiation(Expr):
-    def __init__(self,
-                 template_expr: Expr,
-                 args: Sequence[Expr],
-                 instantiation_might_trigger_static_asserts: bool):
-        assert isinstance(template_expr.expr_type, TemplateType), str(template_expr.expr_type)
+    expr_type: TypeType = field(default=TypeType(), init=False)
+    template_expr: Expr
+    args: Tuple[Expr, ...]
+    instantiation_might_trigger_static_asserts: bool
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.template_expr.expr_type, TemplateType), str(self.template_expr.expr_type)
 
         if any(arg.is_variadic
-               for arg in template_expr.expr_type.args):
+               for arg in self.template_expr.expr_type.args):
             # In this case it's fine if the two lists "don't match up"
             pass
         else:
-            assert len(template_expr.expr_type.args) == len(args)
-            for arg_decl, arg_expr in zip(template_expr.expr_type.args, args):
+            assert len(self.template_expr.expr_type.args) == len(self.args)
+            for arg_decl, arg_expr in zip(self.template_expr.expr_type.args, self.args):
                 assert arg_decl.expr_type == arg_expr.expr_type, '\n%s vs:\n%s' % (str(arg_decl.expr_type), str(arg_expr.expr_type))
-
-        super().__init__(expr_type=TypeType())
-        self.template_expr = template_expr
-        self.args = tuple(args)
-        self.instantiation_might_trigger_static_asserts = instantiation_might_trigger_static_asserts
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, TemplateInstantiation)
 
-    def get_direct_subexpressions(self):
+    def get_direct_subexpressions(self) -> Iterable[Expr]:
         yield self.template_expr
         for expr in self.args:
             yield expr
@@ -533,21 +544,20 @@ class TemplateInstantiation(Expr):
         [template_expr, *args] = new_subexpressions
         return TemplateInstantiation(template_expr, args, self.instantiation_might_trigger_static_asserts)
 
+@dataclass(frozen=True)
 class ClassMemberAccess(UnaryExpr):
-    def __init__(self, class_type_expr: Expr, member_name: str, member_type: ExprType):
-        super().__init__(class_type_expr, result_type=member_type)
-        self.member_name = member_name
+    member_name: str
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, ClassMemberAccess) and self.member_name == other.member_name
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
-        [expr] = new_subexpressions
-        return ClassMemberAccess(class_type_expr=expr, member_name=self.member_name, member_type=self.expr_type)
+        [inner_expr] = new_subexpressions
+        return ClassMemberAccess(inner_expr=inner_expr, member_name=self.member_name, expr_type=self.expr_type)
 
+@dataclass(frozen=True)
 class NotExpr(UnaryExpr):
-    def __init__(self, expr: Expr):
-        super().__init__(expr, result_type=BoolType())
+    expr_type: BoolType = field(default=BoolType(), init=False)
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, NotExpr)
@@ -556,9 +566,9 @@ class NotExpr(UnaryExpr):
         [expr] = new_subexpressions
         return NotExpr(expr)
 
+@dataclass(frozen=True)
 class UnaryMinusExpr(UnaryExpr):
-    def __init__(self, expr: Expr):
-        super().__init__(expr, result_type=Int64Type())
+    expr_type: Int64Type = field(default=Int64Type(), init=False)
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, UnaryMinusExpr)
@@ -567,27 +577,28 @@ class UnaryMinusExpr(UnaryExpr):
         [expr] = new_subexpressions
         return UnaryMinusExpr(expr)
 
+@dataclass(frozen=True)
 class VariadicTypeExpansion(UnaryExpr):
-    def __init__(self, expr: Expr):
+    expr_type: BoolType = field(default=BoolType(), init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, 'expr_type', self.inner_expr.expr_type)
         assert any(var.is_variadic
-                   for var in expr.get_free_vars())
-        super().__init__(expr, result_type=expr.expr_type)
+                   for var in self.inner_expr.get_free_vars())
 
     def is_same_expr_excluding_subexpressions(self, other: Expr):
         return isinstance(other, VariadicTypeExpansion)
 
     def copy_with_subexpressions(self, new_subexpressions: Sequence[Expr]):
         [expr] = new_subexpressions
-        return VariadicTypeExpansion(expr)
+        return VariadicTypeExpansion(inner_expr=expr)
 
-class Header(ValueType):
-    def __init__(self,
-                 template_defns: Sequence[TemplateDefn],
-                 check_if_error_specializations: Sequence[TemplateSpecialization],
-                 toplevel_content: Sequence[Union[StaticAssert, ConstantDef, Typedef]], public_names: Set[str],
-                 split_template_name_by_old_name_and_result_element_name: Dict[Tuple[str, str], str]):
-        self.template_defns = tuple(template_defns)
-        self.check_if_error_specializations = tuple(check_if_error_specializations)
-        self.toplevel_content = tuple(toplevel_content)
-        self.public_names = public_names
-        self.split_template_name_by_old_name_and_result_element_name = split_template_name_by_old_name_and_result_element_name
+@dataclass(frozen=True)
+class Header:
+    template_defns: Tuple[TemplateDefn, ...]
+    check_if_error_specializations: Tuple[TemplateSpecialization, ...]
+    toplevel_content: Tuple[Union[StaticAssert, ConstantDef, Typedef], ...]
+    public_names: FrozenSet[str]
+    # Semantically, this is a map (old_name, result_element_name) -> split_template_name.
+    split_template_name_by_old_name_and_result_element_name: Tuple[Tuple[Tuple[str, str], str], ...]
+

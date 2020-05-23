@@ -24,7 +24,7 @@ def _is_global_literal_that_cannot_trigger_static_asserts(literal: ir.AtomicType
     return literal.cpp_type in GLOBAL_LITERALS_BY_NAME and literal.cpp_type != 'CheckIfError'
 
 class _CanTriggerStaticAsserts(Visitor):
-    def __init__(self):
+    def __init__(self) -> None:
         self.can_trigger_static_asserts = False
 
     def visit_static_assert(self, static_assert: ir.StaticAssert):
@@ -45,7 +45,7 @@ class _CanTriggerStaticAsserts(Visitor):
 
 def elem_can_trigger_static_asserts(stmt: ir.TemplateBodyElement):
     visitor = _CanTriggerStaticAsserts()
-    visitor.visit_template_body_elems([stmt])
+    visitor.visit_template_body_elems((stmt,))
     return visitor.can_trigger_static_asserts
 
 def expr_can_trigger_static_asserts(expr: ir.Expr):
@@ -75,7 +75,7 @@ def _apply_template_instantiation_can_trigger_static_asserts_info(header: ir.Hea
     return _ApplyTemplateInstantiationCanTriggerStaticAssertsInfo(template_instantiation_can_trigger_static_asserts).transform_header(header)
 
 class _TemplateDefnContainsStaticAssertStmt(Visitor):
-    def __init__(self):
+    def __init__(self) -> None:
         self.found_static_assert_stmt = False
 
     def visit_static_assert(self, static_assert: ir.StaticAssert):

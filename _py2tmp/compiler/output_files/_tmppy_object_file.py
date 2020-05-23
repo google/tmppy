@@ -11,28 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from _py2tmp.ir2 import ir2
 from _py2tmp.ir1 import ir1
 from _py2tmp.ir0 import ir0
-from _py2tmp.utils import ValueType
 
+@dataclass(frozen=True)
+class ModuleInfo:
+    ir2_module: Optional[ir2.Module]
+    ir0_header: ir0.Header
+    ir0_header_before_optimization: Optional[ir0.Header] = None
+    ir1_module: Optional[ir1.Module] = None
 
-class ModuleInfo(ValueType):
-    def __init__(self,
-                 ir2_module: Optional[ir2.Module],
-                 ir0_header: ir0.Header,
-                 ir0_header_before_optimization: Optional[ir0.Header] = None,
-                 ir1_module: Optional[ir1.Module] = None):
-        self.ir2_module = ir2_module
-        self.ir1_module = ir1_module
-        self.ir0_header_before_optimization = ir0_header_before_optimization
-        self.ir0_header = ir0_header
-
-class ObjectFileContent(ValueType):
-    def __init__(self, modules_by_name: Dict[str, ModuleInfo]):
-        self.modules_by_name = modules_by_name
+@dataclass(frozen=True)
+class ObjectFileContent:
+    modules_by_name: Dict[str, ModuleInfo]
 
 def merge_object_files(object_files: List[ObjectFileContent]):
     modules_by_name = dict()

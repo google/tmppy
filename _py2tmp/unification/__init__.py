@@ -19,6 +19,6 @@ from ._exceptions import (
 from ._strategy import (
     UnificationStrategy,
     UnificationStrategyForCanonicalization,
-    ListExpansion)
+    TupleExpansion)
 from ._unification import unify
 from ._canonicalization import canonicalize

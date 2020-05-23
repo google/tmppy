@@ -26,7 +26,8 @@ def remove_unused_toplevel_elems(header: ir.Header, linking_final_header: bool):
 
     public_names = header.public_names
     if not linking_final_header:
-        public_names = public_names.union(header.split_template_name_by_old_name_and_result_element_name.values())
+        public_names = public_names.union(split_name
+                                          for _, split_name in header.split_template_name_by_old_name_and_result_element_name)
 
     elem_dependency_graph = nx.DiGraph()
     for elem in itertools.chain(header.template_defns, header.toplevel_content):
@@ -50,10 +51,10 @@ def remove_unused_toplevel_elems(header: ir.Header, linking_final_header: bool):
     elem_dependency_graph.add_node('')
     used_elem_names = nx.single_source_shortest_path(elem_dependency_graph, source='').keys()
 
-    return ir.Header(template_defns=[template_defn for template_defn in header.template_defns if
-                                     template_defn.name in used_elem_names],
-                     toplevel_content=[elem for elem in header.toplevel_content if
-                                       isinstance(elem, ir.StaticAssert) or elem.name in used_elem_names],
+    return ir.Header(template_defns=tuple(template_defn for template_defn in header.template_defns if
+                                          template_defn.name in used_elem_names),
+                     toplevel_content=tuple(elem for elem in header.toplevel_content if
+                                            isinstance(elem, ir.StaticAssert) or elem.name in used_elem_names),
                      public_names=header.public_names,
                      split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name,
                      check_if_error_specializations=header.check_if_error_specializations)

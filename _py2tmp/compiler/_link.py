@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import Iterator
+from typing import Iterator, Tuple, Dict
 
 from _py2tmp.compiler.output_files import ObjectFileContent
 from _py2tmp.compiler.stages import header_to_cpp
@@ -26,39 +26,40 @@ def compute_merged_header_for_linking(main_module_name: str,
     template_defns = []
     check_if_error_specializations = []
     toplevel_content = []
-    split_template_name_by_old_name_and_result_element_name = dict()
+    split_template_name_by_old_name_and_result_element_name: Dict[Tuple[str, str], str] = dict()
 
     for module_info in object_file_content.modules_by_name.values():
         template_defns += module_info.ir0_header.template_defns
         check_if_error_specializations += module_info.ir0_header.check_if_error_specializations
         toplevel_content += module_info.ir0_header.toplevel_content
-        for key, value in module_info.ir0_header.split_template_name_by_old_name_and_result_element_name.items():
+        for key, value in module_info.ir0_header.split_template_name_by_old_name_and_result_element_name:
             split_template_name_by_old_name_and_result_element_name[key] = value
 
     # template <typename>
     # struct CheckIfError {
     #   using type = void;
     # };
-    check_if_error_template_main_definition = ir0.TemplateSpecialization(args=[ir0.TemplateArgDecl(expr_type=ir0.TypeType(),
+    check_if_error_template_main_definition = ir0.TemplateSpecialization(args=(ir0.TemplateArgDecl(expr_type=ir0.TypeType(),
                                                                                                    name='T',
-                                                                                                   is_variadic=False)],
+                                                                                                   is_variadic=False),),
                                                                          patterns=None,
-                                                                         body=[ir0.Typedef(name='type',
-                                                                                           expr=ir0.AtomicTypeLiteral.for_nonlocal_type('void', may_be_alias=False))],
+                                                                         body=(ir0.Typedef(name='type',
+                                                                                           expr=ir0.AtomicTypeLiteral.for_nonlocal_type('void', may_be_alias=False)),),
                                                                          is_metafunction=True)
 
     template_defns.append(ir0.TemplateDefn(main_definition=check_if_error_template_main_definition,
-                                           specializations=check_if_error_specializations,
+                                           specializations=tuple(check_if_error_specializations),
                                            name='CheckIfError',
                                            description='',
-                                           result_element_names=['type']))
+                                           result_element_names=frozenset(('type',))))
 
     public_names = object_file_content.modules_by_name[main_module_name].ir0_header.public_names.union(['CheckIfError'])
 
-    merged_header = ir0.Header(template_defns=template_defns,
-                               check_if_error_specializations=[],
-                               toplevel_content=toplevel_content,
-                               split_template_name_by_old_name_and_result_element_name=split_template_name_by_old_name_and_result_element_name,
+    merged_header = ir0.Header(template_defns=tuple(template_defns),
+                               check_if_error_specializations=(),
+                               toplevel_content=tuple(toplevel_content),
+                               split_template_name_by_old_name_and_result_element_name=tuple((k, v)
+                                                                                             for k, v in split_template_name_by_old_name_and_result_element_name.items()),
                                public_names=public_names)
 
     return optimize_header(header=merged_header,
@@ -68,7 +69,7 @@ def compute_merged_header_for_linking(main_module_name: str,
 
 def link(main_module_name: str,
          object_file_content: ObjectFileContent):
-    def identifier_generator_fun():
+    def identifier_generator_fun() -> Iterator[str]:
         for i in itertools.count():
             yield 'TmppyInternal_' + str(i)
     identifier_generator = identifier_generator_fun()

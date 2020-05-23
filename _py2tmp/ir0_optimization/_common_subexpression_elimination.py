@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Union, Dict, Iterator, Sequence
+from typing import List, Union, Dict, Iterator, FrozenSet, Tuple
 
 from _py2tmp.ir0 import ir, ToplevelWriter, NameReplacementTransformation, TemplateBodyWriter, Transformation
 from _py2tmp.utils import ir_to_string
@@ -36,26 +36,26 @@ class CommonSubexpressionEliminationTransformation(Transformation):
     def transform_template_defn(self, template_defn: ir.TemplateDefn):
         self.writer.write(ir.TemplateDefn(args=template_defn.args,
                                           main_definition=self._transform_template_specialization(template_defn.main_definition, template_defn.result_element_names) if template_defn.main_definition is not None else None,
-                                          specializations=[self._transform_template_specialization(specialization, template_defn.result_element_names) for specialization in template_defn.specializations],
+                                          specializations=tuple(self._transform_template_specialization(specialization, template_defn.result_element_names) for specialization in template_defn.specializations),
                                           name=template_defn.name,
                                           description=template_defn.description,
                                           result_element_names=template_defn.result_element_names))
 
     def _transform_template_specialization(self,
                                            specialization: ir.TemplateSpecialization,
-                                           result_element_names: Sequence[str]) -> ir.TemplateSpecialization:
+                                           result_element_names: FrozenSet[str]) -> ir.TemplateSpecialization:
         return ir.TemplateSpecialization(args=specialization.args,
                                          patterns=specialization.patterns,
                                          body=self._transform_template_body_elems(specialization.body,
-                                                                                   result_element_names,
-                                                                                   specialization.args,
-                                                                                   specialization.is_metafunction),
+                                                                                  result_element_names,
+                                                                                  specialization.args,
+                                                                                  specialization.is_metafunction),
                                          is_metafunction=specialization.is_metafunction)
 
     def _transform_template_body_elems(self,
-                                       elems: List[ir.TemplateBodyElement],
-                                       result_element_names: Sequence[str],
-                                       template_specialization_args: Sequence[ir.TemplateArgDecl],
+                                       elems: Tuple[ir.TemplateBodyElement, ...],
+                                       result_element_names: FrozenSet[str],
+                                       template_specialization_args: Tuple[ir.TemplateArgDecl, ...],
                                        is_metafunction: bool):
         name_by_expr: Dict[ir.Expr, str] = dict()
         replacements: Dict[str, str] = dict()
@@ -77,7 +77,6 @@ class CommonSubexpressionEliminationTransformation(Transformation):
             with transformation.set_writer(writer):
                 transformation.transform_template_body_elem(elem)
             [elem] = writer.elems
-
             if isinstance(elem, (ir.ConstantDef, ir.Typedef)) and elem.expr in name_by_expr:
                 replacements[elem.name] = name_by_expr[elem.expr]
                 type_by_name[elem.name] = elem.expr.expr_type
@@ -123,8 +122,8 @@ class CommonSubexpressionEliminationTransformation(Transformation):
                 else:
                     replacements2[replacement] = result_elem_name
 
-        result_elems = NameReplacementTransformation(replacements2).transform_template_body_elems(result_elems)
-        result_elems = result_elems + additional_result_elems
+        result_elems = NameReplacementTransformation(replacements2).transform_template_body_elems(tuple(result_elems))
+        result_elems = (*result_elems, *additional_result_elems)
 
         if is_metafunction and result_elems:
             assert (any(isinstance(elem, ir.Typedef) and elem.name in ('type', 'error', 'value')
@@ -135,10 +134,10 @@ class CommonSubexpressionEliminationTransformation(Transformation):
                 replacements2,
                 '\n'.join(ir_to_string(elem)
                           for elem in result_elems))
-        return result_elems
+        return tuple(result_elems)
 
     def transform_toplevel_elems(self,
-                                 elems: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]],
+                                 elems: Tuple[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef], ...],
                                  identifier_generator: Iterator[str]):
 
         name_by_expr: Dict[ir.Expr, str] = dict()

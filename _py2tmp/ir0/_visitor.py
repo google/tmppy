@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Union
+from typing import Union, Tuple
 from _py2tmp.ir0 import ir
 
 
@@ -55,7 +55,7 @@ class Visitor:
         pass
 
     def visit_template_body_elems(self,
-                                  elems: List[ir.TemplateBodyElement]):
+                                  elems: Tuple[ir.TemplateBodyElement, ...]):
         for elem in elems:
             self.visit_template_body_elem(elem)
 
@@ -107,7 +107,7 @@ class Visitor:
         else:
             raise NotImplementedError('Unexpected expr: ' + expr.__class__.__name__)
 
-    def visit_exprs(self, exprs: List[ir.Expr]):
+    def visit_exprs(self, exprs: Tuple[ir.Expr, ...]):
         for expr in exprs:
             self.visit_expr(expr)
 
@@ -130,25 +130,25 @@ class Visitor:
         pass
 
     def visit_class_member_access(self, class_member_access: ir.ClassMemberAccess):
-        self.visit_expr(class_member_access.expr)
+        self.visit_expr(class_member_access.inner_expr)
 
     def visit_not_expr(self, not_expr: ir.NotExpr):
-        self.visit_expr(not_expr.expr)
+        self.visit_expr(not_expr.inner_expr)
 
     def visit_unary_minus_expr(self, unary_minus: ir.UnaryMinusExpr):
-        self.visit_expr(unary_minus.expr)
+        self.visit_expr(unary_minus.inner_expr)
         
     def visit_comparison_expr(self, comparison: ir.ComparisonExpr):
-        self.visit_exprs([comparison.lhs, comparison.rhs])
+        self.visit_exprs((comparison.lhs, comparison.rhs))
 
     def visit_int64_binary_op_expr(self, binary_op: ir.Int64BinaryOpExpr):
-        self.visit_exprs([binary_op.lhs, binary_op.rhs])
+        self.visit_exprs((binary_op.lhs, binary_op.rhs))
 
     def visit_bool_binary_op_expr(self, binary_op: ir.BoolBinaryOpExpr):
-        self.visit_exprs([binary_op.lhs, binary_op.rhs])
+        self.visit_exprs((binary_op.lhs, binary_op.rhs))
 
     def visit_template_instantiation(self, template_instantiation: ir.TemplateInstantiation):
-        self.visit_exprs([template_instantiation.template_expr, *template_instantiation.args])
+        self.visit_exprs((template_instantiation.template_expr, *template_instantiation.args))
 
     def visit_pointer_type_expr(self, expr: ir.PointerTypeExpr):
         self.visit_expr(expr.type_expr)
@@ -166,7 +166,7 @@ class Visitor:
         self.visit_expr(expr.type_expr)
 
     def visit_function_type_expr(self, expr: ir.FunctionTypeExpr):
-        self.visit_exprs([expr.return_type_expr, *expr.arg_exprs])
+        self.visit_exprs((expr.return_type_expr, *expr.arg_exprs))
 
     def visit_variadic_type_expansion(self, expr: ir.VariadicTypeExpansion):
-        self.visit_expr(expr.expr)
+        self.visit_expr(expr.inner_expr)

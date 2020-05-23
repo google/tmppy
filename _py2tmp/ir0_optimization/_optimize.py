@@ -37,7 +37,7 @@ from _py2tmp.ir0_optimization.replace_templates_with_templated_using_declaration
 from _py2tmp.utils import compute_condensation_in_topological_order
 
 
-def _calculate_max_num_optimization_loops(size):
+def _calculate_max_num_optimization_loops(size: int):
     # This is just a heuristic. We want to make enough loops to fully optimize the code but without looping forever
     # when there are mutually-recursive functions.
     return size * 10 + 40
@@ -52,11 +52,11 @@ def _optimize_header_first_pass(header: ir.Header,
 
     split_template_name_by_old_name_and_result_element_name = {key: value
                                                                for module_info in context_object_file_content.modules_by_name.values()
-                                                               for key, value in module_info.ir0_header.split_template_name_by_old_name_and_result_element_name.items()}
+                                                               for key, value in module_info.ir0_header.split_template_name_by_old_name_and_result_element_name}
 
     new_template_defns = []
     for template_defn in header.template_defns:
-        results, needs_another_loop = apply_elem_optimization([template_defn],
+        results, needs_another_loop = apply_elem_optimization((template_defn,),
                                                               lambda: split_template_defn_with_multiple_outputs(template_defn,
                                                                                                                 split_template_name_by_old_name_and_result_element_name,
                                                                                                                 identifier_generator),
@@ -114,7 +114,7 @@ def _optimize_header_second_pass(header: ir.Header,
 
     for connected_component in reversed(list(
             compute_condensation_in_topological_order(template_dependency_graph))):
-        def optimize(template_name):
+        def optimize(template_name: str):
             new_template_defns[template_name], needs_another_loop = combine_optimizations(new_template_defns[template_name], optimizations)
             return None, needs_another_loop
 
@@ -144,8 +144,8 @@ def _optimize_header_second_pass(header: ir.Header,
                                              lambda toplevel_content: '\n'.join(toplevel_elem_to_cpp_simple(elem, identifier_generator)
                                                                                 for elem in toplevel_content))
 
-    return ir.Header(template_defns=[new_template_defns[template_defn.name]
-                                     for template_defn in header.template_defns],
+    return ir.Header(template_defns=tuple(new_template_defns[template_defn.name]
+                                          for template_defn in header.template_defns),
                      toplevel_content=toplevel_content,
                      public_names=header.public_names,
                      split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name,
@@ -171,8 +171,8 @@ def optimize_header(header: ir.Header,
     header = _optimize_header_third_pass(header, linking_final_header)
 
     if linking_final_header:
-        [header], _ = apply_elem_optimization([header],
-                                              lambda: ([move_template_args_to_using_declarations(header)], False),
+        [header], _ = apply_elem_optimization((header,),
+                                              lambda: ((move_template_args_to_using_declarations(header),), False),
                                               lambda headers: describe_headers(headers, identifier_generator),
                                               optimization_name='replace_templates_with_templated_using_declarations',
                                               other_context=lambda: '')

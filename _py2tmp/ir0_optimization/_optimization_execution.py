@@ -19,9 +19,9 @@ from _py2tmp.compiler.stages import header_to_cpp
 from _py2tmp.ir0 import ir
 from _py2tmp.ir0_optimization._configuration_knobs import ConfigurationKnobs
 
-def apply_elem_optimization(elems: List,
-                            optimization: Callable[[], Tuple[List, bool]],
-                            describe_elems: Callable[[List], str],
+def apply_elem_optimization(elems: Tuple,
+                            optimization: Callable[[], Tuple[Tuple, bool]],
+                            describe_elems: Callable[[Tuple], str],
                             optimization_name: str,
                             other_context: Callable[[], str] = lambda: ''):
     if ConfigurationKnobs.max_num_optimization_steps == 0:
@@ -52,21 +52,21 @@ def describe_headers(headers: List[ir.Header],
     return ''.join(header_to_cpp(header, identifier_generator)
                    for header in headers)
 
-def describe_template_defns(template_defns: List[ir.TemplateDefn], identifier_generator: Iterator[str]):
+def describe_template_defns(template_defns: Tuple[ir.TemplateDefn, ...], identifier_generator: Iterator[str]):
     return header_to_cpp(ir.Header(template_defns=template_defns,
-                                   check_if_error_specializations=[],
-                                   toplevel_content=[],
-                                   public_names=set(),
-                                   split_template_name_by_old_name_and_result_element_name=dict()),
+                                   check_if_error_specializations=(),
+                                   toplevel_content=(),
+                                   public_names=frozenset(),
+                                   split_template_name_by_old_name_and_result_element_name=()),
                          identifier_generator)
 
-def describe_toplevel_elems(toplevel_elems: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]],
+def describe_toplevel_elems(toplevel_elems: Tuple[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef], ...],
                             identifier_generator: Iterator[str]):
-    return header_to_cpp(ir.Header(template_defns=[],
+    return header_to_cpp(ir.Header(template_defns=(),
                                    toplevel_content=toplevel_elems,
-                                   public_names=set(),
-                                   split_template_name_by_old_name_and_result_element_name=dict(),
-                                   check_if_error_specializations=[]),
+                                   public_names=frozenset(),
+                                   split_template_name_by_old_name_and_result_element_name=(),
+                                   check_if_error_specializations=()),
                          identifier_generator)
 
 def combine_optimizations(ir, optimizations):

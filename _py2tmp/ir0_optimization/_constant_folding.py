@@ -13,11 +13,12 @@
 # limitations under the License.
 
 from collections import defaultdict
-from typing import List, Dict, Set, Sequence
+from typing import List, Dict, Set, Sequence, FrozenSet, Tuple
 
 from _py2tmp.ir0 import ir, Transformation
 from _py2tmp.ir0_optimization._recalculate_template_instantiation_can_trigger_static_asserts_info import elem_can_trigger_static_asserts
 from _py2tmp.ir0_optimization._replace_var_with_expr import replace_var_with_expr_in_template_body_element
+from _py2tmp.utils import ir_to_string
 
 
 class ConstantFoldingTransformation(Transformation):
@@ -28,27 +29,27 @@ class ConstantFoldingTransformation(Transformation):
     def transform_template_defn(self, template_defn: ir.TemplateDefn):
         self.writer.write(ir.TemplateDefn(args=template_defn.args,
                                           main_definition=self._transform_template_specialization(template_defn.main_definition,
-                                                                                                   template_defn.result_element_names)
+                                                                                                  template_defn.result_element_names)
                                            if template_defn.main_definition is not None else None,
-                                          specializations=[self._transform_template_specialization(specialization,
-                                                                                                    template_defn.result_element_names)
-                                                            for specialization in template_defn.specializations],
+                                          specializations=tuple(self._transform_template_specialization(specialization,
+                                                                                                        template_defn.result_element_names)
+                                                                for specialization in template_defn.specializations),
                                           name=template_defn.name,
                                           description=template_defn.description,
                                           result_element_names=template_defn.result_element_names))
 
     def _transform_template_specialization(self,
                                            specialization: ir.TemplateSpecialization,
-                                           result_element_names: Sequence[str]) -> ir.TemplateSpecialization:
+                                           result_element_names: FrozenSet[str]) -> ir.TemplateSpecialization:
         return ir.TemplateSpecialization(args=specialization.args,
                                          patterns=specialization.patterns,
                                          body=self.transform_template_body_elems(specialization.body,
-                                                                                  result_element_names),
+                                                                                 result_element_names),
                                          is_metafunction=specialization.is_metafunction)
 
     def transform_template_body_elems(self,
                                       stmts: Sequence[ir.TemplateBodyElement],
-                                      result_element_names: Sequence[str] = tuple()):
+                                      result_element_names: FrozenSet[str] = frozenset()) -> Tuple[ir.TemplateBodyElement]:
         stmts = list(stmts)
 
         # stmt[var_name_to_defining_stmt_index['x']] is the stmt that defines 'x'
@@ -176,9 +177,9 @@ class ConstantFoldingTransformation(Transformation):
 
                 can_trigger_static_asserts_by_stmt_index[i] = can_trigger_static_asserts_by_stmt_index[i] or elem_can_trigger_static_asserts(defining_stmt)
 
-        return [stmt
-                for stmt in stmts
-                if stmt is not None]
+        return tuple(stmt
+                     for stmt in stmts
+                     if stmt is not None)
 
     def _decrease_remaining_uses(self,
                                  remaining_uses_of_var: Dict[str, int],

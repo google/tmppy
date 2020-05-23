@@ -12,22 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, TypeVar, Generic, Union, Dict
+from typing import TypeVar, Generic, Union, Dict, Tuple
 
 TermT = TypeVar('TermT')
 
-class ListExpansion(Generic[TermT]):
+class TupleExpansion(Generic[TermT]):
     def __init__(self, expr: Union[str, TermT]):
         self.expr = expr
 
 class UnificationStrategy(Generic[TermT]):
-    Expr = Union[str, TermT, ListExpansion[TermT]]
+    Expr = Union[str, TermT, TupleExpansion[TermT]]
 
     # Checks if term1 is equal to term2 excluding args.
     def is_same_term_excluding_args(self, term1: TermT, term2: TermT) -> bool: ...
 
     # Gets the args of a term.
-    def get_term_args(self, term: TermT) -> List[Expr]: ...
+    def get_term_args(self, term: TermT) -> Tuple[Expr, ...]: ...
 
     # Returns a string representation of the term, used in exception messages.
     def term_to_string(self, term: TermT) -> str: ...
@@ -43,8 +43,8 @@ class UnificationStrategy(Generic[TermT]):
 class UnificationStrategyForCanonicalization(Generic[TermT], UnificationStrategy[TermT]):
     def replace_variables_in_expr(self,
                                   expr: UnificationStrategy.Expr,
-                                  replacements: Dict[str, List[UnificationStrategy.Expr]],
-                                  expanded_var_replacements: Dict[str, List[UnificationStrategy.Expr]]) \
+                                  replacements: Dict[str, Tuple[UnificationStrategy.Expr, ...]],
+                                  expanded_var_replacements: Dict[str, Tuple[UnificationStrategy.Expr, ...]]) \
             -> UnificationStrategy.Expr: ...
 
     # Returns true if the var is allowed to be in the LHS of an equation in the result.

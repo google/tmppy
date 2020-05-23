@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
+from typing import Tuple
 
 from _py2tmp.ir0 import ir, Transformation, is_expr_variadic, GlobalLiterals, select1st_literal
 from _py2tmp.ir0_optimization._compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
@@ -20,12 +20,12 @@ from _py2tmp.ir0_optimization._recalculate_template_instantiation_can_trigger_st
 
 
 class ExpressionSimplificationTransformation(Transformation):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.in_variadic_type_expansion = False
 
     def transform_not_expr(self, not_expr: ir.NotExpr) -> ir.Expr:
-        expr = self.transform_expr(not_expr.expr)
+        expr = self.transform_expr(not_expr.inner_expr)
         # !true => false
         # !false => true
         if isinstance(expr, ir.Literal):
@@ -33,7 +33,7 @@ class ExpressionSimplificationTransformation(Transformation):
             return ir.Literal(not expr.value)
         # !!x => x
         if isinstance(expr, ir.NotExpr):
-            return expr.expr
+            return expr.inner_expr
         # !(x && y) => (!x || !y)
         # !(x || y) => (!x && !y)
         if isinstance(expr, ir.BoolBinaryOpExpr):
@@ -63,7 +63,7 @@ class ExpressionSimplificationTransformation(Transformation):
         return ir.NotExpr(expr)
 
     def transform_unary_minus_expr(self, unary_minus: ir.UnaryMinusExpr) -> ir.Expr:
-        expr = self.transform_expr(unary_minus.expr)
+        expr = self.transform_expr(unary_minus.inner_expr)
         # -(3) => -3
         if isinstance(expr, ir.Literal):
             assert isinstance(expr.value, int)
@@ -89,7 +89,7 @@ class ExpressionSimplificationTransformation(Transformation):
         if op == '+' and isinstance(rhs, ir.UnaryMinusExpr):
             # We could not push down the minus, so switch back to a subtraction.
             op = '-'
-            rhs = rhs.expr
+            rhs = rhs.inner_expr
 
         if op == '+':
             # 3 + 5 => 8
@@ -267,17 +267,17 @@ class ExpressionSimplificationTransformation(Transformation):
         return result
 
     def transform_class_member_access(self, class_member_access: ir.ClassMemberAccess):
-        if (isinstance(class_member_access.expr, ir.TemplateInstantiation)
-            and isinstance(class_member_access.expr.template_expr, ir.AtomicTypeLiteral)):
+        if (isinstance(class_member_access.inner_expr, ir.TemplateInstantiation)
+            and isinstance(class_member_access.inner_expr.template_expr, ir.AtomicTypeLiteral)):
 
-            if class_member_access.expr.template_expr.cpp_type == 'GetFirstError':
-                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr)
+            if class_member_access.inner_expr.template_expr.cpp_type == 'GetFirstError':
+                args = self.transform_exprs(class_member_access.inner_expr.args, original_parent_element=class_member_access.inner_expr)
                 return self.transform_get_first_error(args)
-            if class_member_access.expr.template_expr.cpp_type == 'std::is_same':
-                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr)
+            if class_member_access.inner_expr.template_expr.cpp_type == 'std::is_same':
+                args = self.transform_exprs(class_member_access.inner_expr.args, original_parent_element=class_member_access.inner_expr)
                 return self.transform_is_same(args)
-            if class_member_access.expr.template_expr.cpp_type.startswith('Select1st'):
-                args = self.transform_exprs(class_member_access.expr.args, original_parent_element=class_member_access.expr)
+            if class_member_access.inner_expr.template_expr.cpp_type.startswith('Select1st'):
+                args = self.transform_exprs(class_member_access.inner_expr.args, original_parent_element=class_member_access.inner_expr)
                 return self.transform_select1st(args)
 
         return super().transform_class_member_access(class_member_access)
@@ -290,30 +290,30 @@ class ExpressionSimplificationTransformation(Transformation):
 
         return True
 
-    def transform_get_first_error(self, args: List[ir.Expr]):
+    def transform_get_first_error(self, args: Tuple[ir.Expr, ...]):
         new_args = []
         for arg in args:
             if isinstance(arg, ir.AtomicTypeLiteral) and arg.cpp_type == 'void':
                 pass
             elif (isinstance(arg, ir.VariadicTypeExpansion)
-                  and isinstance(arg.expr, ir.ClassMemberAccess)
-                  and isinstance(arg.expr.expr, ir.TemplateInstantiation)
-                  and isinstance(arg.expr.expr.template_expr, ir.AtomicTypeLiteral)
-                  and arg.expr.expr.template_expr.cpp_type.startswith('Select1stType')
-                  and len(arg.expr.expr.args) == 2
-                  and isinstance(arg.expr.expr.args[0], ir.AtomicTypeLiteral)
-                  and arg.expr.expr.args[0].cpp_type == 'void'):
+                  and isinstance(arg.inner_expr, ir.ClassMemberAccess)
+                  and isinstance(arg.inner_expr.inner_expr, ir.TemplateInstantiation)
+                  and isinstance(arg.inner_expr.inner_expr.template_expr, ir.AtomicTypeLiteral)
+                  and arg.inner_expr.inner_expr.template_expr.cpp_type.startswith('Select1stType')
+                  and len(arg.inner_expr.inner_expr.args) == 2
+                  and isinstance(arg.inner_expr.inner_expr.args[0], ir.AtomicTypeLiteral)
+                  and arg.inner_expr.inner_expr.args[0].cpp_type == 'void'):
                 # Select1stType*<void, expr>...
                 pass
             else:
                 new_args.append(arg)
-        return ir.ClassMemberAccess(class_type_expr=ir.TemplateInstantiation(template_expr=GlobalLiterals.GET_FIRST_ERROR,
-                                                                             args=new_args,
-                                                                             instantiation_might_trigger_static_asserts=False),
-                                    member_type=ir.TypeType(),
+        return ir.ClassMemberAccess(inner_expr=ir.TemplateInstantiation(template_expr=GlobalLiterals.GET_FIRST_ERROR,
+                                                                        args=tuple(new_args),
+                                                                        instantiation_might_trigger_static_asserts=False),
+                                    expr_type=ir.TypeType(),
                                     member_name='type')
 
-    def transform_is_same(self, args: List[ir.Expr]):
+    def transform_is_same(self, args: Tuple[ir.Expr, ...]):
         assert len(args) == 2
         lhs, rhs = args
         list_template_names = {'List', 'BoolList', 'Int64List'}
@@ -353,15 +353,15 @@ class ExpressionSimplificationTransformation(Transformation):
 
         return self._create_is_same_expr(lhs, rhs)
 
-    def _create_is_same_expr(self, lhs, rhs):
+    def _create_is_same_expr(self, lhs: ir.Expr, rhs: ir.Expr):
         return ir.ClassMemberAccess(
-            class_type_expr=ir.TemplateInstantiation(template_expr=GlobalLiterals.STD_IS_SAME,
-                                                     args=[lhs, rhs],
-                                                     instantiation_might_trigger_static_asserts=False),
-            member_type=ir.BoolType(),
+            inner_expr=ir.TemplateInstantiation(template_expr=GlobalLiterals.STD_IS_SAME,
+                                                args=(lhs, rhs),
+                                                instantiation_might_trigger_static_asserts=False),
+            expr_type=ir.BoolType(),
             member_name='value')
 
-    def transform_select1st(self, args: List[ir.Expr]):
+    def transform_select1st(self, args: Tuple[ir.Expr, ...]):
         lhs, rhs = args
 
         best_var = None
@@ -382,8 +382,8 @@ class ExpressionSimplificationTransformation(Transformation):
         if best_var:
             rhs = best_var
 
-        return ir.ClassMemberAccess(class_type_expr=ir.TemplateInstantiation(template_expr=select1st_literal(lhs.expr_type, rhs.expr_type),
-                                                                             args=[lhs, rhs],
-                                                                             instantiation_might_trigger_static_asserts=False),
-                                    member_type=lhs.expr_type,
+        return ir.ClassMemberAccess(inner_expr=ir.TemplateInstantiation(template_expr=select1st_literal(lhs.expr_type, rhs.expr_type),
+                                                                        args=(lhs, rhs),
+                                                                        instantiation_might_trigger_static_asserts=False),
+                                    expr_type=lhs.expr_type,
                                     member_name='value')

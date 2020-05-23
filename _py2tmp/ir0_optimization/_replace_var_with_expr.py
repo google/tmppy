@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import List, Union, Dict, Set, Optional
+from typing import Union, Dict, Set, Optional, Tuple
 
 from _py2tmp.ir0 import TemplateBodyWriter, Transformation, ir
 from _py2tmp.ir0_optimization._compute_non_expanded_variadic_vars import compute_non_expanded_variadic_vars
@@ -23,16 +23,16 @@ class VariadicVarReplacementNotPossibleException(Exception):
 
 class _ReplaceVarWithExprTransformation(Transformation):
     def __init__(self,
-                 replacement_expr_by_var: Dict[str, Union[ir.Expr, List[ir.Expr]]],
-                 replacement_expr_by_expanded_var: Dict[str, Union[ir.Expr, List[ir.Expr]]],
+                 replacement_expr_by_var: Dict[str, Union[ir.Expr, Tuple[ir.Expr, ...]]],
+                 replacement_expr_by_expanded_var: Dict[str, Union[ir.Expr, Tuple[ir.Expr, ...]]],
                  variadic_vars_with_expansion_in_progress: Set[str] = frozenset()):
         super().__init__()
         self.replacement_expr_by_var = replacement_expr_by_var
         self.replacement_expr_by_expanded_var = replacement_expr_by_expanded_var
         self.variadic_vars_with_expansion_in_progress = variadic_vars_with_expansion_in_progress
 
-    def transform_variadic_type_expansion(self, expr: ir.VariadicTypeExpansion):
-        variadic_vars_to_expand = compute_non_expanded_variadic_vars(expr.expr).keys()
+    def transform_variadic_type_expansion(self, expr: ir.VariadicTypeExpansion) -> Union[ir.Expr, Tuple[ir.Expr, ...]]:
+        variadic_vars_to_expand = compute_non_expanded_variadic_vars(expr.inner_expr).keys()
         previous_variadic_vars_with_expansion_in_progress = self.variadic_vars_with_expansion_in_progress
         self.variadic_vars_with_expansion_in_progress = previous_variadic_vars_with_expansion_in_progress.union(variadic_vars_to_expand)
 
@@ -47,23 +47,23 @@ class _ReplaceVarWithExprTransformation(Transformation):
         if values_by_variadic_var_to_expand or values_by_expanded_variadic_var_to_expand:
             self._check_variadic_var_replacement(values_by_variadic_var_to_expand, values_by_expanded_variadic_var_to_expand)
 
-            (num_values_to_expand,) = {(len(values) if isinstance(values, list) else 1)
+            (num_values_to_expand,) = {(len(values) if isinstance(values, tuple) else 1)
                                        for values in itertools.chain(values_by_variadic_var_to_expand.values(), values_by_expanded_variadic_var_to_expand.values())}
 
             for i in range(0, num_values_to_expand):
                 child_replacement_expr_by_var = self.replacement_expr_by_var.copy()
                 child_replacement_expr_by_expanded_var = self.replacement_expr_by_expanded_var.copy()
                 for var, values in values_by_variadic_var_to_expand.items():
-                    if not isinstance(values, list):
+                    if not isinstance(values, tuple):
                         values = [values]
                     child_replacement_expr_by_var[var] = values[i]
                 for var, values in values_by_expanded_variadic_var_to_expand.items():
-                    if not isinstance(values, list):
+                    if not isinstance(values, tuple):
                         values = [values]
                     child_replacement_expr_by_expanded_var[var] = values[i]
                 child_transformation = _ReplaceVarWithExprTransformation(child_replacement_expr_by_var, child_replacement_expr_by_expanded_var, self.variadic_vars_with_expansion_in_progress)
-                transformed_expr = child_transformation.transform_expr(expr.expr)
-                for expr1 in (transformed_expr if isinstance(transformed_expr, list) else [transformed_expr]):
+                transformed_expr = child_transformation.transform_expr(expr.inner_expr)
+                for expr1 in (transformed_expr if isinstance(transformed_expr, tuple) else [transformed_expr]):
                     transformed_exprs.append(expr1)
 
             if len(transformed_exprs) == 1:
@@ -73,18 +73,18 @@ class _ReplaceVarWithExprTransformation(Transformation):
                 if any(compute_non_expanded_variadic_vars(expr) for expr in transformed_exprs):
                     raise VariadicVarReplacementNotPossibleException('Found non-expanded variadic vars after expanding one to multiple elements')
         else:
-            transformed_expr = self.transform_expr(expr.expr)
-            if isinstance(transformed_expr, list):
+            transformed_expr = self.transform_expr(expr.inner_expr)
+            if isinstance(transformed_expr, tuple):
                 [transformed_expr] = transformed_expr
 
-            assert not isinstance(transformed_expr, list)
+            assert not isinstance(transformed_expr, tuple)
             transformed_exprs.append(ir.VariadicTypeExpansion(transformed_expr))
 
         self.variadic_vars_with_expansion_in_progress = previous_variadic_vars_with_expansion_in_progress
 
-        return transformed_exprs
+        return tuple(transformed_exprs)
 
-    def transform_type_literal(self, type_literal: ir.AtomicTypeLiteral):
+    def transform_type_literal(self, type_literal: ir.AtomicTypeLiteral) -> Union[ir.Expr, Tuple[ir.Expr, ...]]:
         if type_literal.cpp_type in self.replacement_expr_by_var:
             result = self.replacement_expr_by_var[type_literal.cpp_type]
         elif type_literal.cpp_type in self.replacement_expr_by_expanded_var:
@@ -92,29 +92,29 @@ class _ReplaceVarWithExprTransformation(Transformation):
         else:
             return type_literal
 
-        if isinstance(result, list) and len(result) == 1:
+        if isinstance(result, tuple) and len(result) == 1:
             [result] = result
 
         if not type_literal.is_variadic and self.variadic_vars_with_expansion_in_progress:
             if any(compute_non_expanded_variadic_vars(expr)
-                   for expr in (result if isinstance(result, list) else [result])):
+                   for expr in (result if isinstance(result, tuple) else [result])):
                 raise VariadicVarReplacementNotPossibleException('The replacement would cause a non-variadic var to be replaced with a variadic expr')
 
         return result
 
-    def transform_exprs(self, exprs: List[ir.Expr], original_parent_element: Optional[ir.Expr]):
+    def transform_exprs(self, exprs: Tuple[ir.Expr, ...], original_parent_element: Optional[ir.Expr]) -> Tuple[ir.Expr]:
         if isinstance(original_parent_element, (ir.TemplateInstantiation, ir.FunctionTypeExpr)):
             results = []
             for expr in exprs:
                 expr_or_expr_list = self.transform_expr(expr)
-                for expr1 in (expr_or_expr_list if isinstance(expr_or_expr_list, list) else [expr_or_expr_list]):
+                for expr1 in (expr_or_expr_list if isinstance(expr_or_expr_list, tuple) else (expr_or_expr_list,)):
                     assert isinstance(expr1, ir.Expr)
                     results.append(expr1)
-            return results
+            return tuple(results)
         else:
             results = []
             for expr_or_expr_list in super().transform_exprs(exprs, original_parent_element):
-                for expr in (expr_or_expr_list if isinstance(expr_or_expr_list, list) else [expr_or_expr_list]):
+                for expr in (expr_or_expr_list if isinstance(expr_or_expr_list, tuple) else (expr_or_expr_list,)):
                     assert isinstance(expr, ir.Expr)
                     assert not isinstance(expr, ir.VariadicTypeExpansion)
                     results.append(expr)
@@ -122,15 +122,15 @@ class _ReplaceVarWithExprTransformation(Transformation):
             if len(results) != len(exprs):
                 raise VariadicVarReplacementNotPossibleException('The replacement caused a different number of child exprs in a %s. Was %s, now %s' % (original_parent_element.__class__.__name__, len(exprs), len(results)))
 
-            return results
+            return tuple(results)
 
-    def _compute_variadic_pattern(self, values: Union[ir.Expr, List[ir.Expr]], strict: bool):
-        if not isinstance(values, list):
+    def _compute_variadic_pattern(self, values: Union[ir.Expr, Tuple[ir.Expr, ...]], strict: bool):
+        if not isinstance(values, tuple):
             values = [values]
         for value in values:
-            if isinstance(value, ir.VariadicTypeExpansion) and isinstance(value.expr, ir.AtomicTypeLiteral):
+            if isinstance(value, ir.VariadicTypeExpansion) and isinstance(value.inner_expr, ir.AtomicTypeLiteral):
                 if strict:
-                    yield value.expr.cpp_type
+                    yield value.inner_expr.cpp_type
                 else:
                     # We just check that there's a corresponding variadic type expansion, but not necessarily for the
                     # same var.
@@ -139,16 +139,16 @@ class _ReplaceVarWithExprTransformation(Transformation):
                 yield None
 
     def _check_variadic_var_replacement(self,
-                                        values_by_variadic_var_to_expand: Dict[str, Union[ir.Expr, List[ir.Expr]]],
+                                        values_by_variadic_var_to_expand: Dict[str, Union[ir.Expr, Tuple[ir.Expr, ...]]],
                                         values_by_expanded_variadic_var_to_expand: Dict[str, Union[
-                                            ir.Expr, List[ir.Expr]]]):
+                                            ir.Expr, Tuple[ir.Expr, ...]]]):
         first_replacement = (next(iter(values_by_variadic_var_to_expand.values()))
                              if values_by_variadic_var_to_expand
                              else next(iter(values_by_expanded_variadic_var_to_expand.values())))
-        if not isinstance(first_replacement, list):
+        if not isinstance(first_replacement, tuple):
             first_replacement = [first_replacement]
         num_values_to_expand_in_first_replacement = len(first_replacement)
-        if not all((len(values) if isinstance(values, list) else 1) == num_values_to_expand_in_first_replacement
+        if not all((len(values) if isinstance(values, tuple) else 1) == num_values_to_expand_in_first_replacement
                    for values in itertools.chain(values_by_variadic_var_to_expand.values(), values_by_expanded_variadic_var_to_expand.values())):
             # We can't perform the replacement syntactically, even if it might make sense semantically.
             # E.g. we can't replace Ts={Xs...}, Us={Ys..., float} in "std::pair<Ts, Us>...".
@@ -184,7 +184,7 @@ class _ReplaceVarWithExprTransformation(Transformation):
                 var = values_lists[0][0].expr.cpp_type
                 for values in values_lists:
                     value = values[0]
-                    if not (isinstance(value, ir.VariadicTypeExpansion) and isinstance(value.expr, ir.AtomicTypeLiteral) and value.expr.cpp_type == var):
+                    if not (isinstance(value, ir.VariadicTypeExpansion) and isinstance(value.inner_expr, ir.AtomicTypeLiteral) and value.inner_expr.cpp_type == var):
                         break
                 else:
                     values_lists = [values[1:] for values in values_lists]
@@ -195,7 +195,7 @@ class _ReplaceVarWithExprTransformation(Transformation):
                 var = values_lists[0][-1].expr.cpp_type
                 for values in values_lists:
                     value = values[-1]
-                    if not (isinstance(value, ir.VariadicTypeExpansion) and isinstance(value.expr, ir.AtomicTypeLiteral) and value.expr.cpp_type == var):
+                    if not (isinstance(value, ir.VariadicTypeExpansion) and isinstance(value.inner_expr, ir.AtomicTypeLiteral) and value.inner_expr.cpp_type == var):
                         break
                 else:
                     values_lists = [values[:-1] for values in values_lists]
@@ -225,17 +225,17 @@ def replace_var_with_expr_in_template_body_element(elem: ir.TemplateBodyElement,
     [elem] = writer.elems
     return elem
 
-def replace_var_with_expr_in_template_body_elements(elems: List[ir.TemplateBodyElement],
-                                                    replacement_expr_by_var: Dict[str, Union[ir.Expr, List[ir.Expr]]],
+def replace_var_with_expr_in_template_body_elements(elems: Tuple[ir.TemplateBodyElement, ...],
+                                                    replacement_expr_by_var: Dict[str, Union[ir.Expr, Tuple[ir.Expr, ...]]],
                                                     replacement_expr_by_expanded_var: Dict[str, Union[
-                                                        ir.Expr, List[ir.Expr]]]) \
-        -> List[ir.TemplateBodyElement]:
+                                                        ir.Expr, Tuple[ir.Expr, ...]]]) \
+        -> Tuple[ir.TemplateBodyElement, ...]:
     transformation = _ReplaceVarWithExprTransformation(replacement_expr_by_var, replacement_expr_by_expanded_var)
     return transformation.transform_template_body_elems(elems)
 
 def replace_var_with_expr_in_expr(expr: ir.Expr,
-                                  replacement_expr_by_var: Dict[str, Union[ir.Expr, List[ir.Expr]]],
-                                  replacement_expr_by_expanded_var: Dict[str, Union[ir.Expr, List[ir.Expr]]]) \
-        -> Union[ir.Expr, List[ir.Expr]]:
+                                  replacement_expr_by_var: Dict[str, Union[ir.Expr, Tuple[ir.Expr, ...]]],
+                                  replacement_expr_by_expanded_var: Dict[str, Union[ir.Expr, Tuple[ir.Expr, ...]]]) \
+        -> Union[ir.Expr, Tuple[ir.Expr, ...]]:
     return _ReplaceVarWithExprTransformation(replacement_expr_by_var,
                                              replacement_expr_by_expanded_var).transform_expr(expr)

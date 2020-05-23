@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from contextlib import contextmanager
-from typing import List, Union, Mapping, Optional, Iterator
+from typing import Union, Mapping, Optional, Iterator, Tuple
 
 from _py2tmp.ir0 import ir
 from _py2tmp.ir0._is_variadic import is_expr_variadic
@@ -32,10 +32,11 @@ class Transformation:
                 self.transform_template_defn(template_defn)
             for elem in header.toplevel_content:
                 self.transform_toplevel_elem(elem)
-            check_if_error_specializations = [self.transform_template_specialization(specialization)
-                                              for specialization in header.check_if_error_specializations]
+            check_if_error_specializations = tuple(self.transform_template_specialization(specialization)
+                                                   for specialization in header.check_if_error_specializations)
 
-        return ir.Header(template_defns=writer.template_defns, toplevel_content=writer.toplevel_elems,
+        return ir.Header(template_defns=tuple(writer.template_defns),
+                         toplevel_content=tuple(writer.toplevel_elems),
                          public_names=header.public_names,
                          split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name,
                          check_if_error_specializations=check_if_error_specializations)
@@ -51,10 +52,10 @@ class Transformation:
             raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 
     def transform_template_defn(self, template_defn: ir.TemplateDefn):
-        args = [self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args]
+        args = tuple(self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args)
         template_specialization = self.transform_template_specialization(template_defn.main_definition) if template_defn.main_definition is not None else None
-        specializations = [self.transform_template_specialization(specialization)
-                           for specialization in template_defn.specializations]
+        specializations = tuple(self.transform_template_specialization(specialization)
+                                for specialization in template_defn.specializations)
         self.writer.write(ir.TemplateDefn(args=args,
                                           main_definition=template_specialization,
                                           specializations=specializations,
@@ -76,28 +77,28 @@ class Transformation:
         self.writer.write(ir.Typedef(name=typedef.name,
                                      expr=expr,
                                      description=typedef.description,
-                                     template_args=[self.transform_template_arg_decl(arg_decl)
-                                                    for arg_decl in typedef.template_args]))
+                                     template_args=tuple(self.transform_template_arg_decl(arg_decl)
+                                                         for arg_decl in typedef.template_args)))
 
     def transform_template_arg_decl(self, arg_decl: ir.TemplateArgDecl) -> ir.TemplateArgDecl:
         return arg_decl
 
     def transform_template_body_elems(self,
-                                      elems: List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]]) -> List[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef]]:
+                                      elems: Tuple[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef], ...]) -> Tuple[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef], ...]:
         body_writer = TemplateBodyWriter(self.writer.get_toplevel_writer()) if self.writer else TemplateBodyWriter(None)
         with self.set_writer(body_writer):
             for elem in elems:
                 self.transform_template_body_elem(elem)
-        return body_writer.elems
+        return tuple(body_writer.elems)
 
     def transform_template_specialization(self, specialization: ir.TemplateSpecialization) -> ir.TemplateSpecialization:
         if specialization.patterns is not None:
-            patterns = [self.transform_pattern(pattern)
-                        for pattern in specialization.patterns]
+            patterns = tuple(self.transform_pattern(pattern)
+                             for pattern in specialization.patterns)
         else:
             patterns = None
 
-        args = [self.transform_template_arg_decl(arg_decl) for arg_decl in specialization.args]
+        args = tuple(self.transform_template_arg_decl(arg_decl) for arg_decl in specialization.args)
         body = self.transform_template_body_elems(specialization.body)
         return ir.TemplateSpecialization(args=args,
                                          patterns=patterns,
@@ -143,8 +144,8 @@ class Transformation:
         else:
             raise NotImplementedError('Unexpected expr: ' + expr.__class__.__name__)
 
-    def transform_exprs(self, exprs: List[ir.Expr], original_parent_element: ir.Expr) -> List[ir.Expr]:
-        return [self.transform_expr(expr) for expr in exprs]
+    def transform_exprs(self, exprs: Tuple[ir.Expr, ...], original_parent_element: ir.Expr) -> Tuple[ir.Expr, ...]:
+        return tuple(self.transform_expr(expr) for expr in exprs)
 
     def transform_template_body_elem(self, elem: Union[ir.TemplateDefn, ir.StaticAssert, ir.ConstantDef, ir.Typedef]):
         if isinstance(elem, ir.TemplateDefn):
@@ -170,35 +171,35 @@ class Transformation:
                                     is_variadic=type_literal.is_variadic)
 
     def transform_class_member_access(self, class_member_access: ir.ClassMemberAccess) -> ir.Expr:
-        class_type_expr = self.transform_expr(class_member_access.expr)
-        return ir.ClassMemberAccess(class_type_expr=class_type_expr,
+        class_type_expr = self.transform_expr(class_member_access.inner_expr)
+        return ir.ClassMemberAccess(inner_expr=class_type_expr,
                                     member_name=class_member_access.member_name,
-                                    member_type=class_member_access.expr_type)
+                                    expr_type=class_member_access.expr_type)
 
     def transform_not_expr(self, not_expr: ir.NotExpr) -> ir.Expr:
-        expr = self.transform_expr(not_expr.expr)
+        expr = self.transform_expr(not_expr.inner_expr)
         return ir.NotExpr(expr)
 
     def transform_unary_minus_expr(self, unary_minus: ir.UnaryMinusExpr) -> ir.Expr:
-        expr = self.transform_expr(unary_minus.expr)
+        expr = self.transform_expr(unary_minus.inner_expr)
         return ir.UnaryMinusExpr(expr)
 
     def transform_comparison_expr(self, comparison: ir.ComparisonExpr) -> ir.Expr:
-        lhs, rhs = self.transform_exprs([comparison.lhs, comparison.rhs], comparison)
+        lhs, rhs = self.transform_exprs((comparison.lhs, comparison.rhs), comparison)
         return ir.ComparisonExpr(lhs=lhs, rhs=rhs, op=comparison.op)
 
     def transform_int64_binary_op_expr(self, binary_op: ir.Int64BinaryOpExpr) -> ir.Expr:
-        lhs, rhs = self.transform_exprs([binary_op.lhs, binary_op.rhs], binary_op)
+        lhs, rhs = self.transform_exprs((binary_op.lhs, binary_op.rhs), binary_op)
         return ir.Int64BinaryOpExpr(lhs=lhs, rhs=rhs, op=binary_op.op)
 
     def transform_bool_binary_op_expr(self, binary_op: ir.BoolBinaryOpExpr) -> ir.Expr:
-        lhs, rhs = self.transform_exprs([binary_op.lhs, binary_op.rhs], binary_op)
+        lhs, rhs = self.transform_exprs((binary_op.lhs, binary_op.rhs), binary_op)
         return ir.BoolBinaryOpExpr(lhs=lhs, rhs=rhs, op=binary_op.op)
 
     def transform_template_instantiation(self, template_instantiation: ir.TemplateInstantiation) -> ir.Expr:
-        [template_expr, *args] = self.transform_exprs([template_instantiation.template_expr, *template_instantiation.args], template_instantiation)
+        [template_expr, *args] = self.transform_exprs((template_instantiation.template_expr, *template_instantiation.args), template_instantiation)
         return ir.TemplateInstantiation(template_expr=template_expr,
-                                        args=args,
+                                        args=tuple(args),
                                         instantiation_might_trigger_static_asserts=template_instantiation.instantiation_might_trigger_static_asserts)
 
     def transform_pointer_type_expr(self, expr: ir.PointerTypeExpr):
@@ -222,12 +223,12 @@ class Transformation:
         return ir.ArrayTypeExpr(expr)
 
     def transform_function_type_expr(self, expr: ir.FunctionTypeExpr):
-        result = self.transform_exprs([expr.return_type_expr, *expr.arg_exprs], expr)
+        result = self.transform_exprs((expr.return_type_expr, *expr.arg_exprs), expr)
         [return_type_expr, *arg_exprs] = result
-        return ir.FunctionTypeExpr(return_type_expr=return_type_expr, arg_exprs=arg_exprs)
+        return ir.FunctionTypeExpr(return_type_expr=return_type_expr, arg_exprs=tuple(arg_exprs))
 
     def transform_variadic_type_expansion(self, expr: ir.VariadicTypeExpansion):
-        expr = self.transform_expr(expr.expr)
+        expr = self.transform_expr(expr.inner_expr)
         if is_expr_variadic(expr):
             return ir.VariadicTypeExpansion(expr)
         else:
@@ -267,11 +268,11 @@ class NameReplacementTransformation(Transformation):
 
     def transform_template_defn(self, template_defn: ir.TemplateDefn):
         self.writer.write(
-            ir.TemplateDefn(args=[self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args],
+            ir.TemplateDefn(args=tuple(self.transform_template_arg_decl(arg_decl) for arg_decl in template_defn.args),
                             main_definition=self.transform_template_specialization(template_defn.main_definition)
                                            if template_defn.main_definition is not None else None,
-                            specializations=[self.transform_template_specialization(specialization)
-                                                            for specialization in template_defn.specializations],
+                            specializations=tuple(self.transform_template_specialization(specialization)
+                                                  for specialization in template_defn.specializations),
                             name=self._transform_name(template_defn.name),
                             description=template_defn.description,
                             result_element_names=template_defn.result_element_names))

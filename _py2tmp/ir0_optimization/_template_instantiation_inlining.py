@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import Dict, Iterator, Set, List, Union, AbstractSet
+from typing import Dict, Iterator, Set, List, Union, AbstractSet, Tuple
 
 from _py2tmp.compiler.stages import expr_to_cpp_simple, template_defn_to_cpp_simple
 from _py2tmp.compiler.output_files import ObjectFileContent
@@ -37,122 +37,116 @@ _select1st_type_and_name = [
 ]
 
 TEMPLATE_DEFNS_DEFINED_AS_IR0 = [
-                                    ir.TemplateDefn(name='std::is_same',
-                                                    description='',
-                                                    result_element_names=['value'],
-                                                    args=[ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),
-                                                          ir.TemplateArgDecl(name='U', expr_type=ir.TypeType(), is_variadic=False)],
-                                                    main_definition=ir.TemplateSpecialization(args=[
-                                                         ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),
-                                                         ir.TemplateArgDecl(name='U', expr_type=ir.TypeType(), is_variadic=False)],
-                                                                                                patterns=None,
-                                                                                                body=[ir.ConstantDef(name='value',
-                                                                                                                     expr=ir.Literal(False))],
-                                                                                                is_metafunction=True),
-                                                    specializations=[ir.TemplateSpecialization(args=[
-                                                         ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False)],
-                                                                                                 patterns=[ir.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir.TypeType(), is_variadic=False),
-                                                                                                           ir.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir.TypeType(), is_variadic=False)],
-                                                                                                 body=[ir.ConstantDef(name='value',
-                                                                                                                      expr=ir.Literal(True))],
-                                                                                                 is_metafunction=True)]),
-                                    ir.TemplateDefn(name='std::add_pointer',
-                                                    description='',
-                                                    result_element_names=['type'],
-                                                    main_definition=ir.TemplateSpecialization(args=[
-                                                         ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False)],
-                                                                                                patterns=None,
-                                                                                                body=[ir.Typedef(name='type',
-                                                                                                                 expr=ir.PointerTypeExpr(
-                                                                                                                      ir.AtomicTypeLiteral.for_local('T', ir.TypeType(), is_variadic=False)))],
-                                                                                                is_metafunction=True),
-                                                    specializations=[]),
+    ir.TemplateDefn(name='std::is_same',
+                    description='',
+                    result_element_names=frozenset(('value',)),
+                    args=(ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),
+                          ir.TemplateArgDecl(name='U', expr_type=ir.TypeType(), is_variadic=False)),
+                    main_definition=ir.TemplateSpecialization(args=(
+                         ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),
+                         ir.TemplateArgDecl(name='U', expr_type=ir.TypeType(), is_variadic=False)),
+                                                                patterns=None,
+                                                                body=(ir.ConstantDef(name='value',
+                                                                                     expr=ir.Literal(False)),),
+                                                                is_metafunction=True),
+                    specializations=(ir.TemplateSpecialization(args=(ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),),
+                                                               patterns=(ir.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir.TypeType(), is_variadic=False),
+                                                                         ir.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir.TypeType(), is_variadic=False)),
+                                                               body=(ir.ConstantDef(name='value',
+                                                                                    expr=ir.Literal(True)),),
+                                                               is_metafunction=True),)),
+    ir.TemplateDefn(name='std::add_pointer',
+                    description='',
+                    result_element_names=frozenset(('type',)),
+                    main_definition=ir.TemplateSpecialization(args=(ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),),
+                                                              patterns=None,
+                                                              body=(ir.Typedef(name='type',
+                                                                               expr=ir.PointerTypeExpr(
+                                                                                    ir.AtomicTypeLiteral.for_local('T', ir.TypeType(), is_variadic=False))),),
+                                                              is_metafunction=True),
+                    specializations=()),
 
-                                    ir.TemplateDefn(name='std::remove_pointer',
-                                                    description='',
-                                                    result_element_names=['type'],
-                                                    args=[ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False)],
-                                                    main_definition=ir.TemplateSpecialization(args=[
-                                                         ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False)],
-                                                                                                patterns=None,
-                                                                                                body=[ir.Typedef(name='type',
-                                                                                                                 expr=ir.AtomicTypeLiteral.for_local('T', ir.TypeType(), is_variadic=False))],
-                                                                                                is_metafunction=True),
-                                                    specializations=[ir.TemplateSpecialization(args=[
-                                                         ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False)],
-                                                                                                 patterns=[ir.PointerTypeExpr(
-                                                                                                     ir.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir.TypeType(), is_variadic=False))],
-                                                                                                 body=[ir.Typedef(name='type',
-                                                                                                                  expr=ir.AtomicTypeLiteral.for_local('T', ir.TypeType(), is_variadic=False))],
-                                                                                                 is_metafunction=True)]),
+    ir.TemplateDefn(name='std::remove_pointer',
+                    description='',
+                    result_element_names=frozenset(('type',)),
+                    args=(ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),),
+                    main_definition=ir.TemplateSpecialization(args=(ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),),
+                                                              patterns=None,
+                                                              body=(ir.Typedef(name='type',
+                                                                               expr=ir.AtomicTypeLiteral.for_local('T', ir.TypeType(), is_variadic=False)),),
+                                                              is_metafunction=True),
+                    specializations=(ir.TemplateSpecialization(args=(ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),),
+                                                                 patterns=(ir.PointerTypeExpr(
+                                                                     ir.AtomicTypeLiteral.for_local(cpp_type='T', expr_type=ir.TypeType(), is_variadic=False)),),
+                                                                 body=(ir.Typedef(name='type',
+                                                                                  expr=ir.AtomicTypeLiteral.for_local('T', ir.TypeType(), is_variadic=False)),),
+                                                                 is_metafunction=True),)),
 
-                                    # This must be here because it's used in ir0_to_cpp so we can't remove this even if there are no remaining
-                                    # references in ir.
-                                    # template <bool>
-                                    # struct AlwaysTrueFromBool {
-                                    #   static constexpr bool value = true;
-                                    # };
-                                    ir.TemplateDefn(name='AlwaysTrueFromBool',
-                                                    description='',
-                                                    main_definition=ir.TemplateSpecialization(args=[
-                                                         ir.TemplateArgDecl(name='b', expr_type=ir.BoolType(), is_variadic=False)],
-                                                                                                patterns=None,
-                                                                                                body=[ir.ConstantDef(name='value',
-                                                                                                                     expr=ir.Literal(True))],
-                                                                                                is_metafunction=True),
-                                                    result_element_names=['value'],
-                                                    specializations=[]),
+    # This must be here because it's used in ir0_to_cpp so we can't remove this even if there are no remaining
+    # references in ir.
+    # template <bool>
+    # struct AlwaysTrueFromBool {
+    #   static constexpr bool value = true;
+    # };
+    ir.TemplateDefn(name='AlwaysTrueFromBool',
+                    description='',
+                    main_definition=ir.TemplateSpecialization(args=(ir.TemplateArgDecl(name='b', expr_type=ir.BoolType(), is_variadic=False),),
+                                                              patterns=None,
+                                                              body=(ir.ConstantDef(name='value',
+                                                                                   expr=ir.Literal(True)),),
+                                                              is_metafunction=True),
+                    result_element_names=frozenset(('value',)),
+                    specializations=()),
 
-                                    # This must be here because it's used in ir0_to_cpp so we can't remove this even if there are no remaining
-                                    # references in ir.
-                                    # template <int64_t>
-                                    # struct AlwaysTrueFromInt64 {
-                                    #   static constexpr bool value = true;
-                                    # };
-                                    ir.TemplateDefn(name='AlwaysTrueFromInt64',
-                                                    description='',
-                                                    main_definition=ir.TemplateSpecialization(args=[
-                                                         ir.TemplateArgDecl(name='n', expr_type=ir.Int64Type(), is_variadic=False)],
-                                                                                                patterns=None,
-                                                                                                body=[ir.ConstantDef(name='value',
-                                                                                                                     expr=ir.Literal(True))],
-                                                                                                is_metafunction=True),
-                                                    result_element_names=['value'],
-                                                    specializations=[]),
+    # This must be here because it's used in ir0_to_cpp so we can't remove this even if there are no remaining
+    # references in ir.
+    # template <int64_t>
+    # struct AlwaysTrueFromInt64 {
+    #   static constexpr bool value = true;
+    # };
+    ir.TemplateDefn(name='AlwaysTrueFromInt64',
+                    description='',
+                    main_definition=ir.TemplateSpecialization(args=(ir.TemplateArgDecl(name='n', expr_type=ir.Int64Type(), is_variadic=False),),
+                                                              patterns=None,
+                                                              body=(ir.ConstantDef(name='value',
+                                                                                   expr=ir.Literal(True)),),
+                                                              is_metafunction=True),
+                    result_element_names=frozenset(('value',)),
+                    specializations=()),
 
-                                    # This must be here because it's used in ir0_to_cpp so we can't remove this even if there are no remaining
-                                    # references in ir.
-                                    # template <typename>
-                                    # struct AlwaysTrueFromType {
-                                    #   static constexpr bool value = true;
-                                    # };
-                                    ir.TemplateDefn(name='AlwaysTrueFromType',
-                                                    description='',
-                                                    main_definition=ir.TemplateSpecialization(args=[
-                                                         ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False)],
-                                                                                                patterns=None,
-                                                                                                body=[ir.ConstantDef(name='value',
-                                                                                                                     expr=ir.Literal(True))],
-                                                                                                is_metafunction=True),
-                                                    result_element_names=['value'],
-                                                    specializations=[]),
-                                ] + [ir.TemplateDefn(name='Select1st%s%s' % (name1, name2),
-                                                     description='',
-                                                     args=[ir.TemplateArgDecl(expr_type=type1, name='X', is_variadic=False),
-                                                           ir.TemplateArgDecl(expr_type=type2, name='Y', is_variadic=False)],
-                                                     specializations=[],
-                                                     result_element_names=['value'],
-                                                     main_definition=ir.TemplateSpecialization(args=[
-                                                          ir.TemplateArgDecl(expr_type=type1, name='X', is_variadic=False),
-                                                          ir.TemplateArgDecl(expr_type=type2, name='Y', is_variadic=False)],
-                                                                                                 patterns=None,
-                                                                                                 is_metafunction=True,
-                                                                                                 body=[(
-                                                                                                           ir.Typedef if type1.kind == ir.ExprKind.TYPE else ir.ConstantDef)(name='value',
-                                                                                                                                                                             expr=ir.AtomicTypeLiteral.for_local(cpp_type='X', expr_type=type1, is_variadic=False))]))
-                                     for type1, name1 in _select1st_type_and_name
-                                     for type2, name2 in _select1st_type_and_name
-                                     ]
+    # This must be here because it's used in ir0_to_cpp so we can't remove this even if there are no remaining
+    # references in ir.
+    # template <typename>
+    # struct AlwaysTrueFromType {
+    #   static constexpr bool value = true;
+    # };
+    ir.TemplateDefn(name='AlwaysTrueFromType',
+                    description='',
+                    main_definition=ir.TemplateSpecialization(args=(ir.TemplateArgDecl(name='T', expr_type=ir.TypeType(), is_variadic=False),),
+                                                              patterns=None,
+                                                              body=(ir.ConstantDef(name='value',
+                                                                                   expr=ir.Literal(True)),),
+                                                              is_metafunction=True),
+                    result_element_names=frozenset(('value',)),
+                    specializations=()),
+] + [ir.TemplateDefn(name='Select1st%s%s' % (name1, name2),
+                     description='',
+                     args=(ir.TemplateArgDecl(expr_type=type1, name='X', is_variadic=False),
+                           ir.TemplateArgDecl(expr_type=type2, name='Y', is_variadic=False)),
+                     specializations=(),
+                     result_element_names=frozenset(('value',)),
+                     main_definition=ir.TemplateSpecialization(args=(
+                          ir.TemplateArgDecl(expr_type=type1, name='X', is_variadic=False),
+                          ir.TemplateArgDecl(expr_type=type2, name='Y', is_variadic=False)),
+                                                                 patterns=None,
+                                                                 is_metafunction=True,
+                                                                 body=((ir.Typedef if type1.kind == ir.ExprKind.TYPE else ir.ConstantDef)(name='value',
+                                                                                                                                          expr=ir.AtomicTypeLiteral.for_local(cpp_type='X',
+                                                                                                                                                                              expr_type=type1,
+                                                                                                                                                                              is_variadic=False)),)))
+     for type1, name1 in _select1st_type_and_name
+     for type2, name2 in _select1st_type_and_name
+]
 
 def _with_global_inlineable_templates(context_object_file_content: ObjectFileContent,
                                       local_inlineable_templates: List[ir.TemplateDefn]):
@@ -212,14 +206,14 @@ class _TemplateInstantiationInliningTransformation(Transformation):
     def transform_class_member_access(self, class_member_access: ir.ClassMemberAccess):
         class_member_access = super().transform_class_member_access(class_member_access)
         assert isinstance(class_member_access, ir.ClassMemberAccess)
-        if (isinstance(class_member_access.expr, ir.TemplateInstantiation)
-                and isinstance(class_member_access.expr.template_expr, ir.AtomicTypeLiteral)
-                and class_member_access.expr.template_expr.cpp_type in self.inlineable_templates_by_name):
-            template_defn_to_inline = self.inlineable_templates_by_name[class_member_access.expr.template_expr.cpp_type]
+        if (isinstance(class_member_access.inner_expr, ir.TemplateInstantiation)
+                and isinstance(class_member_access.inner_expr.template_expr, ir.AtomicTypeLiteral)
+                and class_member_access.inner_expr.template_expr.cpp_type in self.inlineable_templates_by_name):
+            template_defn_to_inline = self.inlineable_templates_by_name[class_member_access.inner_expr.template_expr.cpp_type]
         else:
             return class_member_access
 
-        unification = unify_template_instantiation_with_definition(class_member_access.expr,
+        unification = unify_template_instantiation_with_definition(class_member_access.inner_expr,
                                                                    self.parent_template_specialization_definitions,
                                                                    class_member_access.member_name,
                                                                    template_defn_to_inline,
@@ -239,26 +233,26 @@ class _TemplateInstantiationInliningTransformation(Transformation):
         new_value_by_pattern_variable: Dict[str, ir.Expr] = dict()
         for var, exprs in value_by_pattern_variable:
             assert isinstance(var, ir.AtomicTypeLiteral)
-            if isinstance(exprs, list):
+            if isinstance(exprs, tuple):
                 [exprs] = exprs
-            assert not isinstance(exprs, list)
+            assert not isinstance(exprs, tuple)
             assert not isinstance(exprs, ir.VariadicTypeExpansion)
             new_value_by_pattern_variable[var.cpp_type] = exprs
         value_by_pattern_variable = new_value_by_pattern_variable
 
-        new_value_by_expanded_pattern_variable: Dict[str, List[ir.Expr]] = dict()
+        new_value_by_expanded_pattern_variable: Dict[str, Tuple[ir.Expr, ...]] = dict()
         for var, exprs in value_by_expanded_pattern_variable:
             if isinstance(var, ir.AtomicTypeLiteral):
-                if not isinstance(exprs, list):
-                    exprs = [exprs]
+                if not isinstance(exprs, tuple):
+                    exprs = (exprs,)
                 for expr in exprs:
-                    assert not isinstance(expr, list)
+                    assert not isinstance(expr, tuple)
                 new_value_by_expanded_pattern_variable[var.cpp_type] = exprs
             else:
-                assert isinstance(var, ir.VariadicTypeExpansion) and isinstance(var.expr, ir.AtomicTypeLiteral)
-                assert isinstance(exprs, list)
+                assert isinstance(var, ir.VariadicTypeExpansion) and isinstance(var.inner_expr, ir.AtomicTypeLiteral)
+                assert isinstance(exprs, tuple)
 
-                new_value_by_expanded_pattern_variable[var.expr.cpp_type] = exprs
+                new_value_by_expanded_pattern_variable[var.inner_expr.cpp_type] = exprs
         value_by_expanded_pattern_variable = new_value_by_expanded_pattern_variable
 
         body = []
@@ -286,7 +280,7 @@ class _TemplateInstantiationInliningTransformation(Transformation):
                 raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 
         transformation = NameReplacementTransformation(new_var_name_by_old_var_name)
-        body = transformation.transform_template_body_elems(body)
+        body = transformation.transform_template_body_elems(tuple(body))
         result_expr = transformation.transform_expr(result_expr)
 
         try:
@@ -299,20 +293,20 @@ class _TemplateInstantiationInliningTransformation(Transformation):
             [message] = e.args
             # We thought we could perform the inlining but we actually can't.
             if ConfigurationKnobs.verbose:
-                print('VariadicVarReplacementNotPossibleException raised for template %s (reason: %s), we can\'t inline that.' % (class_member_access.expr.template_expr.cpp_type, message))
+                print('VariadicVarReplacementNotPossibleException raised for template %s (reason: %s), we can\'t inline that.' % (class_member_access.inner_expr.template_expr.cpp_type, message))
             return class_member_access
 
         result_expr = _ensure_remains_variadic_if_it_was(original_expr=class_member_access,
                                                          transformed_expr=result_expr)
         if (isinstance(result_expr, ir.ClassMemberAccess)
-                and isinstance(result_expr.expr, ir.TemplateInstantiation)
-                and isinstance(result_expr.expr.template_expr, ir.AtomicTypeLiteral)
-                and result_expr.expr.template_expr.cpp_type.startswith('Select1st')
-                and isinstance(class_member_access.expr, ir.TemplateInstantiation)
-                and isinstance(class_member_access.expr.template_expr, ir.AtomicTypeLiteral)
-                and (class_member_access.expr.template_expr.cpp_type.startswith('Select1st')
+                and isinstance(result_expr.inner_expr, ir.TemplateInstantiation)
+                and isinstance(result_expr.inner_expr.template_expr, ir.AtomicTypeLiteral)
+                and result_expr.inner_expr.template_expr.cpp_type.startswith('Select1st')
+                and isinstance(class_member_access.inner_expr, ir.TemplateInstantiation)
+                and isinstance(class_member_access.inner_expr.template_expr, ir.AtomicTypeLiteral)
+                and (class_member_access.inner_expr.template_expr.cpp_type.startswith('Select1st')
                      # TODO: make this more precise. This is meant to match the Always*From* templates.
-                     or class_member_access.expr.template_expr.cpp_type.startswith('Always'))):
+                     or class_member_access.inner_expr.template_expr.cpp_type.startswith('Always'))):
             return class_member_access
 
         self.needs_another_loop = True
@@ -337,10 +331,10 @@ def _ensure_remains_variadic_if_it_was(original_expr: ir.Expr, transformed_expr:
 
     variadic_var = next(iter(non_expanded_vars_in_original.values()))
 
-    return ir.ClassMemberAccess(class_type_expr=ir.TemplateInstantiation(template_expr=select1st_literal(transformed_expr.expr_type, variadic_var.expr_type),
-                                                                         args=[transformed_expr, variadic_var],
-                                                                         instantiation_might_trigger_static_asserts=False),
-                                member_type=transformed_expr.expr_type,
+    return ir.ClassMemberAccess(inner_expr=ir.TemplateInstantiation(template_expr=select1st_literal(transformed_expr.expr_type, variadic_var.expr_type),
+                                                                    args=(transformed_expr, variadic_var),
+                                                                    instantiation_might_trigger_static_asserts=False),
+                                expr_type=transformed_expr.expr_type,
                                 member_name='value')
 
 def perform_template_inlining(template_defn: ir.TemplateDefn,
@@ -352,7 +346,7 @@ def perform_template_inlining(template_defn: ir.TemplateDefn,
                                                                                       identifier_generator,
                                                                                       inline_template_instantiations_with_multiple_references=True)
 
-    def perform_optimization():
+    def perform_optimization() -> Tuple[Tuple[ir.TemplateDefn, ...], bool]:
         if ConfigurationKnobs.verbose:
             print('Considering inlining templates: %s in template: %s' % (inlineable_refs, template_defn.name))
         transformation = _TemplateInstantiationInliningTransformation([template_defn_by_name[template_name]
@@ -362,9 +356,9 @@ def perform_template_inlining(template_defn: ir.TemplateDefn,
         writer = ToplevelWriter(allow_toplevel_elems=False)
         with transformation.set_writer(writer):
             transformation.transform_template_defn(template_defn)
-        return writer.template_defns, transformation.needs_another_loop
+        return tuple(writer.template_defns), transformation.needs_another_loop
 
-    [template_defn], needs_another_loop2 = apply_elem_optimization([template_defn],
+    [template_defn], needs_another_loop2 = apply_elem_optimization((template_defn,),
                                                                    perform_optimization,
                                                                    lambda template_defns: describe_template_defns(template_defns, identifier_generator),
                                                                    optimization_name='TemplateInstantiationInliningTransformation',
@@ -382,7 +376,7 @@ def perform_template_inlining_on_toplevel_elems(toplevel_elems: List[Union[ir.St
                                                                                         identifier_generator,
                                                                                         inline_template_instantiations_with_multiple_references=True)
 
-    def perform_optimization():
+    def perform_optimization() -> Tuple[Tuple[ir.TemplateBodyElement, ...], bool]:
         if ConfigurationKnobs.verbose:
             print('Considering inlining templates: %s in toplevel elems' % inlineable_refs)
         transformation = _TemplateInstantiationInliningTransformation([template_defn_by_name[template_name]

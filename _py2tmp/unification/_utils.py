@@ -11,27 +11,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List, Union
+from typing import Union, Tuple
 
 from _py2tmp.unification import UnificationStrategy
-from _py2tmp.unification._strategy import TermT, ListExpansion
+from _py2tmp.unification._strategy import TermT, TupleExpansion
 
 _NonListExpr = Union[str, TermT]
-_Expr = Union[_NonListExpr, List[_NonListExpr]]
+_Expr = Union[_NonListExpr, Tuple[_NonListExpr, ...]]
 
-def ensure_list(x: _Expr) -> List[_NonListExpr]:
-    if isinstance(x, list):
+def ensure_tuple(x: _Expr) -> Tuple[_NonListExpr, ...]:
+    if isinstance(x, tuple):
         return x
     else:
-        return [x]
+        return x,
 
 def expr_to_string(strategy: UnificationStrategy[TermT], expr: _NonListExpr):
     if isinstance(expr, str):
         return expr
-    elif isinstance(expr, ListExpansion):
+    elif isinstance(expr, TupleExpansion):
         return '(%s)...' % expr_to_string(strategy, expr.expr)
     else:
         return strategy.term_to_string(expr)
 
-def exprs_to_string(strategy: UnificationStrategy[TermT], exprs: List[_NonListExpr]):
+def exprs_to_string(strategy: UnificationStrategy[TermT], exprs: Tuple[_NonListExpr, ...]):
     return '[' + ', '.join(expr_to_string(strategy, expr) for expr in exprs) + ']'
