@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 
 from _py2tmp.compiler.testing import main, assert_compilation_succeeds, assert_conversion_fails
 
@@ -548,9 +549,9 @@ def test_match_expr_containing_comparison_error():
 @assert_conversion_fails
 def test_match_expr_containing_attribute_access_error():
     from tmppy import Type, match
+    @dataclass
     class MyType:
-        def __init__(self, x: bool):
-            self.x = x
+        x: bool
     def f(m: MyType):
         return match(Type('int'))(lambda T: {
             m.x:  # error: Attribute access is not allowed in match patterns

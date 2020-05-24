@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 
 from _py2tmp.compiler.testing import main, assert_compilation_succeeds, assert_conversion_fails, assert_compilation_fails_with_static_assert_error
 
@@ -138,16 +139,16 @@ def test_set_comprehension_bool_to_const_type_ok():
 
 @assert_compilation_succeeds()
 def test_set_comprehension_bool_to_custom_type_ok():
+    @dataclass
     class Bool:
-        def __init__(self, b: bool):
-            self.b = b
+        b: bool
     assert {Bool(x) for x in {True, False}} == {Bool(True), Bool(False)}
 
 @assert_compilation_succeeds()
 def test_set_comprehension_bool_to_const_custom_type_ok():
+    @dataclass
     class Bool:
-        def __init__(self, b: bool):
-            self.b = b
+        b: bool
     assert {Bool(True) for x in {True, False}} == {Bool(True)}
 
 @assert_compilation_succeeds()
@@ -169,16 +170,16 @@ def test_set_comprehension_int_to_const_type_ok():
 
 @assert_compilation_succeeds()
 def test_set_comprehension_int_to_custom_type_ok():
+    @dataclass
     class Int:
-        def __init__(self, n: int):
-            self.n = n
+        n: int
     assert {Int(x) for x in {1, -1, 0, 2}} == {Int(1), Int(-1), Int(0), Int(2)}
 
 @assert_compilation_succeeds()
 def test_set_comprehension_int_to_const_custom_type_ok():
+    @dataclass
     class Int:
-        def __init__(self, n: int):
-            self.n = n
+        n: int
     assert {Int(3) for x in {1, -1, 0}} == {Int(3)}
 
 @assert_compilation_succeeds()
@@ -228,17 +229,17 @@ def test_set_comprehension_type_to_const_type_ok():
 @assert_compilation_succeeds()
 def test_set_comprehension_type_to_custom_type_ok():
     from tmppy import Type
+    @dataclass
     class TypeWrapper:
-        def __init__(self, x: Type):
-            self.x = x
+        x: Type
     assert {TypeWrapper(x) for x in {Type('int'), Type('float'), Type('float')}} == {TypeWrapper(Type('int')), TypeWrapper(Type('float'))}
 
 @assert_compilation_succeeds()
 def test_set_comprehension_type_to_const_custom_type_ok():
     from tmppy import Type
+    @dataclass
     class TypeWrapper:
-        def __init__(self, x: Type):
-            self.x = x
+        x: Type
     assert {TypeWrapper(Type('double')) for x in {Type('int'), Type('float'), Type('float')}} == {TypeWrapper(Type('double'))}
 
 @assert_compilation_succeeds()
@@ -348,9 +349,9 @@ def test_set_comprehension_from_type_set_throws_in_function_caught_success():
 @assert_compilation_fails_with_static_assert_error('Something went wrong')
 def test_set_comprehension_from_custom_type_set_throws_toplevel():
     from tmppy import empty_set
+    @dataclass
     class Int:
-        def __init__(self, n: int):
-            self.n = n
+        n: int
     class MyError(Exception):
         def __init__(self, b: bool):
             self.message = 'Something went wrong'
@@ -363,9 +364,9 @@ def test_set_comprehension_from_custom_type_set_throws_toplevel():
 
 @assert_compilation_succeeds()
 def test_set_comprehension_from_custom_type_set_throws_in_function_caught_success():
+    @dataclass
     class Int:
-        def __init__(self, n: int):
-            self.n = n
+        n: int
     class MyError(Exception):
         def __init__(self, b: bool):
             self.message = 'Something went wrong'
@@ -482,10 +483,9 @@ def test_list_of_sets_equality_error():
 @assert_conversion_fails
 def test_custom_type_containing_set_equality_error():
     from typing import Set
+    @dataclass
     class MyType:
-        def __init__(self,
-                     s: Set[int]):
-            self.s = s
+        s: Set[int]
     assert MyType({1}) == MyType({1})  # error: Type not supported in equality comparison: MyType
 
 @assert_compilation_succeeds()

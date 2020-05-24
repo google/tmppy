@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 
 from _py2tmp.compiler.testing import main, assert_compilation_succeeds, assert_compilation_fails_with_static_assert_error, assert_conversion_fails
 
@@ -76,26 +77,26 @@ def test_int_not_equal_success():
 
 @assert_compilation_succeeds()
 def test_custom_class_equal_success():
+    @dataclass
     class MyType:
-        def __init__(self, x: bool, y: int):
-            self.x = x
-            self.y = y
+        x: bool
+        y: int
     assert MyType(True, 15) == MyType(True, 15)
 
 @assert_compilation_succeeds()
 def test_custom_class_first_field_not_equal_success():
+    @dataclass
     class MyType:
-        def __init__(self, x: bool, y: int):
-            self.x = x
-            self.y = y
+        x: bool
+        y: int
     assert MyType(True, 15) != MyType(False, 15)
 
 @assert_compilation_succeeds()
 def test_custom_class_second_field_not_equal_success():
+    @dataclass
     class MyType:
-        def __init__(self, x: bool, y: int):
-            self.x = x
-            self.y = y
+        x: bool
+        y: int
     assert MyType(True, 15) != MyType(True, 17)
 
 if __name__== '__main__':

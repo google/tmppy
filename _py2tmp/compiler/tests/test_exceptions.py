@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 
 from _py2tmp.compiler.testing import main, assert_compilation_succeeds, assert_conversion_fails, assert_compilation_fails_with_static_assert_error
 
@@ -247,9 +248,9 @@ def test_raise_from_error():
 
 @assert_conversion_fails
 def test_raise_custom_type_not_exception_error():
+    @dataclass
     class MyType:  # note: The type MyType was defined here.
-        def __init__(self, b: bool):
-            self.b = b
+        b: bool
     def f(b: bool):
         raise MyType(True)  # error: Can't raise an exception of type "MyType", because it's not a subclass of Exception.
 

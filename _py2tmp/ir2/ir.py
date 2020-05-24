@@ -43,7 +43,15 @@ class TypeType(ExprType):
 @dataclass(frozen=True)
 class FunctionType(ExprType):
     argtypes: Tuple[ExprType, ...]
+    # If present, it matches element-by-element argtypes and the function can be called with these keyword args.
+    argnames: Optional[Tuple[str, ...]] = field(compare=False)
     returns: ExprType
+
+    def __post_init__(self) -> None:
+        if self.argnames:
+            assert len(self.argtypes) == len(self.argnames)
+            for arg in self.argnames:
+                assert arg
 
     def __str__(self) -> str:
         return "(%s) -> %s" % (

@@ -21,7 +21,7 @@ from py2tmp.testing import main, assert_compilation_succeeds
 
 @assert_conversion_fails
 def test_import_unsupported_module():
-    from os import path  # error: Module not found. The only modules that can be imported are the builtin modules \(tmppy, typing\) and the modules in the specified object files \(none\)
+    from os import path  # error: Module not found. The only modules that can be imported are the builtin modules \(dataclasses, tmppy, typing\) and the modules in the specified object files \(none\)
 
 @assert_conversion_fails
 def test_import_unsupported_symbol():

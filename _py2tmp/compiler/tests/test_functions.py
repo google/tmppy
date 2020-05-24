@@ -237,8 +237,8 @@ def test_function_call_wrong_number_of_arguments():
 @assert_conversion_fails
 def test_function_call_wrong_argument_type():
     from tmppy import Type
-    def f(
-            x: bool):  # note: The definition of x was here
+    def f(  # note: The definition of f was here
+            x: bool):
         return x
     def g(x: Type):  # note: The definition of x was here
         return f(x)  # error: Type mismatch for argument 0: expected type bool but was: Type
@@ -246,8 +246,8 @@ def test_function_call_wrong_argument_type():
 @assert_conversion_fails
 def test_function_call_wrong_argument_type_expression():
     from tmppy import Type
-    def f(
-            x: bool):  # note: The definition of x was here
+    def f(  # note: The definition of f was here
+            x: bool):
         return x
     def g(x: Type):
         return f([x])  # error: Type mismatch for argument 0: expected type bool but was: List\[Type\]
@@ -284,8 +284,8 @@ def test_function_expression_call_wrong_argument_type():
 
 @assert_conversion_fails
 def test_function_call_additional_and_missing_keyword_arguments():
-    def f(foo: bool,  # note: The definition of foo was here
-          bar: bool):  # note: The definition of bar was here
+    def f(foo: bool,  # note: The definition of f was here
+          bar: bool):
         return foo
     def g(x: bool):
         return f(fooz=x, barz=x) # error: Incorrect arguments in call to f. Missing arguments: {bar, foo}. Specified arguments that don't exist: {barz, fooz}
@@ -299,9 +299,9 @@ def test_function_call_additional_keyword_arguments():
 
 @assert_conversion_fails
 def test_function_call_missing_keyword_arguments():
-    def f(foo: bool,  # note: The definition of foo was here
+    def f(foo: bool,  # note: The definition of f was here
           bar: bool,
-          baz: bool):  # note: The definition of baz was here
+          baz: bool):
         return foo
     def g(x: bool):
         return f(bar=x) # error: Incorrect arguments in call to f. Missing arguments: {baz, foo}
@@ -309,8 +309,8 @@ def test_function_call_missing_keyword_arguments():
 @assert_conversion_fails
 def test_function_call_wrong_keyword_argument_type():
     from tmppy import Type
-    def f(
-            x: bool): # note: The definition of x was here
+    def f(  # note: The definition of f was here
+            x: bool):
         return x
     def g(x: Type):  # note: The definition of x was here
         return f(x=x) # error: Type mismatch for argument x: expected type bool but was: Type
@@ -318,16 +318,16 @@ def test_function_call_wrong_keyword_argument_type():
 @assert_conversion_fails
 def test_function_call_wrong_keyword_argument_type_expression():
     from tmppy import Type
-    def f(
-            x: bool): # note: The definition of x was here
+    def f(  # note: The definition of f was here
+            x: bool):
         return x
     def g(x: Type):
-        return f(x=[x]) # error: Type mismatch for argument x: expected type bool but was: List\[Type\]
+        return f(x=[x])  # error: Type mismatch for argument x: expected type bool but was: List\[Type\]
 
 @assert_conversion_fails
 def test_function_argument_call_keyword_argument_error():
     from typing import Callable
-    def g(f: Callable[[bool], bool], # note: The definition of f was here
+    def g(f: Callable[[bool], bool],
           x: bool):
         return f(
             foo=x)  # error: Keyword arguments can only be used when calling a specific function or constructing a specific type, not when calling other callable objects. Please switch to non-keyword arguments.
