@@ -906,6 +906,8 @@ def stmts_to_ir1(stmts: Tuple[ir2.Stmt, ...], writer: StmtWriter):
         elif isinstance(stmt, ir2.TryExcept):
             try_except_stmt_to_ir1(stmt, stmts[index + 1:], writer)
             return
+        elif isinstance(stmt, ir2.PassStmt):
+            pass
         else:
             raise NotImplementedError('Unexpected statement: %s' % str(stmt.__class__))
 

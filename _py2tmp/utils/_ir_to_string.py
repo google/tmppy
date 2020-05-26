@@ -21,7 +21,7 @@ def ir_to_string(ir_elem, line_indent=''):
         return 'None'
     elif isinstance(ir_elem, (str, bool, int, Enum)):
         return repr(ir_elem)
-    elif isinstance(ir_elem, (list, tuple)):
+    elif isinstance(ir_elem, (list, tuple, set, frozenset)):
         return ('['
                 + ','.join('\n' + next_line_indent + ir_to_string(child_node, next_line_indent)
                            for child_node in ir_elem)

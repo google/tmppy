@@ -25,6 +25,11 @@ def test_reference_to_undefined_identifier_error():
         return undefined_identifier  # error: Reference to undefined variable/function
     '''
 
+@assert_compilation_succeeds()
+def test_empty_source():
+    '''
+    '''
+
 @assert_conversion_fails
 def test_unsupported_statement_error():
     def f(x: bool):

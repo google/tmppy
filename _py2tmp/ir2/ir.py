@@ -14,6 +14,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, FrozenSet
 
+from _py2tmp.coverage.source_branch import SourceBranch
 
 @dataclass(frozen=True)
 class ExprType:
@@ -90,6 +91,7 @@ class CustomType(ExprType):
     arg_types: Tuple[CustomTypeArgDecl, ...]
     is_exception_class: bool
     exception_message: Optional[str]
+    constructor_source_branches: Tuple[SourceBranch, ...]
 
     def __post_init__(self) -> None:
         assert (self.exception_message is not None) == self.is_exception_class
@@ -126,6 +128,8 @@ class MatchCase:
     matched_variadic_var_names: FrozenSet[str]
     type_patterns: Tuple[Expr, ...]
     expr: Expr
+    match_case_start_branch: SourceBranch
+    match_case_end_branch: SourceBranch
 
     def is_main_definition(self) -> bool:
         matched_var_names_set = set(self.matched_var_names).union(self.matched_variadic_var_names)
@@ -466,6 +470,8 @@ class ListComprehension(Expr):
     list_expr: Expr
     loop_var: VarReference
     result_elem_expr: Expr
+    loop_body_start_branch: SourceBranch
+    loop_exit_branch: SourceBranch
 
     def __post_init__(self) -> None:
         self._init_expr_type(ListType(self.result_elem_expr.expr_type))
@@ -476,6 +482,8 @@ class SetComprehension(Expr):
     set_expr: Expr
     loop_var: VarReference
     result_elem_expr: Expr
+    loop_body_start_branch: SourceBranch
+    loop_exit_branch: SourceBranch
 
     def __post_init__(self) -> None:
         self._init_expr_type(SetType(self.result_elem_expr.expr_type))
@@ -486,9 +494,14 @@ class Stmt:
     pass
 
 @dataclass(frozen=True)
+class PassStmt(Stmt):
+    source_branch: SourceBranch
+
+@dataclass(frozen=True)
 class Assert(Stmt):
     expr: Expr
     message: str
+    source_branch: SourceBranch
 
     def __post_init__(self) -> None:
         assert isinstance(self.expr.expr_type, BoolType)
@@ -497,6 +510,7 @@ class Assert(Stmt):
 class Assignment(Stmt):
     lhs: VarReference
     rhs: Expr
+    source_branch: SourceBranch
 
     def __post_init__(self) -> None:
         assert self.lhs.expr_type == self.rhs.expr_type
@@ -506,6 +520,7 @@ class UnpackingAssignment(Stmt):
     lhs_list: Tuple[VarReference, ...]
     rhs: Expr
     error_message: str
+    source_branch: SourceBranch
 
     def __post_init__(self) -> None:
         assert isinstance(self.rhs.expr_type, ListType)
@@ -516,6 +531,7 @@ class UnpackingAssignment(Stmt):
 @dataclass(frozen=True)
 class ReturnStmt(Stmt):
     expr: Expr
+    source_branch: SourceBranch
 
 @dataclass(frozen=True)
 class IfStmt(Stmt):
@@ -529,6 +545,7 @@ class IfStmt(Stmt):
 @dataclass(frozen=True)
 class RaiseStmt(Stmt):
     expr: Expr
+    source_branch: SourceBranch
 
     def __post_init__(self) -> None:
         assert isinstance(self.expr.expr_type, CustomType)
@@ -540,6 +557,8 @@ class TryExcept(Stmt):
     caught_exception_type: ExprType
     caught_exception_name: str
     except_body: Tuple[Stmt, ...]
+    try_branch: SourceBranch
+    except_branch: SourceBranch
 
 @dataclass(frozen=True)
 class FunctionDefn:
@@ -553,4 +572,6 @@ class Module:
     function_defns: Tuple[FunctionDefn, ...]
     assertions: Tuple[Assert, ...]
     custom_types: Tuple[CustomType, ...]
+    public_names: FrozenSet[str]
+    pass_stmts: Tuple[PassStmt, ...]
     public_names: FrozenSet[str]

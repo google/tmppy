@@ -20,7 +20,7 @@ from _py2tmp.compiler.output_files import ObjectFileContent
 
 
 class GetReferencedGlobalFunctionNamesTransformation(Transformation):
-    def __init__(self):
+    def __init__(self) -> None:
         self.referenced_global_function_names = set()
 
     def transform_var_reference(self, expr: ir.VarReference):
@@ -34,7 +34,7 @@ def get_referenced_global_function_names(function_defn: ir.FunctionDefn):
     return transformation.referenced_global_function_names
 
 class FunctionContainsRaiseStmt(Transformation):
-    def __init__(self):
+    def __init__(self) -> None:
         self.found_raise_stmt = False
 
     def transform_raise_stmt(self, stmt: ir.RaiseStmt):
@@ -47,7 +47,7 @@ def function_contains_raise_stmt(function_defn: ir.FunctionDefn):
     return transformation.found_raise_stmt
 
 class FunctionContainsVarReferenceThatCanThrow(Transformation):
-    def __init__(self):
+    def __init__(self) -> None:
         self.found_var_ref_that_throws = False
 
     def transform_var_reference(self, expr: ir.VarReference):

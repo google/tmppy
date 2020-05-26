@@ -24,7 +24,9 @@ class Transformation:
                           assertions=tuple(self.transform_assert(assertion)
                                            for assertion in module.assertions),
                           custom_types=module.custom_types,
-                          public_names=module.public_names)
+                          public_names=module.public_names,
+                          pass_stmts=tuple(self.transform_pass_stmt(stmt)
+                                           for stmt in module.pass_stmts))
 
     def transform_function_defn(self, function_defn: ir2.FunctionDefn) -> ir2.FunctionDefn:
         return ir2.FunctionDefn(name=function_defn.name,
@@ -55,6 +57,8 @@ class Transformation:
             return self.transform_assignment(stmt)
         elif isinstance(stmt, ir2.Assert):
             return self.transform_assert(stmt)
+        elif isinstance(stmt, ir2.PassStmt):
+            return self.transform_pass_stmt(stmt)
         else:
             raise NotImplementedError('Unexpected stmt: %s' % stmt.__class__.__name__)
 
@@ -62,11 +66,13 @@ class Transformation:
         return ir2.TryExcept(try_body=self.transform_stmts(try_except.try_body),
                              except_body=self.transform_stmts(try_except.except_body),
                              caught_exception_name=try_except.caught_exception_name,
-                             caught_exception_type=try_except.caught_exception_type)
-
+                             caught_exception_type=try_except.caught_exception_type,
+                             try_branch=try_except.try_branch,
+                             except_branch=try_except.except_branch)
 
     def transform_raise_stmt(self, stmt: ir2.RaiseStmt) -> ir2.RaiseStmt:
-        return ir2.RaiseStmt(expr=self.transform_expr(stmt.expr))
+        return ir2.RaiseStmt(expr=self.transform_expr(stmt.expr),
+                             source_branch=stmt.source_branch)
 
     def transform_if_stmt(self, stmt: ir2.IfStmt) -> ir2.IfStmt:
         return ir2.IfStmt(cond_expr=self.transform_expr(stmt.cond_expr),
@@ -74,21 +80,28 @@ class Transformation:
                           else_stmts=self.transform_stmts(stmt.else_stmts))
 
     def transform_return_stmt(self, stmt: ir2.ReturnStmt) -> ir2.ReturnStmt:
-        return ir2.ReturnStmt(expr=self.transform_expr(stmt.expr))
+        return ir2.ReturnStmt(expr=self.transform_expr(stmt.expr),
+                              source_branch=stmt.source_branch)
 
     def transform_unpacking_assignment(self, assignment: ir2.UnpackingAssignment) -> ir2.UnpackingAssignment:
         return ir2.UnpackingAssignment(lhs_list=tuple(self.transform_var_reference(var)
                                                       for var in assignment.lhs_list),
                                        rhs=self.transform_expr(assignment.rhs),
-                                       error_message=assignment.error_message)
+                                       error_message=assignment.error_message,
+                                       source_branch=assignment.source_branch)
 
     def transform_assignment(self, assignment: ir2.Assignment) -> ir2.Assignment:
         return ir2.Assignment(lhs=self.transform_var_reference(assignment.lhs),
-                              rhs=self.transform_expr(assignment.rhs))
+                              rhs=self.transform_expr(assignment.rhs),
+                              source_branch=assignment.source_branch)
 
     def transform_assert(self, stmt: ir2.Assert) -> ir2.Assert:
         return ir2.Assert(expr=self.transform_expr(stmt.expr),
-                          message=stmt.message)
+                          message=stmt.message,
+                          source_branch=stmt.source_branch)
+
+    def transform_pass_stmt(self, stmt: ir2.PassStmt) -> ir2.PassStmt:
+        return ir2.PassStmt(source_branch=stmt.source_branch)
 
     def transform_expr(self, expr: ir2.Expr) -> ir2.Expr:
         if isinstance(expr, ir2.SetComprehension):
@@ -165,12 +178,16 @@ class Transformation:
     def transform_set_comprehension(self, comprehension: ir2.SetComprehension) -> ir2.SetComprehension:
         return ir2.SetComprehension(set_expr=self.transform_expr(comprehension.set_expr),
                                     loop_var=self.transform_var_reference(comprehension.loop_var),
-                                    result_elem_expr=self.transform_expr(comprehension.result_elem_expr))
+                                    result_elem_expr=self.transform_expr(comprehension.result_elem_expr),
+                                    loop_body_start_branch=comprehension.loop_body_start_branch,
+                                    loop_exit_branch=comprehension.loop_exit_branch)
 
     def transform_list_comprehension(self, comprehension: ir2.ListComprehension) -> ir2.ListComprehension:
         return ir2.ListComprehension(list_expr=self.transform_expr(comprehension.list_expr),
                                      loop_var=self.transform_var_reference(comprehension.loop_var),
-                                     result_elem_expr=self.transform_expr(comprehension.result_elem_expr))
+                                     result_elem_expr=self.transform_expr(comprehension.result_elem_expr),
+                                     loop_body_start_branch=comprehension.loop_body_start_branch,
+                                     loop_exit_branch=comprehension.loop_exit_branch)
 
     def transform_list_concat_expr(self, expr: ir2.ListConcatExpr) -> ir2.ListConcatExpr:
         return ir2.ListConcatExpr(lhs=self.transform_expr(expr.lhs),
@@ -293,10 +310,12 @@ class Transformation:
                                                for match_case in expr.match_cases))
 
     def transform_match_case(self, match_case: ir2.MatchCase) -> ir2.MatchCase:
-      return ir2.MatchCase(type_patterns=match_case.type_patterns,
-                           matched_var_names=match_case.matched_var_names,
-                           matched_variadic_var_names=match_case.matched_variadic_var_names,
-                           expr=self.transform_expr(match_case.expr))
+        return ir2.MatchCase(type_patterns=match_case.type_patterns,
+                             matched_var_names=match_case.matched_var_names,
+                             matched_variadic_var_names=match_case.matched_variadic_var_names,
+                             expr=self.transform_expr(match_case.expr),
+                             match_case_start_branch=match_case.match_case_start_branch,
+                             match_case_end_branch=match_case.match_case_end_branch)
 
     def transform_var_reference(self, expr: ir2.VarReference) -> ir2.VarReference:
         return expr

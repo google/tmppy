@@ -100,11 +100,11 @@ class Visitor:
             self.visit_expr(pattern)
     
     def visit_match_expr(self, match_expr: ir.MatchExpr):
-        for expr in match_expr.match_cases:
-            self.visit_match_case(expr)
+        for match_case in match_expr.match_cases:
+            self.visit_match_case(match_case)
         for expr in match_expr.matched_exprs:
             self.visit_expr(expr)
-    
+
     def visit_bool_literal(self, bool_literal: ir.BoolLiteral):
         pass
     
@@ -236,6 +236,9 @@ class Visitor:
         elif isinstance(stmt, ir.TryExcept):
             self.visit_try_except_stmt(stmt)
             return
+        elif isinstance(stmt, ir.PassStmt):
+            self.visit_pass_stmt(stmt)
+            return
         else:
             raise NotImplementedError('Unexpected statement: %s' % str(stmt.__class__))
 
@@ -266,6 +269,9 @@ class Visitor:
         for child_stmt in itertools.chain(stmt.try_body, stmt.except_body):
             self.visit_stmt(child_stmt)
 
+    def visit_pass_stmt(self, stmt: ir.PassStmt):
+        pass
+
     def visit_function_defn(self, function_defn: ir.FunctionDefn):
         for stmt in function_defn.body:
             self.visit_stmt(stmt)
@@ -277,3 +283,5 @@ class Visitor:
             self.visit_assert(assert_stmt)
         for custom_type in module.custom_types:
             self.visit_custom_type_defn(custom_type)
+        for pass_stmt in module.pass_stmts:
+            self.visit_pass_stmt(pass_stmt)

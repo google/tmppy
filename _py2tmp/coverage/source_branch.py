@@ -11,9 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 
-from . import ir as ir2
-from ._transformation import Transformation
-from ._visitor import Visitor
-from ._free_variables import get_free_variables
-from ._return_type import get_return_type
+@dataclass(frozen=True)
+class SourceBranch:
+    file_name: str
+    source_line: int
+    dest_line: int

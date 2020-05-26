@@ -27,28 +27,40 @@ import tempfile
 import textwrap
 import traceback
 import unittest
+from collections import defaultdict
 from functools import wraps, lru_cache
-from typing import Callable, Iterable, Any, List
+from typing import Callable, Iterable, Any, Tuple, Set, Dict, List, Sequence
 
 # noinspection PyUnresolvedReferences
 import py2tmp_test_config as config
 import pytest
 from absl.testing import parameterized, absltest
+from coverage import Coverage, FileReporter
+from coverage.config import CoverageConfig
+from coverage.parser import PythonParser, ByteParser, AstArcAnalyzer
+from coverage.python import PythonFileReporter
+from coverage.report import Reporter
+from coverage.results import Analysis
 
+from _py2tmp import ir2
 from _py2tmp.compiler._compile import compile_source_code
 from _py2tmp.compiler._link import compute_merged_header_for_linking
 from _py2tmp.compiler.output_files import ObjectFileContent, merge_object_files
 from _py2tmp.compiler.stages import CompilationError
+from _py2tmp.coverage.source_branch import SourceBranch
 from _py2tmp.ir0 import ir0
 from _py2tmp.ir0_optimization import ConfigurationKnobs, DEFAULT_VERBOSE_SETTING
+from _py2tmp.utils import ir_to_string
 
 CHECK_TESTS_WERE_FULLY_OPTIMIZED = True
 
 TEST_MODULE_NAME = 'test_module'
 BUILTINS_OBJECT_FILE_PATH = './builtins.tmppyc'
 
+
 class TestFailedException(Exception):
     pass
+
 
 def bisect_with_predicate(last_known_good: int, first_known_bad: int, is_good: Callable[[int], bool]):
     assert last_known_good < first_known_bad
@@ -62,6 +74,7 @@ def bisect_with_predicate(last_known_good: int, first_known_bad: int, is_good: C
         assert last_known_good < first_known_bad
     assert last_known_good + 1 == first_known_bad
     return first_known_bad
+
 
 # run takes a bool allow_toplevel_static_asserts_after_optimization and returns the cpp source.
 def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reaching_max_optimization_loops=False):
@@ -94,7 +107,8 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
             if ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0 and not allow_reaching_max_optimization_loops:
                 ConfigurationKnobs.verbose = True
                 optimized_cpp_source = run(True)
-                raise TestFailedException('The test passed, but hit max_num_remaining_loops.\nOptimized C++ code:\n%s' % optimized_cpp_source)
+                raise TestFailedException(
+                    'The test passed, but hit max_num_remaining_loops.\nOptimized C++ code:\n%s' % optimized_cpp_source)
             if CHECK_TESTS_WERE_FULLY_OPTIMIZED:
                 run(False)
             return
@@ -117,17 +131,23 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
                 run(True)
             except TestFailedException as e:
                 [message] = e.args
-                raise TestFailedException('Found test that fails after ir0_optimization.\n%s\nNon-optimized C++ code:\n%s' % (textwrap.dedent(message),
-                                                                                                                              cpp_source))
+                raise TestFailedException(
+                    'Found test that fails after ir0_optimization.\n%s\nNon-optimized C++ code:\n%s' % (
+                    textwrap.dedent(message),
+                    cpp_source))
             except (AttributeError, AssertionError):
-                raise TestFailedException('Found test that fails after ir0_optimization.\n%s\nNon-optimized C++ code:\n%s' % (traceback.format_exc(),
-                                                                                                                              cpp_source))
+                raise TestFailedException(
+                    'Found test that fails after ir0_optimization.\n%s\nNon-optimized C++ code:\n%s' % (
+                    traceback.format_exc(),
+                    cpp_source))
 
-            raise Exception('This should never happen, the test failed before with the same max_num_optimization_steps.')
+            raise Exception(
+                'This should never happen, the test failed before with the same max_num_optimization_steps.')
         else:
             # Fails without ir0_optimization, succeeds with.
             # Bisect to find the issue.
-            bisect_result = bisect_with_predicate(0, ConfigurationKnobs.optimization_step_counter, lambda n: not predicate(n))
+            bisect_result = bisect_with_predicate(0, ConfigurationKnobs.optimization_step_counter,
+                                                  lambda n: not predicate(n))
             ConfigurationKnobs.verbose = True
             ConfigurationKnobs.max_num_optimization_steps = bisect_result
             run(True)
@@ -136,8 +156,10 @@ def run_test_with_optional_optimization(run: Callable[[bool], str], allow_reachi
         [message] = e.args
         pytest.fail(message, pytrace=False)
 
-def pretty_print_command(command):
+
+def pretty_print_command(command: Sequence[str]):
     return ' '.join(shlex.quote(x) for x in command)
+
 
 def multiple_parameters(*param_lists):
     param_lists = [[params if isinstance(params, tuple) else (params,)
@@ -150,6 +172,7 @@ def multiple_parameters(*param_lists):
                   for args2 in param_list]
     return parameterized.parameters(*result)
 
+
 def multiple_named_parameters(*param_lists):
     result = param_lists[0]
     for param_list in param_lists[1:]:
@@ -158,10 +181,12 @@ def multiple_named_parameters(*param_lists):
                   for name2, *args2 in param_list]
     return parameterized.named_parameters(*result)
 
+
 def add_line_numbers(source_code):
     lines = source_code.splitlines()
     last_line_num_length = len(str(len(lines)))
     return '\n'.join('%%%sd: %%s' % last_line_num_length % (n + 1, line) for n, line in enumerate(lines))
+
 
 class CommandFailedException(Exception):
     def __init__(self, command, stdout, stderr, error_code):
@@ -180,7 +205,9 @@ class CommandFailedException(Exception):
 
         Stderr:
         {stderr}
-        ''').format(command=pretty_print_command(self.command), error_code=self.error_code, stdout=self.stdout, stderr=self.stderr)
+        ''').format(command=pretty_print_command(self.command), error_code=self.error_code, stdout=self.stdout,
+                    stderr=self.stderr)
+
 
 def run_command(executable: str, args: List[str] = ()):
     command = [executable, *args]
@@ -201,8 +228,10 @@ def run_command(executable: str, args: List[str] = ()):
     # print('')
     return stdout, stderr
 
+
 def run_compiled_executable(executable: str):
     return run_command(executable)
+
 
 class CompilationFailedException(Exception):
     def __init__(self, command, error_message) -> None:
@@ -215,6 +244,7 @@ class CompilationFailedException(Exception):
         Error message:
         {error_message}
         ''').format(command=pretty_print_command(self.command), error_message=self.error_message)
+
 
 class PosixCompiler:
     def __init__(self) -> None:
@@ -231,22 +261,23 @@ class PosixCompiler:
     def compile_and_link(self, source: str, include_dirs: List[str], output_file_name: str, args: List[str] = ()):
         self._compile(
             include_dirs,
-            args = (
-                [source]
-                + config.ADDITIONAL_LINKER_FLAGS.split()
-                + args
-                + ['-o', output_file_name]
+            args=(
+                    [source]
+                    + config.ADDITIONAL_LINKER_FLAGS.split()
+                    + args
+                    + ['-o', output_file_name]
             ))
 
     def _compile(self, include_dirs: List[str], args: List[str]):
         include_flags = ['-I%s' % include_dir for include_dir in include_dirs]
         args = (
-            ['-W', '-Wall', '-g0', '-Werror', '-std=c++11']
-            + include_flags
-            + config.ADDITIONAL_COMPILER_FLAGS.split()
-            + args
+                ['-W', '-Wall', '-g0', '-Werror', '-std=c++11']
+                + include_flags
+                + config.ADDITIONAL_COMPILER_FLAGS.split()
+                + args
         )
         run_command(self.executable, args)
+
 
 class MsvcCompiler:
     def __init__(self) -> None:
@@ -256,7 +287,7 @@ class MsvcCompiler:
     def compile_discarding_output(self, source: str, include_dirs: List[str], args: List[str] = ()) -> None:
         try:
             args = args + ['/c', source]
-            self._compile(include_dirs, args = args)
+            self._compile(include_dirs, args=args)
         except CommandFailedException as e:
             # Note that we use stdout here, unlike above. MSVC reports compilation warnings and errors on stdout.
             raise CompilationFailedException(e.command, e.stdout)
@@ -265,21 +296,22 @@ class MsvcCompiler:
         self._compile(
             include_dirs,
             args=(
-                [source]
-                + config.ADDITIONAL_LINKER_FLAGS.split()
-                + args
-                + ['/Fe' + output_file_name]
+                    [source]
+                    + config.ADDITIONAL_LINKER_FLAGS.split()
+                    + args
+                    + ['/Fe' + output_file_name]
             ))
 
     def _compile(self, include_dirs: List[str], args: List[str]):
         include_flags = ['-I%s' % include_dir for include_dir in include_dirs]
         args = (
-            ['/nologo', '/FS', '/W4', '/D_SCL_SECURE_NO_WARNINGS', '/WX']
-            + include_flags
-            + config.ADDITIONAL_COMPILER_FLAGS.split()
-            + args
+                ['/nologo', '/FS', '/W4', '/D_SCL_SECURE_NO_WARNINGS', '/WX']
+                + include_flags
+                + config.ADDITIONAL_COMPILER_FLAGS.split()
+                + args
         )
         run_command(self.executable, args)
+
 
 if config.CXX_COMPILER_NAME == 'MSVC':
     compiler = MsvcCompiler()
@@ -290,6 +322,7 @@ else:
 
 _assert_helper = unittest.TestCase()
 
+
 def _create_temporary_file(file_content: str, file_name_suffix: str = ''):
     file_descriptor, file_name = tempfile.mkstemp(text=True, suffix=file_name_suffix)
     file = os.fdopen(file_descriptor, mode='w')
@@ -297,12 +330,14 @@ def _create_temporary_file(file_content: str, file_name_suffix: str = ''):
     file.close()
     return file_name
 
+
 def _cap_to_lines(s: str, n: int):
     lines = s.splitlines()
     if len(lines) <= n:
         return s
     else:
         return '\n'.join(lines[0:n] + ['...'])
+
 
 def try_remove_temporary_file(filename: str):
     # noinspection PyBroadException
@@ -313,10 +348,12 @@ def try_remove_temporary_file(filename: str):
         # This shouldn't cause the tests to fail, so we ignore the exception and go ahead.
         pass
 
-def expect_cpp_code_compile_error_helper(check_error_fun: Callable[[CompilationFailedException, Iterable[str], Iterable[str], Iterable[str]], Any],
-                                         tmppy_source: str, 
-                                         object_file_content: ObjectFileContent,
-                                         cxx_source: str):
+
+def expect_cpp_code_compile_error_helper(
+        check_error_fun: Callable[[CompilationFailedException, Iterable[str], Iterable[str], Iterable[str]], Any],
+        tmppy_source: str,
+        object_file_content: ObjectFileContent,
+        cxx_source: str):
     main_module = object_file_content.modules_by_name[TEST_MODULE_NAME]
 
     source_file_name = _create_temporary_file(cxx_source, file_name_suffix='.cpp')
@@ -337,9 +374,9 @@ def expect_cpp_code_compile_error_helper(check_error_fun: Callable[[CompilationF
             
             C++ source code:
             {cxx_source}
-            ''').format(tmppy_source = add_line_numbers(tmppy_source),
+            ''').format(tmppy_source=add_line_numbers(tmppy_source),
                         tmppy_ir1=str(main_module.ir1_module),
-                        cxx_source = add_line_numbers(cxx_source)))
+                        cxx_source=add_line_numbers(cxx_source)))
     except CompilationFailedException as e1:
         e = e1
 
@@ -355,8 +392,9 @@ def expect_cpp_code_compile_error_helper(check_error_fun: Callable[[CompilationF
 
     try_remove_temporary_file(source_file_name)
 
-def expect_cpp_code_generic_compile_error(expected_error_regex: str, 
-                                          tmppy_source: str, 
+
+def expect_cpp_code_generic_compile_error(expected_error_regex: str,
+                                          tmppy_source: str,
                                           object_file_contents: ObjectFileContent,
                                           cxx_source: str):
     """
@@ -366,7 +404,7 @@ def expect_cpp_code_generic_compile_error(expected_error_regex: str,
            e.g. 'NoBindingFoundForAbstractClassError<ScalerImpl>'.
     :param cxx_source: The second part of the source code. This will be dedented.
     """
-    
+
     main_module = object_file_contents.modules_by_name[TEST_MODULE_NAME]
 
     expected_error_regex = expected_error_regex.replace(' ', '')
@@ -389,12 +427,12 @@ def expect_cpp_code_generic_compile_error(expected_error_regex: str,
                 
                 C++ source:
                 {cxx_source}
-                ''').format(expected_error = expected_error_regex,
+                ''').format(expected_error=expected_error_regex,
                             compiler_command=e.command,
-                            tmppy_source = add_line_numbers(tmppy_source),
-                            tmppy_ir1 = str(main_module.ir1_module),
-                            cxx_source = add_line_numbers(cxx_source),
-                            error_message = error_message_head))
+                            tmppy_source=add_line_numbers(tmppy_source),
+                            tmppy_ir1=str(main_module.ir1_module),
+                            cxx_source=add_line_numbers(cxx_source),
+                            error_message=error_message_head))
 
     expect_cpp_code_compile_error_helper(check_error, tmppy_source, object_file_contents, cxx_source)
 
@@ -455,7 +493,8 @@ def expect_cpp_code_compile_error(
                             if not match:
                                 raise Exception('Failed to parse replacement line: %s' % replacement_line) from e
                             (type_variable, type_expression) = match.groups()
-                            actual_py2tmp_error = re.sub(r'\b' + type_variable + r'\b', type_expression, actual_py2tmp_error)
+                            actual_py2tmp_error = re.sub(r'\b' + type_variable + r'\b', type_expression,
+                                                         actual_py2tmp_error)
                     except Exception:
                         raise Exception('Failed to parse MSVC template type arguments')
                 break
@@ -474,12 +513,12 @@ def expect_cpp_code_compile_error(
                     
                     C++ source code:
                     {cxx_source}
-                    ''').format(expected_error = expected_py2tmp_error_regex,
-                                compiler_command = e.command,
-                                tmppy_source = add_line_numbers(tmppy_source),
-                                tmppy_ir1 = str(main_module.ir1_module),
-                                cxx_source = add_line_numbers(cxx_source),
-                                error_message = error_message_head))
+                    ''').format(expected_error=expected_py2tmp_error_regex,
+                                compiler_command=e.command,
+                                tmppy_source=add_line_numbers(tmppy_source),
+                                tmppy_ir1=str(main_module.ir1_module),
+                                cxx_source=add_line_numbers(cxx_source),
+                                error_message=error_message_head))
 
         for line_number, line in enumerate(error_message_lines):
             match = re.search(py2tmp_error_message_extraction_regex, line)
@@ -502,12 +541,12 @@ def expect_cpp_code_compile_error(
                     
                     C++ source code:
                     {cxx_source}
-                    ''').format(expected_error = expected_py2tmp_error_regex,
+                    ''').format(expected_error=expected_py2tmp_error_regex,
                                 compiler_command=e.command,
-                                tmppy_source = add_line_numbers(tmppy_source),
-                                tmppy_ir1 = str(main_module.ir1_module),
-                                cxx_source = add_line_numbers(cxx_source),
-                                error_message = error_message_head))
+                                tmppy_source=add_line_numbers(tmppy_source),
+                                tmppy_ir1=str(main_module.ir1_module),
+                                cxx_source=add_line_numbers(cxx_source),
+                                error_message=error_message_head))
 
         try:
             regex_search_result = re.search(expected_py2tmp_error_regex, actual_py2tmp_error)
@@ -532,14 +571,14 @@ def expect_cpp_code_compile_error(
                     
                     C++ source code:
                     {cxx_source}
-                    '''.format(expected_py2tmp_error_regex = expected_py2tmp_error_regex,
-                               actual_py2tmp_error = actual_py2tmp_error,
-                               expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
-                               actual_static_assert_error = actual_static_assert_error,
-                               tmppy_source = add_line_numbers(tmppy_source),
-                               tmppy_ir1 = str(main_module.ir1_module),
-                               cxx_source = add_line_numbers(cxx_source),
-                               error_message = error_message_head)))
+                    '''.format(expected_py2tmp_error_regex=expected_py2tmp_error_regex,
+                               actual_py2tmp_error=actual_py2tmp_error,
+                               expected_py2tmp_error_desc_regex=expected_py2tmp_error_desc_regex,
+                               actual_static_assert_error=actual_static_assert_error,
+                               tmppy_source=add_line_numbers(tmppy_source),
+                               tmppy_ir1=str(main_module.ir1_module),
+                               cxx_source=add_line_numbers(cxx_source),
+                               error_message=error_message_head)))
         try:
             regex_search_result = re.search(expected_py2tmp_error_desc_regex, actual_static_assert_error)
         except Exception as e:
@@ -563,14 +602,14 @@ def expect_cpp_code_compile_error(
                     
                     C++ source code:
                     {cxx_source}
-                    '''.format(expected_py2tmp_error_regex = expected_py2tmp_error_regex,
-                               actual_py2tmp_error = actual_py2tmp_error,
-                               expected_py2tmp_error_desc_regex = expected_py2tmp_error_desc_regex,
-                               actual_static_assert_error = actual_static_assert_error,
-                               tmppy_source = add_line_numbers(tmppy_source),
-                               tmppy_ir1 = str(main_module.ir1_module),
-                               cxx_source = add_line_numbers(cxx_source),
-                               error_message = error_message_head)))
+                    '''.format(expected_py2tmp_error_regex=expected_py2tmp_error_regex,
+                               actual_py2tmp_error=actual_py2tmp_error,
+                               expected_py2tmp_error_desc_regex=expected_py2tmp_error_desc_regex,
+                               actual_static_assert_error=actual_static_assert_error,
+                               tmppy_source=add_line_numbers(tmppy_source),
+                               tmppy_ir1=str(main_module.ir1_module),
+                               cxx_source=add_line_numbers(cxx_source),
+                               error_message=error_message_head)))
 
         # 6 is just a constant that works for both g++ (<=6.0.0 at least) and clang++ (<=4.0.0 at least).
         # It might need to be changed.
@@ -590,12 +629,12 @@ def expect_cpp_code_compile_error(
                     
                     C++ source code:
                     {cxx_source}
-                    '''.format(actual_py2tmp_error_line_number = actual_py2tmp_error_line_number,
-                               actual_static_assert_error_line_number = actual_static_assert_error_line_number,
-                               tmppy_source = add_line_numbers(tmppy_source),
-                               tmppy_ir1 = str(main_module.ir1_module),
-                               cxx_source = add_line_numbers(cxx_source),
-                               error_message = error_message_head)))
+                    '''.format(actual_py2tmp_error_line_number=actual_py2tmp_error_line_number,
+                               actual_static_assert_error_line_number=actual_static_assert_error_line_number,
+                               tmppy_source=add_line_numbers(tmppy_source),
+                               tmppy_ir1=str(main_module.ir1_module),
+                               cxx_source=add_line_numbers(cxx_source),
+                               error_message=error_message_head)))
 
         for line in error_message_lines[:max(actual_py2tmp_error_line_number, actual_static_assert_error_line_number)]:
             if re.search('tmppy::impl', line):
@@ -604,7 +643,8 @@ def expect_cpp_code_compile_error(
 
     expect_cpp_code_compile_error_helper(check_error, tmppy_source, object_file_content, cxx_source)
 
-def expect_cpp_code_success(tmppy_source: str, 
+
+def expect_cpp_code_success(tmppy_source: str,
                             object_file_content: ObjectFileContent,
                             cxx_source: str,
                             main_module_name=TEST_MODULE_NAME):
@@ -613,7 +653,7 @@ def expect_cpp_code_success(tmppy_source: str,
 
     :param cxx_source: The C++ source code. This will be dedented.
     """
-    
+
     main_module = object_file_content.modules_by_name[main_module_name]
 
     if 'main(' not in cxx_source:
@@ -653,10 +693,10 @@ def expect_cpp_code_success(tmppy_source: str,
                 C++ source:
                 {cxx_source}
                 ''').format(compiler_command=e.command,
-                            tmppy_source = add_line_numbers(tmppy_source),
-                            tmppy_ir1 = str(main_module.ir1_module),
-                            cxx_source = add_line_numbers(cxx_source),
-                            error_message = _cap_to_lines(e.stderr, 40)))
+                            tmppy_source=add_line_numbers(tmppy_source),
+                            tmppy_ir1=str(main_module.ir1_module),
+                            cxx_source=add_line_numbers(cxx_source),
+                            error_message=_cap_to_lines(e.stderr, 40)))
 
     try:
         run_compiled_executable(output_file_name)
@@ -674,13 +714,14 @@ def expect_cpp_code_success(tmppy_source: str,
                 
                 C++ source:
                 {cxx_source}
-                ''').format(tmppy_source = add_line_numbers(tmppy_source),
-                            cxx_source = add_line_numbers(cxx_source),
-                            error_message = _cap_to_lines(e.stderr, 40)))
+                ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                            cxx_source=add_line_numbers(cxx_source),
+                            error_message=_cap_to_lines(e.stderr, 40)))
 
     # Note that we don't delete the temporary files if the test failed. This is intentional, keeping them around helps debugging the failure.
     try_remove_temporary_file(source_file_name)
     try_remove_temporary_file(output_file_name)
+
 
 def _get_function_body(f):
     # The body of some tests is a multiline string because they would otherwise cause the pytest test file to fail
@@ -698,6 +739,7 @@ def _get_function_body(f):
 
     return textwrap.dedent(''.join(source_code))
 
+
 @lru_cache()
 def get_builtins_object_file_content():
     with open(BUILTINS_OBJECT_FILE_PATH, 'rb') as file:
@@ -705,20 +747,152 @@ def get_builtins_object_file_content():
     assert isinstance(object_file, ObjectFileContent)
     return object_file
 
+
+class _GetInstrumentedBranches(ir2.Visitor):
+    def __init__(self):
+        self.branches: Dict[Tuple[int, int], List] = defaultdict(list)
+
+    def _add_branch(self, branch: SourceBranch, ir_element: Any):
+        self.branches[(branch.source_line, branch.dest_line)].append(ir_element)
+
+    def visit_match_case(self, match_case: ir2.ir.MatchCase):
+        super().visit_match_case(match_case)
+        self._add_branch(match_case.match_case_start_branch, match_case)
+        self._add_branch(match_case.match_case_end_branch, match_case)
+
+    def visit_list_comprehension(self, expr: ir2.ir.ListComprehension):
+        super().visit_list_comprehension(expr)
+        self._add_branch(expr.loop_body_start_branch, expr)
+        self._add_branch(expr.loop_exit_branch, expr)
+
+    def visit_set_comprehension(self, expr: ir2.ir.SetComprehension):
+        super().visit_set_comprehension(expr)
+        self._add_branch(expr.loop_body_start_branch, expr)
+        self._add_branch(expr.loop_exit_branch, expr)
+
+    def visit_assert(self, stmt: ir2.ir.Assert):
+        super().visit_assert(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+    def visit_assignment(self, stmt: ir2.ir.Assignment):
+        super().visit_assignment(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+    def visit_unpacking_assignment(self, stmt: ir2.ir.UnpackingAssignment):
+        super().visit_unpacking_assignment(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+    def visit_return_stmt(self, stmt: ir2.ir.ReturnStmt):
+        super().visit_return_stmt(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+    def visit_raise_stmt(self, stmt: ir2.ir.RaiseStmt):
+        super().visit_raise_stmt(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+    def visit_try_except_stmt(self, stmt: ir2.ir.TryExcept):
+        super().visit_try_except_stmt(stmt)
+        self._add_branch(stmt.try_branch, stmt)
+        self._add_branch(stmt.except_branch, stmt)
+
+    def visit_custom_type_defn(self, custom_type: ir2.ir.CustomType):
+        super().visit_custom_type_defn(custom_type)
+        for branch in custom_type.constructor_source_branches:
+            self._add_branch(branch, custom_type)
+
+    def visit_pass_stmt(self, stmt: ir2.ir.PassStmt):
+        super().visit_pass_stmt(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+class _FakeByteParser:
+    def __init__(self, num_lines: int):
+        self.num_lines = num_lines
+
+    def _find_statements(self) -> Set[int]:
+        return set(range(self.num_lines))
+
+def _extract_all_branches(python_source: str):
+    parser = PythonParser(text=python_source)
+    # This is a hack to force-disable Python optimization, otherwise Python will optimize away statements like
+    # "if False: ..." and that would cause unexpected diffs in the coverage branches. Even when passing optimize=0 to
+    # compile().
+    parser._byte_parser = _FakeByteParser(num_lines=len(python_source.splitlines())+1)
+    parser.parse_source()
+    return parser.arcs()
+
+class BranchExplainer:
+    def __init__(self, python_source: str):
+        _, tmp_file = tempfile.mkstemp(suffix='.py', text=True)
+        with open(tmp_file, 'w') as f:
+            f.write(python_source)
+        config = CoverageConfig()
+        config.branch = True
+        coverage = Coverage(branch=True)
+        coverage.start()
+        coverage.stop()
+
+        self.tmp_file = tmp_file
+        self.delegate = PythonFileReporter(morf=tmp_file, coverage=coverage)
+
+    def explain(self, start: int, end: int):
+        return self.delegate.missing_arc_description(start, end)
+
+    def __enter__(self) -> 'BranchExplainer':
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        os.remove(self.tmp_file)
+
 def compile(python_source,
             module_name=TEST_MODULE_NAME,
             context_object_file_content: ObjectFileContent = ObjectFileContent({})):
-    return compile_source_code(module_name=module_name,
-                                       source_code=python_source,
-                                       context_object_file_content=merge_object_files([get_builtins_object_file_content(),
-                                                                                       context_object_file_content]),
-                                       include_intermediate_irs_for_debugging=True)
+    object_file_content = compile_source_code(module_name=module_name, source_code=python_source,
+                                              context_object_file_content=merge_object_files(
+                                                  [get_builtins_object_file_content(), context_object_file_content]),
+                                              include_intermediate_irs_for_debugging=True)
+    if module_name == TEST_MODULE_NAME:
+        visitor = _GetInstrumentedBranches()
+        module_info = object_file_content.modules_by_name[TEST_MODULE_NAME]
+        visitor.visit_module(module_info.ir2_module)
+
+        actual_branches = visitor.branches
+        expected_branches = _extract_all_branches(python_source)
+
+        if actual_branches.keys() != expected_branches:
+            with BranchExplainer(python_source) as explainer:
+                raise TestFailedException(
+                    'Detected a wrong set of instrumentable branches in IR2.\n'
+                    'Source code:\n'
+                    + add_line_numbers(python_source) + '\n'
+                    + 'Generated branches that should not be generated:\n'
+                    + ''.join('* %s: %s, in the IR nodes:\n%s\n' % (branch,
+                                                                    explainer.explain(branch[0], branch[1]),
+                                                                    ', '.join(str(element)
+                                                                              for element in elements))
+                              for branch, elements in sorted(actual_branches.items())
+                              if branch not in expected_branches)
+                    + 'Not generated branches that should have been generated:\n'
+                    + ''.join('* %s: %s\n' % (branch,
+                                              explainer.explain(branch[0], branch[1]))
+                              for branch in sorted(expected_branches)
+                              if branch not in actual_branches)
+                    + 'Matching branches (generated correctly):\n'
+                    + ''.join('* %s: %s (in nodes: %s)\n' % (branch,
+                                                             explainer.explain(branch[0], branch[1]),
+                                                             ', '.join(element.__class__.__name__
+                                                                       for element in elements))
+                              for branch, elements in sorted(actual_branches.items())
+                              if branch in expected_branches))
+
+    return object_file_content
+
 
 def link(object_file_content: ObjectFileContent,
          main_module_name=TEST_MODULE_NAME):
     from _py2tmp.compiler._link import link
     return link(main_module_name=main_module_name,
                 object_file_content=object_file_content)
+
 
 def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization):
     object_file_content = None
@@ -735,19 +909,20 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
                 
                 TMPPy source:
                 {tmppy_source}
-                ''').format(tmppy_source = add_line_numbers(tmppy_source),
-                            error_message = e.args[0]))
-    
+                ''').format(tmppy_source=add_line_numbers(tmppy_source),
+                            error_message=e.args[0]))
+
     assert object_file_content
 
     if not allow_toplevel_static_asserts_after_optimization:
         def identifier_generator_fun():
             for i in itertools.count():
                 yield 'TmppyInternal2_' + str(i)
+
         identifier_generator = identifier_generator_fun()
         merged_header_for_linking = compute_merged_header_for_linking(main_module_name=TEST_MODULE_NAME,
-                                                                              object_file_content=object_file_content,
-                                                                              identifier_generator=identifier_generator)
+                                                                      object_file_content=object_file_content,
+                                                                      identifier_generator=identifier_generator)
 
         for elem in merged_header_for_linking.toplevel_content:
             if isinstance(elem, ir0.StaticAssert):
@@ -780,19 +955,24 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
     cpp_source = link(object_file_content)
     return object_file_content, cpp_source
 
+
 def assert_compilation_succeeds(extra_cpp_prelude='', always_allow_toplevel_static_asserts_after_optimization=False):
     def eval(f):
         @wraps(f)
         def wrapper():
             def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
-                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization or always_allow_toplevel_static_asserts_after_optimization)
+                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
+                                                                                    allow_toplevel_static_asserts_after_optimization or always_allow_toplevel_static_asserts_after_optimization)
                 expect_cpp_code_success(tmppy_source, object_file_content, extra_cpp_prelude + cpp_source)
                 return cpp_source
+
             run_test_with_optional_optimization(run_test)
+
         return wrapper
 
     return eval
+
 
 def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
     def eval(f):
@@ -801,16 +981,19 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
             tmppy_source = _get_function_body(f)
 
             def run_test(allow_toplevel_static_asserts_after_optimization: bool):
-                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
+                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
+                                                                                    allow_toplevel_static_asserts_after_optimization=True)
                 expect_cpp_code_success(tmppy_source, object_file_content, extra_cpp_prelude + cpp_source)
                 return cpp_source
+
             run_test_with_optional_optimization(run_test)
 
             try:
                 ConfigurationKnobs.verbose = DEFAULT_VERBOSE_SETTING
                 ConfigurationKnobs.max_num_optimization_steps = -1
                 ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
-                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
+                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
+                                                                                    allow_toplevel_static_asserts_after_optimization=True)
                 main_module = object_file_content.modules_by_name[TEST_MODULE_NAME]
 
                 cpp_source_lines = cpp_source.splitlines(True)
@@ -844,20 +1027,24 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
                                         tmppy_ir1=str(main_module.ir1_module),
                                         cpp_source=str(cpp_source),
                                         expected_cpp_source=str(expected_cpp_source[1:]),
-                                        cpp_source_diff=''.join(difflib.unified_diff(expected_cpp_source[1:].splitlines(True),
-                                                                                     cpp_source.splitlines(True),
-                                                                                     fromfile='expected.h',
-                                                                                     tofile='actual.h'))))
+                                        cpp_source_diff=''.join(
+                                            difflib.unified_diff(expected_cpp_source[1:].splitlines(True),
+                                                                 cpp_source.splitlines(True),
+                                                                 fromfile='expected.h',
+                                                                 tofile='actual.h'))))
 
                 if ConfigurationKnobs.reached_max_num_remaining_loops_counter != 0:
-                    raise TestFailedException('The generated code was the expected one, but hit max_num_remaining_loops')
+                    raise TestFailedException(
+                        'The generated code was the expected one, but hit max_num_remaining_loops')
 
             except TestFailedException as e:
                 [message] = e.args
                 pytest.fail(message, pytrace=False)
 
         return wrapper
+
     return eval
+
 
 # TODO: Check that the error is s reported on the desired line (moving the regex to a comment in the test).
 def assert_compilation_fails_with_generic_error(expected_error_regex: str, allow_reaching_max_optimization_loops=False):
@@ -866,16 +1053,21 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str, allow
         def wrapper():
             def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
-                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
+                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
+                                                                                    allow_toplevel_static_asserts_after_optimization=True)
                 expect_cpp_code_generic_compile_error(
                     expected_error_regex,
                     tmppy_source,
                     object_file_content,
                     cpp_source)
                 return cpp_source
+
             run_test_with_optional_optimization(run_test, allow_reaching_max_optimization_loops)
+
         return wrapper
+
     return eval
+
 
 # TODO: Check that the error is s reported on the desired line (moving the regex to a comment in the test).
 def assert_compilation_fails_with_static_assert_error(expected_error_regex: str):
@@ -884,24 +1076,31 @@ def assert_compilation_fails_with_static_assert_error(expected_error_regex: str)
         def wrapper():
             def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
-                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization=True)
+                object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
+                                                                                    allow_toplevel_static_asserts_after_optimization=True)
                 expect_cpp_code_generic_compile_error(
                     r'(error: static assertion failed: |error: static_assert failed .|static_assert failed due to requirement.*)' + expected_error_regex,
                     tmppy_source,
                     object_file_content,
                     cpp_source)
                 return cpp_source
+
             run_test_with_optional_optimization(run_test)
+
         return wrapper
+
     return eval
+
 
 def _split_list(l, num_elems_in_chunk):
     args = [iter(l)] * num_elems_in_chunk
     return list(itertools.zip_longest(*args))
 
+
 def _get_line_from_diagnostic(diagnostic):
     matches = re.match('<unknown>:([0-9]*):', diagnostic)
     return int(matches.group(1))
+
 
 def check_compilation_error(e: CompilationError,
                             tmppy_source: str):
@@ -928,7 +1127,7 @@ def check_compilation_error(e: CompilationError,
                 
                 TMPPy source:
                 {tmppy_source}
-                ''').format(tmppy_source = add_line_numbers(tmppy_source)))
+                ''').format(tmppy_source=add_line_numbers(tmppy_source)))
 
     # py2tmp diagnostics take up 3 lines each, e.g.:
     # <unknown>:2:11: error: Empty lists are not currently supported.
@@ -947,9 +1146,9 @@ def check_compilation_error(e: CompilationError,
                 
                 TMPPy source:
                 {tmppy_source}
-                ''').format(expected_error_regex = expected_error_regex,
-                            actual_error = '\n'.join(error_diagnostic),
-                            tmppy_source = add_line_numbers(tmppy_source)))
+                ''').format(expected_error_regex=expected_error_regex,
+                            actual_error='\n'.join(error_diagnostic),
+                            tmppy_source=add_line_numbers(tmppy_source)))
 
     matches = re.match('<unknown>:([0-9]*):', error_diagnostic[0])
     actual_error_line = int(matches.group(1))
@@ -964,17 +1163,18 @@ def check_compilation_error(e: CompilationError,
                 {tmppy_source}
                 ''').format(actual_error_line=actual_error_line,
                             expected_error_line=expected_error_line,
-                            expected_error_regex = expected_error_regex,
-                            actual_error = '\n'.join(error_diagnostic),
-                            tmppy_source = add_line_numbers(tmppy_source)))
+                            expected_error_regex=expected_error_regex,
+                            actual_error='\n'.join(error_diagnostic),
+                            tmppy_source=add_line_numbers(tmppy_source)))
 
     actual_note_by_line = {_get_line_from_diagnostic(note[0]): note
                            for note in py2tmp_diagnostics[1:]}
     for expected_note_line, expected_note_regex in expected_note_by_line.items():
         actual_note = actual_note_by_line.get(expected_note_line)
         if not actual_note:
-            raise Exception('Expected the note %s on line %s but no note was emitted mentioning this line. Emitted notes: %s' % (
-                expected_note_regex, expected_note_line, json.dumps(actual_note_by_line, indent=4)))
+            raise Exception(
+                'Expected the note %s on line %s but no note was emitted mentioning this line. Emitted notes: %s' % (
+                    expected_note_regex, expected_note_line, json.dumps(actual_note_by_line, indent=4)))
         expected_note_regex = '<unknown>:[0-9]*:[0-9]*: note: ' + expected_note_regex
         if not re.match(expected_note_regex, actual_note[0]):
             raise TestFailedException(textwrap.dedent('''\
@@ -985,9 +1185,9 @@ def check_compilation_error(e: CompilationError,
                     
                     TMPPy source:
                     {tmppy_source}
-                    ''').format(expected_note_regex = expected_note_regex,
-                                actual_note = '\n'.join(actual_note),
-                                tmppy_source = add_line_numbers(tmppy_source)))
+                    ''').format(expected_note_regex=expected_note_regex,
+                                actual_note='\n'.join(actual_note),
+                                tmppy_source=add_line_numbers(tmppy_source)))
 
     for actual_note_line, actual_note in actual_note_by_line.items():
         expected_note = expected_note_by_line.get(actual_note_line)
@@ -998,8 +1198,9 @@ def check_compilation_error(e: CompilationError,
                     
                     TMPPy source:
                     {tmppy_source}
-                    ''').format(actual_note = '\n'.join(actual_note),
-                                tmppy_source = add_line_numbers(tmppy_source)))
+                    ''').format(actual_note='\n'.join(actual_note),
+                                tmppy_source=add_line_numbers(tmppy_source)))
+
 
 def assert_conversion_fails(f):
     @wraps(f)
@@ -1028,9 +1229,11 @@ def assert_conversion_fails(f):
             check_compilation_error(e, tmppy_source)
 
             return '(no C++ source)'
+
         run_test_with_optional_optimization(run_test)
 
     return wrapper
+
 
 # Note: this is not the main function of this file, it's meant to be used as main function from test_*.py files.
 def main():

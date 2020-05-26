@@ -12,8 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from . import ir as ir2
-from ._transformation import Transformation
-from ._visitor import Visitor
-from ._free_variables import get_free_variables
-from ._return_type import get_return_type
+from .source_branch import SourceBranch
