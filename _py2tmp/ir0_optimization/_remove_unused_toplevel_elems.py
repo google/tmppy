@@ -22,7 +22,7 @@ from _py2tmp.ir0 import ir
 def remove_unused_toplevel_elems(header: ir.Header, linking_final_header: bool):
     toplevel_elem_names = {elem.name
                            for elem in itertools.chain(header.toplevel_content, header.template_defns)
-                           if not isinstance(elem, ir.StaticAssert)}
+                           if not isinstance(elem, (ir.StaticAssert, ir.NoOpStmt))}
 
     public_names = header.public_names
     if not linking_final_header:
@@ -54,7 +54,7 @@ def remove_unused_toplevel_elems(header: ir.Header, linking_final_header: bool):
     return ir.Header(template_defns=tuple(template_defn for template_defn in header.template_defns if
                                           template_defn.name in used_elem_names),
                      toplevel_content=tuple(elem for elem in header.toplevel_content if
-                                            isinstance(elem, ir.StaticAssert) or elem.name in used_elem_names),
+                                            isinstance(elem, (ir.StaticAssert, ir.NoOpStmt)) or elem.name in used_elem_names),
                      public_names=header.public_names,
                      split_template_name_by_old_name_and_result_element_name=header.split_template_name_by_old_name_and_result_element_name,
                      check_if_error_specializations=header.check_if_error_specializations)

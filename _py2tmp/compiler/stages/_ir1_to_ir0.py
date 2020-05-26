@@ -364,6 +364,10 @@ def match_expr_to_ir0(match_expr: ir1.MatchExpr,
         match_case_writer = TemplateBodyWriter(writer,
                                                parent_arbitrary_arg=writer.parent_arbitrary_arg,
                                                parent_return_type=type_to_ir0(match_case.expr.expr_type))
+        if match_case.match_case_start_branch:
+            match_case_writer.write(ir0.NoOpStmt(match_case.match_case_start_branch))
+        if match_case.match_case_end_branch:
+            match_case_writer.write(ir0.NoOpStmt(match_case.match_case_end_branch))
         for list_var_name, variadic_var_name in variadic_var_name_by_list_var_name.items():
             match_case_writer.write(ir0.Typedef(name=list_var_name,
                                                 expr=ir0.TemplateInstantiation(template_expr=GlobalLiterals.LIST,
@@ -728,6 +732,8 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
     helper_template_body_writer = TemplateBodyWriter(writer,
                                                      parent_arbitrary_arg=template_arg_decl,
                                                      parent_return_type=result_elem_type)
+    if expr.loop_body_start_branch:
+        helper_template_body_writer.write(ir0.NoOpStmt(expr.loop_body_start_branch))
     result_expr, error_expr = function_call_to_ir0(expr.result_elem_expr, helper_template_body_writer)
     helper_template_body_writer.write_result_body_elements(result_expr=result_expr, error_expr=error_expr)
     helper_template_defn = ir0.TemplateDefn(name=writer.new_id(),
@@ -769,6 +775,9 @@ def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writ
     # using Z = typename TransformTypeListWithHelper<L, Y, Z>::type;
 
     writer.write_toplevel_elem(helper_template_defn)
+
+    if expr.loop_exit_branch:
+        writer.write(ir0.NoOpStmt(expr.loop_exit_branch))
 
     return _create_metafunction_call(template_expr=transform_list_template_literal,
                                      args=(var_reference_to_ir0(expr.list_var), *forwarded_vars),
@@ -1019,6 +1028,12 @@ def parameter_pack_expansion_expr_to_ir0(expr: ir1.ParameterPackExpansion):
 def assert_to_ir0(assert_stmt: ir1.Assert, writer: Writer):
     expr = var_reference_to_ir0(assert_stmt.var)
     writer.write(ir0.StaticAssert(expr=expr, message=assert_stmt.message))
+    if assert_stmt.source_branch:
+        writer.write(ir0.NoOpStmt(assert_stmt.source_branch))
+
+def pass_stmt_to_ir0(stmt: ir1.PassStmt, writer: Writer):
+    if stmt.source_branch:
+        writer.write(ir0.NoOpStmt(stmt.source_branch))
 
 def assignment_to_ir0(assignment: ir1.Assignment, writer: Writer):
     lhs = var_reference_to_ir0(assignment.lhs)
@@ -1034,6 +1049,9 @@ def assignment_to_ir0(assignment: ir1.Assignment, writer: Writer):
         lhs2 = var_reference_to_ir0(assignment.lhs2)
         assert isinstance(rhs_error.expr_type, ir0.TypeType)
         writer.write(ir0.Typedef(name=lhs2.cpp_type, expr=rhs_error))
+
+    if assignment.source_branch:
+        writer.write(ir0.NoOpStmt(assignment.source_branch))
 
 def custom_type_defn_to_ir0(custom_type: ir1.CustomType, public_names: Set[str], writer: ToplevelWriter):
     # For example, from the following custom type:
@@ -1116,7 +1134,9 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, public_names: Set[str],
                                       specializations=(),
                                       main_definition=ir0.TemplateSpecialization(args=tuple(arg_decls),
                                                                                  patterns=None,
-                                                                                 body=(constructor_fn_typedef,
+                                                                                 body=(*(ir0.NoOpStmt(branch)
+                                                                                         for branch in custom_type.constructor_source_branches),
+                                                                                       constructor_fn_typedef,
                                                                                        constructor_fn_error_typedef),
                                                                                  is_metafunction=True),
                                       result_element_names=frozenset(('type', 'error')))
@@ -1166,6 +1186,9 @@ def return_stmt_to_ir0(return_stmt: ir1.ReturnStmt, writer: TemplateBodyWriter):
     writer.write_result_body_elements(result_expr=result_var,
                                       error_expr=error_var)
 
+    if return_stmt.source_branch:
+        writer.write(ir0.NoOpStmt(return_stmt.source_branch))
+
 def _get_free_vars_in_elements(elements: Sequence[ir0.TemplateBodyElement]):
     free_var_names = set()
     bound_var_names = set()
@@ -1176,6 +1199,8 @@ def _get_free_vars_in_elements(elements: Sequence[ir0.TemplateBodyElement]):
                 if var.cpp_type not in bound_var_names and var.cpp_type not in free_var_names:
                     free_var_names.add(var.cpp_type)
                     free_vars.append(var)
+        elif isinstance(element, ir0.NoOpStmt):
+            pass
         else:
             raise NotImplementedError('Unexpected element type: %s' % str(element.__class__))
         if isinstance(element, ir0.ConstantDef) or isinstance(element, ir0.Typedef):
@@ -1389,6 +1414,9 @@ def unpacking_assignment_to_ir0(assignment: ir1.UnpackingAssignment,
                                      result_element_names=frozenset(('value', 'type', 'error')))
     writer.write_toplevel_elem(template_defn)
 
+    if assignment.source_branch:
+        writer.write(ir0.NoOpStmt(assignment.source_branch))
+
     function_call_expr, function_call_error_expr = _create_metafunction_call(ir0.AtomicTypeLiteral.from_nonlocal_template_defn(template_defn,
                                                                                                                                is_metafunction_that_may_return_error=True),
                                                                              args=(rhs_var, *forwarded_vars_exprs),
@@ -1406,6 +1434,8 @@ def stmts_to_ir0(stmts: Sequence[ir1.Stmt],
             assert_to_ir0(stmt, writer)
         elif isinstance(stmt, ir1.Assignment):
             assignment_to_ir0(stmt, writer)
+        elif isinstance(stmt, ir1.PassStmt):
+            pass_stmt_to_ir0(stmt, writer)
         elif isinstance(stmt, ir1.ReturnStmt):
             assert isinstance(writer, TemplateBodyWriter)
             return_stmt_to_ir0(stmt, writer)
@@ -1416,8 +1446,6 @@ def stmts_to_ir0(stmts: Sequence[ir1.Stmt],
         elif isinstance(stmt, ir1.UnpackingAssignment):
             unpacking_assignment_to_ir0(stmt, stmts[index + 1:], write_continuation_fun_call, writer)
             break
-        elif isinstance(stmt, ir1.PassStmt):
-            pass
         else:
             raise NotImplementedError('Unexpected statement type: ' + stmt.__class__.__name__)
 
@@ -1689,7 +1717,7 @@ def module_to_ir0(module: ir1.Module, identifier_generator: Iterator[str]):
         elif isinstance(toplevel_elem, ir1.CheckIfError):
             check_if_error_to_ir0(toplevel_elem, writer)
         elif isinstance(toplevel_elem, ir1.PassStmt):
-            pass
+            pass_stmt_to_ir0(toplevel_elem, writer)
         else:
             raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
     return ir0.Header(template_defns=tuple(writer.template_defns),

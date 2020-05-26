@@ -31,6 +31,8 @@ class Visitor:
             self.visit_constant_def(elem)
         elif isinstance(elem, ir.Typedef):
             self.visit_typedef(elem)
+        elif isinstance(elem, ir.NoOpStmt):
+            self.visit_no_op_stmt(elem)
         else:
             raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 
@@ -44,6 +46,9 @@ class Visitor:
 
     def visit_static_assert(self, static_assert: ir.StaticAssert):
         self.visit_expr(static_assert.expr)
+
+    def visit_no_op_stmt(self, stmt: ir.NoOpStmt):
+        pass
 
     def visit_constant_def(self, constant_def: ir.ConstantDef):
         self.visit_expr(constant_def.expr)
@@ -120,6 +125,8 @@ class Visitor:
             self.visit_constant_def(elem)
         elif isinstance(elem, ir.Typedef):
             self.visit_typedef(elem)
+        elif isinstance(elem, ir.NoOpStmt):
+            self.visit_no_op_stmt(elem)
         else:
             raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 

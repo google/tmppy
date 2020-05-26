@@ -22,6 +22,7 @@ from _py2tmp.ir0_optimization._expression_simplification import ExpressionSimpli
 from _py2tmp.ir0_optimization._normalize_expressions import NormalizeExpressionsTransformation
 from _py2tmp.ir0_optimization._optimization_execution import apply_elem_optimization, combine_optimizations, \
     describe_template_defns, describe_toplevel_elems
+from _py2tmp.ir0_optimization.remove_no_op_stmts import RemoveNoOpStmtsTransformation
 
 
 def perform_local_optimizations(elems: List,
@@ -30,6 +31,7 @@ def perform_local_optimizations(elems: List,
                                 describe_elems: Callable[[List], str],
                                 inline_template_instantiations_with_multiple_references: bool):
     optimizations = [
+        ('remove_no_op_stmts()', RemoveNoOpStmtsTransformation(identifier_generator)),
         ('normalize_template_defn()', NormalizeExpressionsTransformation(identifier_generator)),
         ('perform_common_subexpression_normalization()', CommonSubexpressionEliminationTransformation()),
         ('perform_constant_folding()', ConstantFoldingTransformation(inline_template_instantiations_with_multiple_references)),

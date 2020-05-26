@@ -276,6 +276,8 @@ class _TemplateInstantiationInliningTransformation(Transformation):
                 new_var_name_by_old_var_name[elem.name] = next(self.identifier_generator)
             elif isinstance(elem, ir.StaticAssert):
                 pass
+            elif isinstance(elem, ir.NoOpStmt):
+                pass
             else:
                 raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 

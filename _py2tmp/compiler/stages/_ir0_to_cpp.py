@@ -190,6 +190,8 @@ def template_specialization_to_cpp(specialization: ir0.TemplateSpecialization,
             template_defn_to_cpp(elem,
                                  enclosing_function_defn_args=specialization.args,
                                  writer=template_elem_writer)
+        elif isinstance(elem, ir0.NoOpStmt):
+            pass
         else:
             raise NotImplementedError('Unsupported element: ' + str(elem))
 
@@ -473,6 +475,8 @@ def toplevel_elem_to_cpp(elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Type
         typedef_to_cpp(elem,
                        enclosing_function_defn_args=(),
                        writer=writer)
+    elif isinstance(elem, ir0.NoOpStmt):
+        pass
     else:
         raise NotImplementedError('Unexpected toplevel element: %s' % str(elem.__class__))
 

@@ -35,22 +35,18 @@ from typing import Callable, Iterable, Any, Tuple, Set, Dict, List, Sequence, Op
 import py2tmp_test_config as config
 import pytest
 from absl.testing import parameterized, absltest
-from coverage import Coverage, FileReporter
+from coverage import Coverage
 from coverage.config import CoverageConfig
-from coverage.parser import PythonParser, ByteParser, AstArcAnalyzer
+from coverage.parser import PythonParser
 from coverage.python import PythonFileReporter
-from coverage.report import Reporter
-from coverage.results import Analysis
 
-from _py2tmp import ir2, ir1
+from _py2tmp import ir2, ir1, ir0
 from _py2tmp.compiler._compile import compile_source_code
 from _py2tmp.compiler._link import compute_merged_header_for_linking
 from _py2tmp.compiler.output_files import ObjectFileContent, merge_object_files
 from _py2tmp.compiler.stages import CompilationError
 from _py2tmp.coverage.source_branch import SourceBranch
-from _py2tmp.ir0 import ir0
 from _py2tmp.ir0_optimization import ConfigurationKnobs, DEFAULT_VERBOSE_SETTING
-from _py2tmp.utils import ir_to_string
 
 CHECK_TESTS_WERE_FULLY_OPTIMIZED = True
 
@@ -847,6 +843,17 @@ class _GetIR1InstrumentedBranches(ir1.Visitor):
         super().visit_pass_stmt(stmt)
         self._add_branch(stmt.source_branch, stmt)
 
+class _GetIR0InstrumentedBranches(ir0.Visitor):
+    def __init__(self) -> None:
+        self.branches: Dict[Tuple[int, int], List] = defaultdict(list)
+
+    def _add_branch(self, branch: Optional[SourceBranch], ir_element: Any):
+        if branch:
+            self.branches[(branch.source_line, branch.dest_line)].append(ir_element)
+
+    def visit_no_op_stmt(self, stmt: ir0.ir.NoOpStmt):
+        self._add_branch(stmt.source_branch, stmt)
+
 class _FakeByteParser:
     def __init__(self, num_lines: int):
         self.num_lines = num_lines
@@ -900,6 +907,7 @@ def compile(python_source,
         for visitor, visit, ir_name in (
                 (_GetIR2InstrumentedBranches(), lambda visitor: visitor.visit_module(module_info.ir2_module), 'IR2'),
                 (_GetIR1InstrumentedBranches(), lambda visitor: visitor.visit_module(module_info.ir1_module), 'IR1'),
+                (_GetIR0InstrumentedBranches(), lambda visitor: visitor.visit_header(module_info.ir0_header_before_optimization), 'IR0'),
         ):
             visit(visitor)
             actual_branches = visitor.branches
@@ -971,7 +979,7 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
                                                                       identifier_generator=identifier_generator)
 
         for elem in merged_header_for_linking.toplevel_content:
-            if isinstance(elem, ir0.StaticAssert):
+            if isinstance(elem, ir0.ir.StaticAssert):
                 # Re-run the ir0_optimization in verbose mode so that we output more detail on the error.
                 ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
                 ConfigurationKnobs.verbose = True

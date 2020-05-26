@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Sequence, Set, Optional, Iterable, Union, Tuple, FrozenSet
 
+from _py2tmp.coverage import SourceBranch
 from _py2tmp.utils import ir_to_string
 
 
@@ -127,6 +128,18 @@ class StaticAssert(_TemplateBodyElement):
         yield self.expr
 
 @dataclass(frozen=True)
+class NoOpStmt(_TemplateBodyElement):
+    source_branch: SourceBranch
+
+    @property
+    def direct_subelements(self) -> Iterable['TemplateBodyElement']:
+        return ()
+
+    @property
+    def direct_subexpressions(self) -> Iterable[Expr]:
+        return ()
+
+@dataclass(frozen=True)
 class ConstantDef(_TemplateBodyElement):
     name: str
     expr: Expr
@@ -162,7 +175,7 @@ class Typedef(_TemplateBodyElement):
 
 
 # Similar to _TemplateBodyElement but more precise, to help type checking.
-TemplateBodyElement = Union[StaticAssert, ConstantDef, Typedef]
+TemplateBodyElement = Union[StaticAssert, ConstantDef, Typedef, NoOpStmt]
 
 
 @dataclass(frozen=True)

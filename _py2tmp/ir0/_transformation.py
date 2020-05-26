@@ -48,6 +48,8 @@ class Transformation:
             self.transform_constant_def(elem)
         elif isinstance(elem, ir.Typedef):
             self.transform_typedef(elem)
+        elif isinstance(elem, ir.NoOpStmt):
+            self.transform_no_op_stmt(elem)
         else:
             raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 
@@ -68,6 +70,9 @@ class Transformation:
         self.writer.write(ir.StaticAssert(expr=expr,
                                           message=static_assert.message))
 
+    def transform_no_op_stmt(self, stmt: ir.NoOpStmt):
+        self.writer.write(stmt)
+
     def transform_constant_def(self, constant_def: ir.ConstantDef):
         expr = self.transform_expr(constant_def.expr)
         self.writer.write(ir.ConstantDef(name=constant_def.name, expr=expr))
@@ -84,7 +89,7 @@ class Transformation:
         return arg_decl
 
     def transform_template_body_elems(self,
-                                      elems: Tuple[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef], ...]) -> Tuple[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef], ...]:
+                                      elems: Tuple[ir.TemplateBodyElement, ...]) -> Tuple[ir.TemplateBodyElement, ...]:
         body_writer = TemplateBodyWriter(self.writer.toplevel_writer) if self.writer else TemplateBodyWriter(None)
         with self.set_writer(body_writer):
             for elem in elems:
@@ -156,6 +161,8 @@ class Transformation:
             self.transform_constant_def(elem)
         elif isinstance(elem, ir.Typedef):
             self.transform_typedef(elem)
+        elif isinstance(elem, ir.NoOpStmt):
+            self.transform_no_op_stmt(elem)
         else:
             raise NotImplementedError('Unexpected elem: ' + elem.__class__.__name__)
 
