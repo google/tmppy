@@ -18,6 +18,9 @@ from contextlib import contextmanager
 import itertools
 from dataclasses import dataclass, field
 
+from _py2tmp.coverage import SourceBranch
+
+
 class Writer:
     def __init__(self) -> None:
         self.strings = []
@@ -117,6 +120,7 @@ class CustomTypeArgDecl:
 class CustomType(_ExprType):
     name: str
     arg_types: Tuple[CustomTypeArgDecl, ...]
+    constructor_source_branches: Tuple[SourceBranch, ...]
 
     def __str__(self) -> str:
         return self.name
@@ -206,6 +210,8 @@ class MatchCase:
     matched_var_names: Tuple[str, ...]
     matched_variadic_var_names: Tuple[str, ...]
     expr: 'FunctionCall'
+    match_case_start_branch: Optional[SourceBranch]
+    match_case_end_branch: Optional[SourceBranch]
 
     def is_main_definition(self) -> bool:
         return set(self.type_patterns) == set(self.matched_var_names).union(self.matched_variadic_var_names)
@@ -914,6 +920,8 @@ class ListComprehensionExpr(_Expr):
     list_var: VarReference
     loop_var: VarReference
     result_elem_expr: FunctionCall
+    loop_body_start_branch: Optional[SourceBranch]
+    loop_exit_branch: Optional[SourceBranch]
 
     def __post_init__(self) -> None:
         assert isinstance(self.list_var.expr_type, ListType)
@@ -942,9 +950,17 @@ class Stmt:
     def write(self, writer: Writer, verbose: bool): ...  # pragma: no cover
 
 @dataclass(frozen=True)
+class PassStmt(Stmt):
+    source_branch: Optional[SourceBranch]
+
+    def write(self, writer: Writer, verbose: bool):
+        writer.writeln('pass')
+
+@dataclass(frozen=True)
 class Assert(Stmt):
     var: VarReference
     message: str
+    source_branch: Optional[SourceBranch]
 
     def __post_init__(self) -> None:
         assert isinstance(self.var.expr_type, BoolType)
@@ -961,6 +977,7 @@ class Assert(Stmt):
 class Assignment(Stmt):
     lhs: VarReference
     rhs: Expr
+    source_branch: Optional[SourceBranch]
     lhs2: Optional[VarReference] = None
 
     def __post_init__(self) -> None:
@@ -1005,6 +1022,7 @@ class UnpackingAssignment(Stmt):
     lhs_list: Tuple[VarReference, ...]
     rhs: VarReference
     error_message: str
+    source_branch: Optional[SourceBranch]
 
     def __post_init__(self) -> None:
         assert isinstance(self.rhs.expr_type, ListType)
@@ -1030,6 +1048,7 @@ class UnpackingAssignment(Stmt):
 class ReturnStmt(Stmt):
     result: Optional[VarReference]
     error: Optional[VarReference]
+    source_branch: Optional[SourceBranch]
 
     def __post_init__(self) -> None:
         assert self.result or self.error
@@ -1114,7 +1133,7 @@ class CheckIfErrorDefn:
 
 @dataclass(frozen=True)
 class Module:
-    body: Tuple[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn], ...]
+    body: Tuple[Union[FunctionDefn, Assignment, Assert, CustomType, CheckIfErrorDefn, PassStmt], ...]
     public_names: FrozenSet[str]
 
     def __str__(self) -> str:

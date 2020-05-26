@@ -84,6 +84,8 @@ class Visitor:
             self.visit_list_to_set_expr(expr)
         elif isinstance(expr, ir.SetToListExpr):
             self.visit_set_to_list_expr(expr)
+        elif isinstance(expr, ir.TemplateInstantiationPatternExpr):
+            self.visit_template_instantiation_pattern_expr(expr)
         else:
             raise NotImplementedError('Unexpected expression: %s' % str(expr.__class__))
     
@@ -259,12 +261,17 @@ class Visitor:
             self.visit_return_stmt(stmt)
         elif isinstance(stmt, ir.Assert):
             self.visit_assert(stmt)
+        elif isinstance(stmt, ir.PassStmt):
+            self.visit_pass_stmt(stmt)
         else:
             raise NotImplementedError('Unexpected statement: %s' % str(stmt.__class__))
     
     def visit_assert(self, stmt: ir.Assert):
         self.visit_expr(stmt.var)
     
+    def visit_pass_stmt(self, stmt: ir.PassStmt):
+        pass
+
     def visit_assignment(self, stmt: ir.Assignment):
         self.visit_expr(stmt.lhs)
         self.visit_expr(stmt.rhs)
@@ -317,5 +324,7 @@ class Visitor:
                 self.visit_check_if_error_defn(elem)
             elif isinstance(elem, ir.CheckIfError):
                 self.visit_check_if_error(elem)
+            elif isinstance(elem, ir.PassStmt):
+                self.visit_pass_stmt(elem)
             else:
                 raise NotImplementedError('Unexpected toplevel element: %s' % str(elem.__class__))

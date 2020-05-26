@@ -13,3 +13,4 @@
 # limitations under the License.
 
 from . import ir as ir1
+from ._visitor import Visitor

@@ -707,7 +707,8 @@ def _define_transform_list_to_list_template(source_type: ir0.ExprType,
 def list_comprehension_expr_to_ir0(expr: ir1.ListComprehensionExpr, writer: Writer):
     captured_vars = [var
                      for var in get_unique_free_variables_in_stmts([ir1.ReturnStmt(result=expr.result_elem_expr,
-                                                                                   error=None)])
+                                                                                   error=None,
+                                                                                   source_branch=None)])
                      if var.name != expr.loop_var.name]
     forwarded_vars = [var_reference_to_ir0(var)
                       for var in captured_vars]
@@ -1083,7 +1084,9 @@ def custom_type_defn_to_ir0(custom_type: ir1.CustomType, public_names: Set[str],
                                   name=arg_decl.name,
                                   is_global_function=False,
                                   is_function_that_may_throw=isinstance(arg.expr_type, ir1.FunctionType))
-        assignment_to_ir0(ir1.Assignment(lhs=lhs_var, rhs=rhs_var),
+        assignment_to_ir0(ir1.Assignment(lhs=lhs_var,
+                                         rhs=rhs_var,
+                                         source_branch=None),
                           holder_template_writer)
         holder_template_instantiation_args.append(var_reference_to_ir0(rhs_var))
 
@@ -1413,6 +1416,8 @@ def stmts_to_ir0(stmts: Sequence[ir1.Stmt],
         elif isinstance(stmt, ir1.UnpackingAssignment):
             unpacking_assignment_to_ir0(stmt, stmts[index + 1:], write_continuation_fun_call, writer)
             break
+        elif isinstance(stmt, ir1.PassStmt):
+            pass
         else:
             raise NotImplementedError('Unexpected statement type: ' + stmt.__class__.__name__)
 
@@ -1683,6 +1688,8 @@ def module_to_ir0(module: ir1.Module, identifier_generator: Iterator[str]):
             check_if_error_defn_to_ir0(toplevel_elem, writer)
         elif isinstance(toplevel_elem, ir1.CheckIfError):
             check_if_error_to_ir0(toplevel_elem, writer)
+        elif isinstance(toplevel_elem, ir1.PassStmt):
+            pass
         else:
             raise NotImplementedError('Unexpected toplevel element: %s' % str(toplevel_elem.__class__))
     return ir0.Header(template_defns=tuple(writer.template_defns),

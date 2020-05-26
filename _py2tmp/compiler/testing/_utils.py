@@ -29,7 +29,7 @@ import traceback
 import unittest
 from collections import defaultdict
 from functools import wraps, lru_cache
-from typing import Callable, Iterable, Any, Tuple, Set, Dict, List, Sequence
+from typing import Callable, Iterable, Any, Tuple, Set, Dict, List, Sequence, Optional
 
 # noinspection PyUnresolvedReferences
 import py2tmp_test_config as config
@@ -42,7 +42,7 @@ from coverage.python import PythonFileReporter
 from coverage.report import Reporter
 from coverage.results import Analysis
 
-from _py2tmp import ir2
+from _py2tmp import ir2, ir1
 from _py2tmp.compiler._compile import compile_source_code
 from _py2tmp.compiler._link import compute_merged_header_for_linking
 from _py2tmp.compiler.output_files import ObjectFileContent, merge_object_files
@@ -748,7 +748,7 @@ def get_builtins_object_file_content():
     return object_file
 
 
-class _GetInstrumentedBranches(ir2.Visitor):
+class _GetIR2InstrumentedBranches(ir2.Visitor):
     def __init__(self):
         self.branches: Dict[Tuple[int, int], List] = defaultdict(list)
 
@@ -804,6 +804,49 @@ class _GetInstrumentedBranches(ir2.Visitor):
         super().visit_pass_stmt(stmt)
         self._add_branch(stmt.source_branch, stmt)
 
+class _GetIR1InstrumentedBranches(ir1.Visitor):
+    def __init__(self) -> None:
+        self.branches: Dict[Tuple[int, int], List] = defaultdict(list)
+
+    def _add_branch(self, branch: Optional[SourceBranch], ir_element: Any):
+        if branch:
+            self.branches[(branch.source_line, branch.dest_line)].append(ir_element)
+
+    def visit_match_case(self, match_case: ir1.ir.MatchCase):
+        super().visit_match_case(match_case)
+        self._add_branch(match_case.match_case_start_branch, match_case)
+        self._add_branch(match_case.match_case_end_branch, match_case)
+
+    def visit_list_comprehension_expr(self, expr: ir1.ir.ListComprehensionExpr):
+        super().visit_list_comprehension_expr(expr)
+        self._add_branch(expr.loop_body_start_branch, expr)
+        self._add_branch(expr.loop_exit_branch, expr)
+
+    def visit_assert(self, stmt: ir1.ir.Assert):
+        super().visit_assert(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+    def visit_assignment(self, stmt: ir1.ir.Assignment):
+        super().visit_assignment(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+    def visit_unpacking_assignment(self, stmt: ir1.ir.UnpackingAssignment):
+        super().visit_unpacking_assignment(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+    def visit_return_stmt(self, stmt: ir1.ir.ReturnStmt):
+        super().visit_return_stmt(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
+    def visit_custom_type_definition(self, custom_type: ir1.ir.CustomType):
+        super().visit_custom_type_definition(custom_type)
+        for branch in custom_type.constructor_source_branches:
+            self._add_branch(branch, custom_type)
+
+    def visit_pass_stmt(self, stmt: ir1.ir.PassStmt):
+        super().visit_pass_stmt(stmt)
+        self._add_branch(stmt.source_branch, stmt)
+
 class _FakeByteParser:
     def __init__(self, num_lines: int):
         self.num_lines = num_lines
@@ -851,38 +894,41 @@ def compile(python_source,
                                                   [get_builtins_object_file_content(), context_object_file_content]),
                                               include_intermediate_irs_for_debugging=True)
     if module_name == TEST_MODULE_NAME:
-        visitor = _GetInstrumentedBranches()
         module_info = object_file_content.modules_by_name[TEST_MODULE_NAME]
-        visitor.visit_module(module_info.ir2_module)
-
-        actual_branches = visitor.branches
         expected_branches = _extract_all_branches(python_source)
 
-        if actual_branches.keys() != expected_branches:
-            with BranchExplainer(python_source) as explainer:
-                raise TestFailedException(
-                    'Detected a wrong set of instrumentable branches in IR2.\n'
-                    'Source code:\n'
-                    + add_line_numbers(python_source) + '\n'
-                    + 'Generated branches that should not be generated:\n'
-                    + ''.join('* %s: %s, in the IR nodes:\n%s\n' % (branch,
-                                                                    explainer.explain(branch[0], branch[1]),
-                                                                    ', '.join(str(element)
-                                                                              for element in elements))
-                              for branch, elements in sorted(actual_branches.items())
-                              if branch not in expected_branches)
-                    + 'Not generated branches that should have been generated:\n'
-                    + ''.join('* %s: %s\n' % (branch,
-                                              explainer.explain(branch[0], branch[1]))
-                              for branch in sorted(expected_branches)
-                              if branch not in actual_branches)
-                    + 'Matching branches (generated correctly):\n'
-                    + ''.join('* %s: %s (in nodes: %s)\n' % (branch,
-                                                             explainer.explain(branch[0], branch[1]),
-                                                             ', '.join(element.__class__.__name__
-                                                                       for element in elements))
-                              for branch, elements in sorted(actual_branches.items())
-                              if branch in expected_branches))
+        for visitor, visit, ir_name in (
+                (_GetIR2InstrumentedBranches(), lambda visitor: visitor.visit_module(module_info.ir2_module), 'IR2'),
+                (_GetIR1InstrumentedBranches(), lambda visitor: visitor.visit_module(module_info.ir1_module), 'IR1'),
+        ):
+            visit(visitor)
+            actual_branches = visitor.branches
+
+            if actual_branches.keys() != expected_branches:
+                with BranchExplainer(python_source) as explainer:
+                    raise TestFailedException(
+                        'Detected a wrong set of instrumentable branches in %s.\n' % ir_name
+                        + 'Source code:\n'
+                        + add_line_numbers(python_source) + '\n'
+                        + 'Generated branches that should not be generated:\n'
+                        + ''.join('* %s: %s, in the IR nodes:\n%s\n' % (branch,
+                                                                        explainer.explain(branch[0], branch[1]),
+                                                                        ', '.join(str(element)
+                                                                                  for element in elements))
+                                  for branch, elements in sorted(actual_branches.items())
+                                  if branch not in expected_branches)
+                        + 'Not generated branches that should have been generated:\n'
+                        + ''.join('* %s: %s\n' % (branch,
+                                                  explainer.explain(branch[0], branch[1]))
+                                  for branch in sorted(expected_branches)
+                                  if branch not in actual_branches)
+                        + 'Matching branches (generated correctly):\n'
+                        + ''.join('* %s: %s (in nodes: %s)\n' % (branch,
+                                                                 explainer.explain(branch[0], branch[1]),
+                                                                 ', '.join(element.__class__.__name__
+                                                                           for element in elements))
+                                  for branch, elements in sorted(actual_branches.items())
+                                  if branch in expected_branches))
 
     return object_file_content
 
