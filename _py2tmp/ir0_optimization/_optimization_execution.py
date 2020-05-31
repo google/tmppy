@@ -49,7 +49,7 @@ def apply_elem_optimization(elems: Tuple,
 
 def describe_headers(headers: List[ir.Header],
                      identifier_generator: Iterator[str]):
-    return ''.join(header_to_cpp(header, identifier_generator)
+    return ''.join(header_to_cpp(header, identifier_generator, coverage_collection_enabled=False)
                    for header in headers)
 
 def describe_template_defns(template_defns: Tuple[ir.TemplateDefn, ...], identifier_generator: Iterator[str]):
@@ -58,7 +58,8 @@ def describe_template_defns(template_defns: Tuple[ir.TemplateDefn, ...], identif
                                    toplevel_content=(),
                                    public_names=frozenset(),
                                    split_template_name_by_old_name_and_result_element_name=()),
-                         identifier_generator)
+                         identifier_generator,
+                         coverage_collection_enabled=False)
 
 def describe_toplevel_elems(toplevel_elems: Tuple[Union[ir.StaticAssert, ir.ConstantDef, ir.Typedef], ...],
                             identifier_generator: Iterator[str]):
@@ -67,7 +68,8 @@ def describe_toplevel_elems(toplevel_elems: Tuple[Union[ir.StaticAssert, ir.Cons
                                    public_names=frozenset(),
                                    split_template_name_by_old_name_and_result_element_name=(),
                                    check_if_error_specializations=()),
-                         identifier_generator)
+                         identifier_generator,
+                         coverage_collection_enabled=False)
 
 def combine_optimizations(ir, optimizations):
     needs_another_loop = False

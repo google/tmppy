@@ -26,7 +26,8 @@ from _py2tmp.ir2_optimization import optimize_module
 def compile(file_name: str,
             context_object_files: List[str],
             include_intermediate_irs_for_debugging: bool,
-            module_name: str):
+            module_name: str,
+            coverage_collection_enabled: bool):
     with open(file_name) as file:
         tmppy_source_code = file.read()
 
@@ -39,12 +40,14 @@ def compile(file_name: str,
                                file_name=file_name,
                                source_code=tmppy_source_code,
                                include_intermediate_irs_for_debugging=include_intermediate_irs_for_debugging,
-                               context_object_file_content=merge_object_files(object_file_contents))
+                               context_object_file_content=merge_object_files(object_file_contents),
+                               coverage_collection_enabled=coverage_collection_enabled)
 
 def compile_source_code(module_name: str,
                         source_code: str,
                         context_object_file_content: ObjectFileContent,
                         include_intermediate_irs_for_debugging: bool,
+                        coverage_collection_enabled: bool,
                         file_name: str = '<unknown>'):
 
     source_ast = ast.parse(source_code, filename=file_name, type_comments=True)
@@ -61,13 +64,17 @@ def compile_source_code(module_name: str,
                                    source_code.splitlines(),
                                    identifier_generator,
                                    context_object_file_content)
-    module_ir2 = optimize_module(module_ir2, context_object_file_content)
+    if not coverage_collection_enabled:
+        module_ir2 = optimize_module(module_ir2, context_object_file_content)
     module_ir1 = module_to_ir1(module_ir2, identifier_generator)
     non_optimized_header = module_to_ir0(module_ir1, identifier_generator)
-    optimized_header = optimize_header(header=non_optimized_header,
-                                       identifier_generator=identifier_generator,
-                                       context_object_file_content=context_object_file_content,
-                                       linking_final_header=False)
+    if coverage_collection_enabled:
+        optimized_header = non_optimized_header
+    else:
+        optimized_header = optimize_header(header=non_optimized_header,
+                                           identifier_generator=identifier_generator,
+                                           context_object_file_content=context_object_file_content,
+                                           linking_final_header=False)
 
     if include_intermediate_irs_for_debugging:
         module_info = ModuleInfo(ir0_header=optimized_header,

@@ -45,13 +45,12 @@ from _py2tmp.compiler._compile import compile_source_code
 from _py2tmp.compiler._link import compute_merged_header_for_linking
 from _py2tmp.compiler.output_files import ObjectFileContent, merge_object_files
 from _py2tmp.compiler.stages import CompilationError
-from _py2tmp.coverage.source_branch import SourceBranch
+from _py2tmp.coverage import report_covered, is_coverage_collection_enabled, SourceBranch
 from _py2tmp.ir0_optimization import ConfigurationKnobs, DEFAULT_VERBOSE_SETTING
 
 CHECK_TESTS_WERE_FULLY_OPTIMIZED = True
 
 TEST_MODULE_NAME = 'test_module'
-BUILTINS_OBJECT_FILE_PATH = './builtins.tmppyc'
 
 
 class TestFailedException(Exception):
@@ -241,6 +240,11 @@ class CompilationFailedException(Exception):
         {error_message}
         ''').format(command=pretty_print_command(self.command), error_message=self.error_message)
 
+_EXTRACT_SOURCE_BRANCHES_REGEX = re.compile('<fruit-coverage-internal-marker file_name=\'([^\']*)\' source_line=\'([^\']*)\' dest_line=\'([^\']*)\' />')
+
+def _extract_covered_source_branches(compiler_stderr: str):
+    for file_name, source_line, dest_line in _EXTRACT_SOURCE_BRANCHES_REGEX.findall(compiler_stderr):
+        report_covered(SourceBranch(file_name, source_line, dest_line))
 
 class PosixCompiler:
     def __init__(self) -> None:
@@ -250,12 +254,12 @@ class PosixCompiler:
     def compile_discarding_output(self, source: str, include_dirs: List[str], args: List[str] = ()):
         try:
             args = args + ['-c', source, '-o', os.path.devnull]
-            self._compile(include_dirs, args=args)
+            return self._compile(include_dirs, args=args)
         except CommandFailedException as e:
             raise CompilationFailedException(e.command, e.stderr)
 
     def compile_and_link(self, source: str, include_dirs: List[str], output_file_name: str, args: List[str] = ()):
-        self._compile(
+        return self._compile(
             include_dirs,
             args=(
                     [source]
@@ -265,14 +269,16 @@ class PosixCompiler:
             ))
 
     def _compile(self, include_dirs: List[str], args: List[str]):
-        include_flags = ['-I%s' % include_dir for include_dir in include_dirs]
-        args = (
-                ['-W', '-Wall', '-g0', '-Werror', '-std=c++11']
-                + include_flags
-                + config.ADDITIONAL_COMPILER_FLAGS.split()
-                + args
-        )
-        run_command(self.executable, args)
+        all_args = ['-W', '-Wall', '-g0', '-std=c++11']
+        if not is_coverage_collection_enabled():
+            all_args.append('-Werror')
+        for include_dir in include_dirs:
+            all_args.append('-I%s' % include_dir)
+        all_args += config.ADDITIONAL_COMPILER_FLAGS.split()
+        all_args += args
+        stdout, stderr = run_command(self.executable, all_args)
+        assert not stdout
+        _extract_covered_source_branches(stderr)
 
 
 class MsvcCompiler:
@@ -280,16 +286,16 @@ class MsvcCompiler:
         self.executable = config.CXX
         self.name = config.CXX_COMPILER_NAME
 
-    def compile_discarding_output(self, source: str, include_dirs: List[str], args: List[str] = ()) -> None:
+    def compile_discarding_output(self, source: str, include_dirs: List[str], args: List[str] = ()):
         try:
             args = args + ['/c', source]
-            self._compile(include_dirs, args=args)
+            return self._compile(include_dirs, args=args)
         except CommandFailedException as e:
             # Note that we use stdout here, unlike above. MSVC reports compilation warnings and errors on stdout.
             raise CompilationFailedException(e.command, e.stdout)
 
     def compile_and_link(self, source: str, include_dirs: List[str], output_file_name: str, args: List[str] = ()):
-        self._compile(
+        return self._compile(
             include_dirs,
             args=(
                     [source]
@@ -299,14 +305,16 @@ class MsvcCompiler:
             ))
 
     def _compile(self, include_dirs: List[str], args: List[str]):
-        include_flags = ['-I%s' % include_dir for include_dir in include_dirs]
-        args = (
-                ['/nologo', '/FS', '/W4', '/D_SCL_SECURE_NO_WARNINGS', '/WX']
-                + include_flags
-                + config.ADDITIONAL_COMPILER_FLAGS.split()
-                + args
-        )
-        run_command(self.executable, args)
+        all_args = ['/nologo', '/FS', '/W4', '/D_SCL_SECURE_NO_WARNINGS']
+        if not is_coverage_collection_enabled():
+            all_args.append('/WX')
+        for include_dir in include_dirs:
+            all_args.append('-I%s' % include_dir)
+        all_args += config.ADDITIONAL_COMPILER_FLAGS.split()
+        all_args += args
+        stdout, stderr = run_command(self.executable, all_args)
+        assert not stdout
+        _extract_covered_source_branches(stderr)
 
 
 if config.CXX_COMPILER_NAME == 'MSVC':
@@ -735,10 +743,15 @@ def _get_function_body(f):
 
     return textwrap.dedent(''.join(source_code))
 
+def builtins_object_file_path() -> str:
+    if is_coverage_collection_enabled():
+        return './builtins_for_coverage.tmppyc'
+    else:
+        return './builtins.tmppyc'
 
 @lru_cache()
 def get_builtins_object_file_content():
-    with open(BUILTINS_OBJECT_FILE_PATH, 'rb') as file:
+    with open(builtins_object_file_path(), 'rb') as file:
         object_file = pickle.loads(file.read())
     assert isinstance(object_file, ObjectFileContent)
     return object_file
@@ -899,7 +912,8 @@ def compile(python_source,
     object_file_content = compile_source_code(module_name=module_name, source_code=python_source,
                                               context_object_file_content=merge_object_files(
                                                   [get_builtins_object_file_content(), context_object_file_content]),
-                                              include_intermediate_irs_for_debugging=True)
+                                              include_intermediate_irs_for_debugging=True,
+                                              coverage_collection_enabled=is_coverage_collection_enabled())
     if module_name == TEST_MODULE_NAME:
         module_info = object_file_content.modules_by_name[TEST_MODULE_NAME]
         expected_branches = _extract_all_branches(python_source)
@@ -945,10 +959,11 @@ def link(object_file_content: ObjectFileContent,
          main_module_name=TEST_MODULE_NAME):
     from _py2tmp.compiler._link import link
     return link(main_module_name=main_module_name,
-                object_file_content=object_file_content)
+                object_file_content=object_file_content,
+                coverage_collection_enabled=is_coverage_collection_enabled())
 
 
-def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_asserts_after_optimization):
+def _convert_to_cpp_expecting_success(tmppy_source: str, allow_toplevel_static_asserts_after_optimization: bool):
     object_file_content = None
     try:
         object_file_content = compile(tmppy_source)
@@ -976,7 +991,8 @@ def _convert_to_cpp_expecting_success(tmppy_source, allow_toplevel_static_assert
         identifier_generator = identifier_generator_fun()
         merged_header_for_linking = compute_merged_header_for_linking(main_module_name=TEST_MODULE_NAME,
                                                                       object_file_content=object_file_content,
-                                                                      identifier_generator=identifier_generator)
+                                                                      identifier_generator=identifier_generator,
+                                                                      coverage_collection_enabled=is_coverage_collection_enabled())
 
         for elem in merged_header_for_linking.toplevel_content:
             if isinstance(elem, ir0.ir.StaticAssert):

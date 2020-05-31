@@ -23,11 +23,12 @@ from _py2tmp.compiler import compile, link
 def _module_name_from_filename(file_name: str):
     return file_name.replace('/', '.')
 
-def _compile(module_name: str, object_files: List[str], filename: str, verbose):
+def _compile(module_name: str, object_files: List[str], filename: str, verbose: bool, coverage_collection_enabled: bool):
     object_file_content = compile(module_name=module_name,
                                   file_name=filename,
                                   context_object_files=object_files,
-                                  include_intermediate_irs_for_debugging=verbose)
+                                  include_intermediate_irs_for_debugging=verbose,
+                                  coverage_collection_enabled=coverage_collection_enabled)
 
     if verbose:
         main_module = object_file_content.modules_by_name[module_name]
@@ -43,11 +44,12 @@ def _compile(module_name: str, object_files: List[str], filename: str, verbose):
 
     return object_file_content
 
-def _compile_and_link(module_name: str, object_files: List[str], filename: str, verbose):
+def _compile_and_link(module_name: str, object_files: List[str], filename: str, verbose: bool, coverage_collection_enabled: bool):
     object_file_content = _compile(module_name, object_files, filename, verbose)
 
     result = link(module_name,
-                  object_file_content)
+                  object_file_content,
+                  coverage_collection_enabled=coverage_collection_enabled)
 
     if verbose:
         print('Conversion result:')
@@ -58,7 +60,8 @@ def main(verbose: bool,
          builtins_path: str,
          output_file: str,
          source: str,
-         object_files: List[str]):
+         object_files: List[str],
+         coverage_collection_enabled: bool):
     object_files = object_files + [builtins_path]
     for object_file in object_files:
         if not object_file.endswith('.tmppyc'):
@@ -72,7 +75,7 @@ def main(verbose: bool,
 
     verbose = (verbose == 'true')
     if output_file.endswith('.h'):
-        result = _compile_and_link(module_name, object_files, source, verbose)
+        result = _compile_and_link(module_name, object_files, source, verbose, coverage_collection_enabled)
         with open(output_file, 'w') as output_file:
             output_file.write(result)
     elif output_file.endswith('.tmppyc'):
@@ -85,6 +88,7 @@ def main(verbose: bool,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Converts python source code into C++ metafunctions.')
     parser.add_argument('--verbose', help='If "true", prints verbose messages during the conversion')
+    parser.add_argument('--enable_coverage', help='If "true", disables optimizations and enables coverage data collection')
     parser.add_argument('--builtins-path', required=True, help='The path to the builtins.tmppyc file.')
     parser.add_argument('-o', required=True, metavar='output_file', help='Output file (.tmppyc or .h).')
     parser.add_argument('source', required=True, help='The python source file to convert')
@@ -96,4 +100,5 @@ if __name__ == '__main__':
          builtins_path=args.builtins_path,
          output_file=args.o,
          source=args.source,
-         object_files=args.object_files)
+         object_files=args.object_files,
+         coverage_collection_enabled=(args.enable_coverage == 'true'))

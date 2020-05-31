@@ -9,8 +9,13 @@ add_custom_command(OUTPUT builtins.tmppyc
                    COMMAND PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR} ${PYTHON} _py2tmp/compiler/_generate_ir0_builtins.py -o ${CMAKE_CURRENT_BINARY_DIR}/builtins.tmppyc
                    )
 
+add_custom_command(OUTPUT builtins_for_coverage.tmppyc
+                   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                   COMMAND PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR} ${PYTHON} _py2tmp/compiler/_generate_ir0_builtins.py -o ${CMAKE_CURRENT_BINARY_DIR}/builtins_for_coverage.tmppyc --enable_coverage=true
+                   )
+
 add_custom_target(builtins-tmppyc ALL
-                  DEPENDS builtins.tmppyc)
+                  DEPENDS builtins.tmppyc builtins_for_coverage.tmppyc)
 
 option(TMPPY_TESTS_USE_PRECOMPILED_HEADERS "Whether to use pre-compiled headers (PCHs) in TMPPy tests." ON)
 
@@ -64,6 +69,33 @@ addopts = -r a --tb=short
 
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/conftest.py"
      CONTENT "
+import sys
+sys.path.append('${CMAKE_CURRENT_SOURCE_DIR}')
+")
+
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/.coveragerc"
+     CONTENT "
+[run]
+source = ${CMAKE_CURRENT_SOURCE_DIR}
+omit =
+  */tests/*
+  testing/*
+  */testing/*
+# Enable branch coverage
+branch = True
+plugins =
+    _py2tmp.coverage
+
+[paths]
+source =
+    _py2tmp/
+    */_py2tmp
+[report]
+# Regexes for lines to exclude from consideration
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    : \.\.\.
 ")
 
 add_subdirectory(_py2tmp)

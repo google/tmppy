@@ -22,6 +22,7 @@ from _py2tmp.cpp import Writer, ToplevelWriter, TemplateElemWriter, ExprWriter
 @dataclass(frozen=True)
 class Context:
     enclosing_function_defn_args: Tuple[ir0.TemplateArgDecl, ...]
+    coverage_collection_enabled: bool
     writer: Writer
 
 def expr_to_cpp(expr: ir0.Expr,
@@ -45,7 +46,8 @@ def expr_to_cpp(expr: ir0.Expr,
 
 def expr_to_cpp_simple(expr: ir0.Expr):
     writer = ToplevelWriter(iter([]))
-    expr_str = expr_to_cpp(expr, Context(enclosing_function_defn_args=(), writer=writer))
+    context = Context(enclosing_function_defn_args=(), coverage_collection_enabled=False, writer=writer)
+    expr_str = expr_to_cpp(expr, context)
     return ''.join(writer.strings) + expr_str
 
 def static_assert_to_cpp(assert_stmt: ir0.StaticAssert,
@@ -98,7 +100,13 @@ def static_assert_to_cpp(assert_stmt: ir0.StaticAssert,
             '''.format(**locals()))
 
 def no_op_stmt_to_cpp(stmt: ir0.NoOpStmt, context: Context):
-    pass
+    if context.coverage_collection_enabled:
+        branch = stmt.source_branch
+        message = f'<fruit-coverage-internal-marker file_name=\'{branch.file_name}\' source_line=\'{branch.source_line}\' dest_line=\'{branch.dest_line}\' />'
+        fun = context.writer.new_id()
+        var = context.writer.new_id()
+        context.writer.write_template_body_elem('[[deprecated("%s")]] constexpr int %s() { return 0; }' % (message, fun))
+        context.writer.write_template_body_elem('constexpr static const int %s = %s();' % (var, fun))
 
 def constant_def_to_cpp(constant_def: ir0.ConstantDef,
                         context: Context):
@@ -246,13 +254,19 @@ def template_defn_to_cpp(template_defn: ir0.TemplateDefn,
 def template_defn_to_cpp_simple(template_defn: ir0.TemplateDefn,
                                 identifier_generator: Iterator[str]):
     writer = ToplevelWriter(identifier_generator)
-    template_defn_to_cpp(template_defn, Context(enclosing_function_defn_args=(), writer=writer))
+    context = Context(enclosing_function_defn_args=(),
+                      coverage_collection_enabled=False,
+                      writer=writer)
+    template_defn_to_cpp(template_defn, context)
     return clang_format(''.join(writer.strings))
 
 def toplevel_elem_to_cpp_simple(elem: Union[ir0.StaticAssert, ir0.ConstantDef, ir0.Typedef],
                                 identifier_generator: Iterator[str]):
     writer = ToplevelWriter(identifier_generator)
-    toplevel_elem_to_cpp(elem, Context(enclosing_function_defn_args=(), writer=writer))
+    context = Context(enclosing_function_defn_args=(),
+                      coverage_collection_enabled=False,
+                      writer=writer)
+    toplevel_elem_to_cpp(elem, context)
     return clang_format(''.join(writer.strings))
 
 def literal_to_cpp(literal: ir0.Literal):
@@ -603,14 +617,16 @@ def template_defns_to_cpp(template_defns: Iterable[ir0.TemplateDefn],
                                                    cxx_name=template_defn.name,
                                                    context=context)
 
-def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str]):
+def header_to_cpp(header: ir0.Header, identifier_generator: Iterator[str], coverage_collection_enabled: bool):
     writer = ToplevelWriter(identifier_generator)
     writer.write_toplevel_elem('''\
         #include <tmppy/tmppy.h>
         #include <tuple>
         #include <type_traits>
         ''')
-    context = Context(enclosing_function_defn_args=(), writer=writer)
+    context = Context(enclosing_function_defn_args=(),
+                      coverage_collection_enabled=coverage_collection_enabled,
+                      writer=writer)
 
     template_defns_to_cpp(header.template_defns, context)
 
@@ -626,7 +642,8 @@ def type_expr_to_cpp(expr: ir0.Expr,
 
 def type_expr_to_cpp_simple(expr: ir0.Expr):
     writer = ExprWriter(ToplevelWriter(identifier_generator=iter([])))
-    type_expr_to_cpp(expr, Context(enclosing_function_defn_args=(), writer=writer))
+    context = Context(enclosing_function_defn_args=(), writer=writer, coverage_collection_enabled=False)
+    type_expr_to_cpp(expr, context)
     return ''.join(writer.strings)
 
 # We can't generate code like "int & &&", so we need to collapse reference types ourselves. The C++ _compiler has similar

@@ -584,6 +584,7 @@ _define_template_with_single_specialization(name='TypeListToSet',
 
 def main():
     parser = argparse.ArgumentParser(description='Converts python source code into C++ metafunctions.')
+    parser.add_argument('--enable_coverage', help='If "true", disables optimizations and enables coverage data collection')
     parser.add_argument('-o', required=True, metavar='output_file', help='Output file (.tmppyc).')
     args = parser.parse_args()
 
@@ -594,7 +595,8 @@ def main():
     object_file_content = compile(module_name='tmppy_builtins',
                                   file_name=importlib_util.find_spec(module_name).origin,
                                   context_object_files=[],
-                                  include_intermediate_irs_for_debugging=False)
+                                  include_intermediate_irs_for_debugging=False,
+                                  coverage_collection_enabled=(args.enable_coverage == 'true'))
     [module_info] = object_file_content.modules_by_name.values()
     assert isinstance(module_info, ModuleInfo)
 

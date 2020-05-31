@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._source_branch import SourceBranch
-from ._is_enabled import is_coverage_collection_enabled
-from ._hooks import report_covered
-from ._plugin import coverage_init
+_is_enabled = False
+
+def set_coverage_collection_enabled() -> None:
+    global _is_enabled
+    _is_enabled = True
+
+def is_coverage_collection_enabled() -> bool:
+    """Checks if coverage is enabled."""
+    return _is_enabled

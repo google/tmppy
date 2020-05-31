@@ -14,7 +14,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, FrozenSet
 
-from _py2tmp.coverage.source_branch import SourceBranch
+from _py2tmp.coverage._source_branch import SourceBranch
 
 @dataclass(frozen=True)
 class ExprType:

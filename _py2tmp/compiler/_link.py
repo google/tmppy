@@ -22,7 +22,8 @@ from _py2tmp.ir0_optimization import optimize_header
 
 def compute_merged_header_for_linking(main_module_name: str,
                                       object_file_content: ObjectFileContent,
-                                      identifier_generator: Iterator[str]):
+                                      identifier_generator: Iterator[str],
+                                      coverage_collection_enabled: bool):
     template_defns = []
     check_if_error_specializations = []
     toplevel_content = []
@@ -62,17 +63,21 @@ def compute_merged_header_for_linking(main_module_name: str,
                                                                                              for k, v in split_template_name_by_old_name_and_result_element_name.items()),
                                public_names=public_names)
 
+    if coverage_collection_enabled:
+        return merged_header
+
     return optimize_header(header=merged_header,
                            context_object_file_content=ObjectFileContent({}),
                            identifier_generator=identifier_generator,
                            linking_final_header=True)
 
 def link(main_module_name: str,
-         object_file_content: ObjectFileContent):
+         object_file_content: ObjectFileContent,
+         coverage_collection_enabled: bool):
     def identifier_generator_fun() -> Iterator[str]:
         for i in itertools.count():
             yield 'TmppyInternal_' + str(i)
     identifier_generator = identifier_generator_fun()
 
-    header = compute_merged_header_for_linking(main_module_name, object_file_content, identifier_generator)
-    return header_to_cpp(header, identifier_generator)
+    header = compute_merged_header_for_linking(main_module_name, object_file_content, identifier_generator, coverage_collection_enabled=coverage_collection_enabled)
+    return header_to_cpp(header, identifier_generator, coverage_collection_enabled=coverage_collection_enabled)

@@ -6,6 +6,8 @@ omit =
   */testing/*
 # Enable branch coverage
 branch = True
+plugins =
+    coverage.plugin
 
 [paths]
 source =
