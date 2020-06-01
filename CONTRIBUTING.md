@@ -32,7 +32,8 @@ Run tests:
     cd build
     cmake .. -DCMAKE_BUILD_TYPE=Debug
     cd _tmppy/tests
-    py.test-3 -n auto
+    make -j
+    PYTHONPATH=.:.. py.test-3 -n auto
 
 To also collect coverage, add the following flags to the last command:
 
