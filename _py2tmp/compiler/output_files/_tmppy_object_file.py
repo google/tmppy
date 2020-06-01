@@ -11,8 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import pickle
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from functools import lru_cache
+from typing import Dict, List, Optional, Tuple
 
 from _py2tmp.ir2 import ir2
 from _py2tmp.ir1 import ir1
@@ -36,3 +38,12 @@ def merge_object_files(object_files: List[ObjectFileContent]):
             if name not in modules_by_name or modules_by_name[name].ir2_module is None:
                 modules_by_name[name] = module_info
     return ObjectFileContent(modules_by_name)
+
+@lru_cache()
+def load_object_files(object_file_paths: Tuple[str, ...]) -> ObjectFileContent:
+    object_file_contents = []
+    for context_module_file_name in object_file_paths:
+        with open(context_module_file_name, 'rb') as file:
+            object_file_contents.append(pickle.loads(file.read()))
+
+    return merge_object_files(object_file_contents)

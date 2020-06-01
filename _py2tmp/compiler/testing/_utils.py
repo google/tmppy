@@ -47,6 +47,7 @@ from _py2tmp.compiler.output_files import ObjectFileContent, merge_object_files
 from _py2tmp.compiler.stages import CompilationError
 from _py2tmp.coverage import report_covered, is_coverage_collection_enabled, SourceBranch
 from _py2tmp.ir0_optimization import ConfigurationKnobs, DEFAULT_VERBOSE_SETTING
+from py2tmp.testing.pytest_plugin import TmppyFixture
 
 CHECK_TESTS_WERE_FULLY_OPTIMIZED = True
 
@@ -736,8 +737,9 @@ def _get_function_body(f):
     source_code, _ = inspect.getsourcelines(f)
 
     # Skip the annotation and the line where the function is defined.
-    expected_line = 'def %s():\n' % f.__name__
-    while source_code[0] != expected_line:
+    expected_line = 'def %s(tmppy: TmppyFixture):\n' % f.__name__
+    expected_line2 = 'def %s():\n' % f.__name__
+    while source_code[0] not in (expected_line, expected_line2):
         source_code = source_code[1:]
     source_code = source_code[1:]
 
@@ -906,9 +908,9 @@ class BranchExplainer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         os.remove(self.tmp_file)
 
-def compile(python_source,
-            module_name=TEST_MODULE_NAME,
-            context_object_file_content: ObjectFileContent = ObjectFileContent({})):
+def compile(python_source: str,
+            context_object_file_content: ObjectFileContent = ObjectFileContent({}),
+            module_name=TEST_MODULE_NAME):
     object_file_content = compile_source_code(module_name=module_name, source_code=python_source,
                                               context_object_file_content=merge_object_files(
                                                   [get_builtins_object_file_content(), context_object_file_content]),
@@ -963,10 +965,12 @@ def link(object_file_content: ObjectFileContent,
                 coverage_collection_enabled=is_coverage_collection_enabled())
 
 
-def _convert_to_cpp_expecting_success(tmppy_source: str, allow_toplevel_static_asserts_after_optimization: bool):
+def _convert_to_cpp_expecting_success(tmppy_source: str,
+                                      allow_toplevel_static_asserts_after_optimization: bool,
+                                      context_object_file_content: ObjectFileContent):
     object_file_content = None
     try:
-        object_file_content = compile(tmppy_source)
+        object_file_content = compile(tmppy_source, context_object_file_content)
         e = None
     except CompilationError as e1:
         e = e1
@@ -1000,7 +1004,7 @@ def _convert_to_cpp_expecting_success(tmppy_source: str, allow_toplevel_static_a
                 ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
                 ConfigurationKnobs.verbose = True
                 ConfigurationKnobs.max_num_optimization_steps = -1
-                object_file_content = compile(tmppy_source)
+                object_file_content = compile(tmppy_source, context_object_file_content)
                 main_module = object_file_content.modules_by_name[TEST_MODULE_NAME]
                 cpp_source = link(object_file_content)
 
@@ -1026,14 +1030,15 @@ def _convert_to_cpp_expecting_success(tmppy_source: str, allow_toplevel_static_a
     return object_file_content, cpp_source
 
 
-def assert_compilation_succeeds(extra_cpp_prelude='', always_allow_toplevel_static_asserts_after_optimization=False):
+def assert_compilation_succeeds(extra_cpp_prelude: str='', always_allow_toplevel_static_asserts_after_optimization: bool=False):
     def eval(f):
         @wraps(f)
-        def wrapper():
+        def wrapper(tmppy: TmppyFixture = TmppyFixture(ObjectFileContent({}))):
             def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
                 object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
-                                                                                    allow_toplevel_static_asserts_after_optimization or always_allow_toplevel_static_asserts_after_optimization)
+                                                                                    allow_toplevel_static_asserts_after_optimization or always_allow_toplevel_static_asserts_after_optimization,
+                                                                                    tmppy.tmppyc_files)
                 expect_cpp_code_success(tmppy_source, object_file_content, extra_cpp_prelude + cpp_source)
                 return cpp_source
 
@@ -1047,12 +1052,13 @@ def assert_compilation_succeeds(extra_cpp_prelude='', always_allow_toplevel_stat
 def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
     def eval(f):
         @wraps(f)
-        def wrapper():
+        def wrapper(tmppy: TmppyFixture = TmppyFixture(ObjectFileContent({}))):
             tmppy_source = _get_function_body(f)
 
             def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
-                                                                                    allow_toplevel_static_asserts_after_optimization=True)
+                                                                                    allow_toplevel_static_asserts_after_optimization=True,
+                                                                                    context_object_file_content=tmppy.tmppyc_files)
                 expect_cpp_code_success(tmppy_source, object_file_content, extra_cpp_prelude + cpp_source)
                 return cpp_source
 
@@ -1063,7 +1069,8 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
                 ConfigurationKnobs.max_num_optimization_steps = -1
                 ConfigurationKnobs.reached_max_num_remaining_loops_counter = 0
                 object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
-                                                                                    allow_toplevel_static_asserts_after_optimization=True)
+                                                                                    allow_toplevel_static_asserts_after_optimization=True,
+                                                                                    context_object_file_content=tmppy.tmppyc_files)
                 main_module = object_file_content.modules_by_name[TEST_MODULE_NAME]
 
                 cpp_source_lines = cpp_source.splitlines(True)
@@ -1120,11 +1127,12 @@ def assert_code_optimizes_to(expected_cpp_source: str, extra_cpp_prelude=''):
 def assert_compilation_fails_with_generic_error(expected_error_regex: str, allow_reaching_max_optimization_loops=False):
     def eval(f):
         @wraps(f)
-        def wrapper():
+        def wrapper(tmppy: TmppyFixture = TmppyFixture(ObjectFileContent({}))):
             def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
                 object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
-                                                                                    allow_toplevel_static_asserts_after_optimization=True)
+                                                                                    allow_toplevel_static_asserts_after_optimization=True,
+                                                                                    context_object_file_content=tmppy.tmppyc_files)
                 expect_cpp_code_generic_compile_error(
                     expected_error_regex,
                     tmppy_source,
@@ -1143,11 +1151,12 @@ def assert_compilation_fails_with_generic_error(expected_error_regex: str, allow
 def assert_compilation_fails_with_static_assert_error(expected_error_regex: str):
     def eval(f):
         @wraps(f)
-        def wrapper():
+        def wrapper(tmppy: TmppyFixture = TmppyFixture(ObjectFileContent({}))):
             def run_test(allow_toplevel_static_asserts_after_optimization: bool):
                 tmppy_source = _get_function_body(f)
                 object_file_content, cpp_source = _convert_to_cpp_expecting_success(tmppy_source,
-                                                                                    allow_toplevel_static_asserts_after_optimization=True)
+                                                                                    allow_toplevel_static_asserts_after_optimization=True,
+                                                                                    context_object_file_content=tmppy.tmppyc_files)
                 expect_cpp_code_generic_compile_error(
                     r'(error: static assertion failed: |error: static_assert failed .|static_assert failed due to requirement.*)' + expected_error_regex,
                     tmppy_source,
@@ -1274,13 +1283,13 @@ def check_compilation_error(e: CompilationError,
 
 def assert_conversion_fails(f):
     @wraps(f)
-    def wrapper():
+    def wrapper(tmppy: TmppyFixture = TmppyFixture(ObjectFileContent({}))):
         def run_test(allow_toplevel_static_asserts_after_optimization: bool):
             tmppy_source = _get_function_body(f)
             e = None
             object_file_content = None
             try:
-                object_file_content = compile(tmppy_source)
+                object_file_content = compile(tmppy_source, tmppy.tmppyc_files)
             except CompilationError as e1:
                 e = e1
 

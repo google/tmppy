@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from tmppy import empty_set, Type
+from tmppy import Type
 
 class MyError(Exception):
     def __init__(self, b: bool):
         self.message = 'Something went wrong'
         self.b = b
+
 def f(x: Type):
     if x == Type('float'):
         raise MyError(True)
     return True
-assert {f(x) for x in {Type('int'), Type('float'), Type('double')}} == empty_set(bool)
+

@@ -67,9 +67,15 @@ def _optimize_header_first_pass(header: ir.Header,
         for result in results:
             new_template_defns.append(result)
 
-    return replace_metafunction_calls_with_split_template_calls(header,
-                                                                new_template_defns,
-                                                                split_template_name_by_old_name_and_result_element_name)
+    [header], _ = apply_elem_optimization(
+        (header,),
+        lambda:  ((replace_metafunction_calls_with_split_template_calls(header,
+                                                                        new_template_defns,
+                                                                        split_template_name_by_old_name_and_result_element_name),),
+                  False),
+        lambda header: describe_headers([header], identifier_generator),
+        optimization_name='replace_metafunction_calls_with_split_template_calls')
+    return header
 
 def _iterate_optimization(ir: Any,
                           optimize: Callable[[Any], Tuple[Any, bool]],

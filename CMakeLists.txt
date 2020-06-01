@@ -63,14 +63,12 @@ MPYL_INCLUDE_DIR='${CMAKE_CURRENT_SOURCE_DIR}/include'
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/pytest.ini"
      CONTENT "
 [pytest]
-testpaths = \"${CMAKE_CURRENT_SOURCE_DIR}/_py2tmp\"
-addopts = -r a --tb=short
+testpaths = \"${CMAKE_CURRENT_SOURCE_DIR}/_py2tmp\" \"${CMAKE_CURRENT_SOURCE_DIR}/extras/examples\"
+addopts = -r a --tb=short -p py2tmp.testing.pytest_plugin --tmppyc_files \"${CMAKE_CURRENT_BINARY_DIR}/extras/examples/example.tmppyc\"
 ")
 
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/conftest.py"
      CONTENT "
-import sys
-sys.path.append('${CMAKE_CURRENT_SOURCE_DIR}')
 ")
 
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/.coveragerc"
@@ -99,3 +97,4 @@ exclude_lines =
 ")
 
 add_subdirectory(_py2tmp)
+add_subdirectory(extras)

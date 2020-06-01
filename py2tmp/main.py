@@ -21,7 +21,8 @@ from _py2tmp.compiler import compile, link
 
 
 def _module_name_from_filename(file_name: str):
-    return file_name.replace('/', '.')
+    assert file_name.endswith('.py')
+    return file_name.replace('/', '.')[:-len('.py')]
 
 def _compile(module_name: str, object_files: List[str], filename: str, verbose: bool, coverage_collection_enabled: bool):
     object_file_content = compile(module_name=module_name,
@@ -79,7 +80,7 @@ def main(verbose: bool,
         with open(output_file, 'w') as output_file:
             output_file.write(result)
     elif output_file.endswith('.tmppyc'):
-        result = pickle.dumps(_compile(module_name, object_files, source, verbose))
+        result = pickle.dumps(_compile(module_name, object_files, source, verbose, coverage_collection_enabled))
         with open(output_file, 'wb') as output_file:
             output_file.write(result)
     else:
@@ -91,10 +92,13 @@ if __name__ == '__main__':
     parser.add_argument('--enable_coverage', help='If "true", disables optimizations and enables coverage data collection')
     parser.add_argument('--builtins-path', required=True, help='The path to the builtins.tmppyc file.')
     parser.add_argument('-o', required=True, metavar='output_file', help='Output file (.tmppyc or .h).')
-    parser.add_argument('source', required=True, help='The python source file to convert')
+    parser.add_argument('source', help='The python source file to convert')
     parser.add_argument('object_files', nargs='*', help='.tmppyc object files for the modules (directly) imported in this source file')
 
     args = parser.parse_args()
+
+    if not args.source:
+        raise Exception('You must specify a source file')
 
     main(verbose=(args.verbose == 'true'),
          builtins_path=args.builtins_path,
