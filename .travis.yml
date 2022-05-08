@@ -2,7 +2,7 @@
 # This file was auto-generated from extras/scripts/travis_yml_generator.py, DO NOT EDIT
 #
 branches:
-  only:
+  only: 
   - master
 dist: trusty
 language: cpp
